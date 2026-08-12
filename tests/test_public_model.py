@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import importlib.util
 import json
-import sys
 from pathlib import Path
 
 import torch
@@ -44,25 +42,12 @@ def test_public_tokenizer_matches_model() -> None:
     assert "ChudGPT" in decoded and "readable English" in decoded
 
 
-def test_huggingface_standalone_model_matches_parameter_count() -> None:
-    spec = importlib.util.spec_from_file_location("public_hf_model", PUBLIC / "hf" / "model.py")
-    assert spec and spec.loader
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    config_values = json.loads((PUBLIC / "hf" / "config.json").read_text(encoding="utf-8"))["model_config"]
-    model = module.ChudGPTPublic(module.ModelConfig(**config_values))
-    assert sum(parameter.numel() for parameter in model.parameters()) == 20_999_184
-    logits = model(torch.zeros((1, 4), dtype=torch.long))
-    assert logits.shape == (1, 4, 8192)
-
-
-def test_public_huggingface_api_space_is_token_compatible() -> None:
-    space = PUBLIC / "space"
-    card = (space / "README.md").read_text(encoding="utf-8")
-    app = (space / "app.py").read_text(encoding="utf-8")
-    uploader = (PUBLIC / "upload_space.py").read_text(encoding="utf-8")
-    assert "sdk: gradio" in card
-    assert 'api_name="chat"' in app
-    assert "MODEL_REPO_ID" in app
-    assert "private=not args.public" in uploader
+def test_vercel_api_and_frontend_contract() -> None:
+    proxy = (PUBLIC / "api" / "[...path].js").read_text(encoding="utf-8")
+    page = (PUBLIC / "public" / "index.html").read_text(encoding="utf-8")
+    deployment = json.loads((PUBLIC / "vercel.json").read_text(encoding="utf-8"))
+    assert "CHUDGPT_BACKEND_URL" in proxy
+    assert "Authorization" in proxy
+    assert "/api/chat" in (PUBLIC / "public" / "app.js").read_text(encoding="utf-8")
+    assert "ChudGPT-Public" in page
+    assert deployment["rewrites"][0]["destination"] == "/public/index.html"

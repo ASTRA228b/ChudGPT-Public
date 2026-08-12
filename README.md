@@ -1,135 +1,142 @@
 # ChudGPT-Public
 
-ChudGPT-Public is a separate 21M-class conversational transformer designed to be trained locally and published as a self-contained Hugging Face model. It does not modify or share checkpoints with Buggy, Ultimate, Plus, Pro, Code, or Mega.
+ChudGPT-Public is an independently trained, experimental conversational language model and public web API. It has **20,999,184 trainable parameters** and is designed for general conversation, basic facts, arithmetic, and simple Python, C#, JavaScript, and Unity questions.
 
-Author: [ASTRA228b](https://github.com/ASTRA228b)
+It is a small custom model—not ChatGPT and not a frontier model. It can be inaccurate, has no live internet access, and should not be trusted for medical, legal, financial, or safety-critical decisions.
 
 ## Architecture
 
 | Setting | Value |
 |---|---:|
-| Trainable parameters | **20,999,184** |
-| Vocabulary | 8,192 byte-level BPE tokens |
+| Parameters | 20,999,184 |
+| Vocabulary | 8,192 BPE tokens |
 | Context length | 1,024 tokens |
 | Embedding width | 384 |
 | Transformer layers | 9 |
 | Attention heads | 6 |
-| Head width | 64 |
 | Feed-forward width | 1,808 |
-| Position encoding | RoPE |
+| Positional encoding | RoPE |
 
-The tokenizer is the project's proven natural-language tokenizer. A forced tokenizer trained only on the templated custom corpus was rejected because it produced just 2,559 useful tokens; pretending it had 12,288 would waste parameters.
+The model is a decoder-only causal transformer implemented in Python and PyTorch. Its project-authored dataset contains 20,000 conversations and 60,000 messages. Training consists of natural-language pretraining followed by response-only conversational fine-tuning.
 
-## Dataset
+## Project layout
 
-`build_public_data.py` deterministically creates **20,000 project-authored conversations and 60,000 messages**. It covers model self-knowledge, general information, geography, science, computing concepts, arithmetic, stories, jokes, emotional support, Python, JavaScript, C#, and Unity. It does not download an external dataset.
+```text
+ChudGPT-Public/
+├── api/                         Vercel serverless proxy
+├── public/                      Vercel chat website
+├── chudlm/                      model, data, prompting, and generation code
+├── configs/                     model and training settings
+├── data/public_conversations.jsonl
+├── tests/
+├── prepare.py
+├── train_public.py
+├── finetune_public.py
+├── evaluate_public.py
+├── public_api_server.py         local CUDA inference API
+├── start_training.cmd
+├── train_pipeline.ps1
+├── vercel.json
+└── VERCEL_DEPLOYMENT.md
+```
 
-Prepared corpus size on the current build:
+## Requirements
 
-- Prepared token totals are printed by `prepare.py` and recorded in `data/processed/metadata.json`.
+- Windows 10/11 or another Python-compatible operating system
+- Python 3.10+
+- 16 GB system RAM recommended
+- NVIDIA GPU with 8 GB VRAM recommended for training
+- CPU inference works but is slower
+- Node/Vercel is only used for the lightweight website/API proxy
 
-The generated JSONL dataset is included at `data/public_conversations.jsonl`. Packed binaries are intentionally ignored because anyone can reproduce them with one command.
-
-## Realistic expectations
-
-This model is still tiny. It can learn frequent phrasing, basic conversational patterns, elementary arithmetic examples, and narrow coding templates. It cannot store broad world knowledge accurately, keep up with current events, reason like a frontier model, or reliably produce complex software. Expect hallucinations, repetition, context mistakes, and incorrect facts. Never rely on it for high-stakes advice.
-
-The full 2,500-step base run processes roughly 123 million token positions after gradient accumulation. Actual time depends heavily on the GPU. A modern NVIDIA gaming GPU should take hours, not minutes; CPU training can take days. Around 6 GB of VRAM is a comfortable target with the supplied batch size, although lower-memory cards can use `batch_size: 2` and more accumulation.
-
-## Setup
-
-From the standalone repository in normal Command Prompt:
+Install dependencies:
 
 ```cmd
 cd /d C:\path\to\ChudGPT-Public
 python -m venv .venv
 .venv\Scripts\activate
-python -m pip install -r requirements.txt
+python -m pip install --upgrade pip
+pip install -r requirements.txt
 ```
 
-For an NVIDIA GPU, install the matching CUDA PyTorch build described at https://pytorch.org/get-started/locally/.
+For an NVIDIA GPU, install a CUDA-enabled PyTorch build appropriate for the machine if the default package does not provide CUDA.
 
-## Build and train
+## Prepare and train
+
+The easiest complete run on this machine is:
+
+```cmd
+cd /d C:\Users\brian\OneDrive\Documents\ChudGPT\ChudGPT-Public
+start_training.cmd
+```
+
+That runs data preparation, base pretraining, response-only fine-tuning, and evaluation. Timestamped logs are stored in `reports`. The final API checkpoint is `checkpoints/chat/best.pt`.
+
+Individual commands:
 
 ```cmd
 python prepare.py
+python count_parameters.py
 python train_public.py --device cuda
 python finetune_public.py --device cuda
 python evaluate_public.py --device cuda
 python chat_public.py --device cuda
 ```
 
-Resume interrupted stages:
+Training checkpoints are intentionally excluded from Git because they are large generated artifacts. Do not claim an untrained or one-step smoke checkpoint is a completed model.
+
+## Run the CUDA API
+
+After training finishes:
 
 ```cmd
-python train_public.py --device cuda --resume checkpoints\base\latest.pt
-python finetune_public.py --device cuda --resume checkpoints\chat\latest.pt
+cd /d C:\Users\brian\OneDrive\Documents\ChudGPT\ChudGPT-Public
+C:\tmp\ChudGPT-venv\Scripts\python.exe public_api_server.py --device cuda --port 8010
 ```
 
-CPU is supported by replacing `cuda` with `cpu`. `both` keeps the model on CUDA while CPU workers prepare batches.
-
-## Export for Hugging Face
-
-Only export after training and evaluation:
+Test it locally:
 
 ```cmd
-python export_huggingface.py --checkpoint checkpoints\chat\best.pt
+curl http://127.0.0.1:8010/api/status
+curl -X POST http://127.0.0.1:8010/api/chat -H "Content-Type: application/json" -d "{\"message\":\"What is 7 + 5?\",\"session_id\":\"demo\"}"
 ```
 
-This creates `release` with safe tensor weights, tokenizer, model card, standalone architecture, and chat client. Test it before uploading:
+Endpoints:
+
+- `GET /api/status`
+- `POST /api/chat` with `message` and optional `session_id`
+- `POST /api/clear` with `session_id`
+
+## Publish with Vercel and Cloudflare
+
+Vercel does **not** run the CUDA/PyTorch model. It hosts the website and serverless HTTPS proxy. Your PC or mini-server runs `public_api_server.py`, and Cloudflare Tunnel connects it to Vercel.
+
+1. Push this repository to GitHub.
+2. Start the CUDA API on port 8010.
+3. Start a Cloudflare tunnel:
+
+   ```cmd
+   C:\Users\brian\OneDrive\Documents\ChudGPT\tools\cloudflared.exe tunnel --url http://127.0.0.1:8010
+   ```
+
+4. Import the GitHub repository into Vercel.
+5. Set **Root Directory** to `.` (the repository root). Do not select `public`.
+6. Select **Other** as the framework and leave build/install/output commands blank.
+7. Add `CHUDGPT_BACKEND_URL` using the printed `https://...trycloudflare.com` origin, without a trailing slash.
+8. Deploy. The site and API will share the same Vercel domain.
+
+Full instructions and an API-call example are in [VERCEL_DEPLOYMENT.md](VERCEL_DEPLOYMENT.md).
+
+Quick Cloudflare tunnel URLs change after restart. A named Cloudflare Tunnel with your own hostname is recommended for a stable deployment.
+
+## Test
 
 ```cmd
-python release\inference.py --model-dir release
+pytest -q
 ```
 
-## Publish to Hugging Face
+Tests verify the exact parameter count, dataset shape, tokenizer/model compatibility, API contract, and Vercel files.
 
-1. Create an account at https://huggingface.co/join.
-2. In Hugging Face, open **Settings → Access Tokens** and create a token with write access.
-3. Authenticate locally:
+## License and credit
 
-```cmd
-hf auth login
-```
-
-4. Upload the release folder (replace the username):
-
-```cmd
-python upload_huggingface.py YOUR_USERNAME/ChudGPT-Public
-```
-
-The script creates the model repository and uploads the complete release. To create it privately first, add `--private`. You can also use the official CLI directly:
-
-```cmd
-hf upload YOUR_USERNAME/ChudGPT-Public release .
-```
-
-## Use it through an API with a Hugging Face token
-
-A custom PyTorch model repository is downloadable but does not automatically become a hosted inference API. This project therefore includes a separate private Gradio Space in `space/`. Deploy it after uploading the model:
-
-```cmd
-python upload_space.py YOUR_USERNAME/ChudGPT-Public-API --model-repo YOUR_USERNAME/ChudGPT-Public
-```
-
-The Space is created **private**, so callers authenticate with an ordinary Hugging Face read token. After the Space finishes building:
-
-```python
-from gradio_client import Client
-
-client = Client("YOUR_USERNAME/ChudGPT-Public-API", token="hf_your_read_token")
-answer = client.predict(
-    message="What is 7 + 5?",
-    history=[],
-    api_name="/chat",
-)
-print(answer)
-```
-
-You can create a fine-grained read token at https://huggingface.co/settings/tokens. Keep it secret and never put it in browser JavaScript or commit it to GitHub. A public Space can be called without a token, although authenticated calls receive better limits. A private Space requires a token from an account allowed to access it.
-
-Hugging Face model repositories support custom PyTorch models, so Transformers compatibility is not required. Users run the included `inference.py`; the model card clearly describes architecture, data, limitations, and usage.
-
-## Important publishing rule
-
-Do not upload an untrained or barely trained checkpoint while presenting it as finished. Complete training, inspect validation loss, read the evaluation responses, and update the Hugging Face model card with real metrics before publishing.
+See [LICENSE](LICENSE). Created by [ASTRA228b](https://github.com/ASTRA228b).

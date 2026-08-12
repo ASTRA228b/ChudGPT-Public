@@ -1,5 +1,0 @@
-torch>=2.2
-tokenizers>=0.15
-safetensors>=0.4
-huggingface_hub>=1.0
-gradio>=5.0,<6

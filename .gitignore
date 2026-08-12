@@ -8,6 +8,8 @@ checkpoints/*
 release/model.safetensors
 release-smoke/
 reports/*.json
+reports/*.log
+reports/*.pid
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 !checkpoints/.gitkeep

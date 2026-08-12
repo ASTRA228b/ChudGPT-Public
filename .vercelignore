@@ -1,0 +1,14 @@
+.git
+artifacts
+checkpoints
+chudlm
+configs
+data
+hf
+release
+reports
+space
+tests
+*.pt
+*.py
+*.yaml
