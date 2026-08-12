@@ -43,11 +43,12 @@ def test_public_tokenizer_matches_model() -> None:
 
 
 def test_vercel_api_and_frontend_contract() -> None:
-    proxy = (PUBLIC / "api" / "[...path].js").read_text(encoding="utf-8")
-    page = (PUBLIC / "public" / "index.html").read_text(encoding="utf-8")
-    deployment = json.loads((PUBLIC / "vercel.json").read_text(encoding="utf-8"))
+    web = PUBLIC / "web" / "static"
+    proxy = (web / "api" / "[...path].js").read_text(encoding="utf-8")
+    page = (web / "index.html").read_text(encoding="utf-8")
+    deployment = json.loads((web / "vercel.json").read_text(encoding="utf-8"))
     assert "CHUDGPT_BACKEND_URL" in proxy
-    assert "Authorization" in proxy
-    assert "/api/chat" in (PUBLIC / "public" / "app.js").read_text(encoding="utf-8")
+    assert "CHUDGPT_API_KEY" not in proxy
+    assert "/api/chat" in (web / "app.js").read_text(encoding="utf-8")
     assert "ChudGPT-Public" in page
-    assert deployment["rewrites"][0]["destination"] == "/public/index.html"
+    assert deployment["cleanUrls"] is True

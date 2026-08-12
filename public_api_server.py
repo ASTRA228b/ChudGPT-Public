@@ -29,6 +29,8 @@ MAX_MESSAGE_CHARS = 8_000
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=MAX_MESSAGE_CHARS)
     session_id: str | None = Field(default=None, max_length=128)
+    max_new_tokens: int = Field(default=200, ge=1, le=400)
+    temperature: float = Field(default=0.72, ge=0.0, le=1.5)
 
 
 class ClearRequest(BaseModel):
@@ -52,7 +54,13 @@ class PublicModelService:
         self.sessions: OrderedDict[str, list[dict[str, str]]] = OrderedDict()
         self.lock = threading.Lock()
 
-    def chat(self, message: str, session_id: str | None) -> tuple[str, str]:
+    def chat(
+        self,
+        message: str,
+        session_id: str | None,
+        max_new_tokens: int = 200,
+        temperature: float = 0.72,
+    ) -> tuple[str, str]:
         clean_message = message.strip()
         if not clean_message:
             raise ValueError("message cannot be blank")
@@ -66,8 +74,8 @@ class PublicModelService:
             output = generate(
                 self.model,
                 torch.tensor([prompt_ids], device=self.device),
-                max_new_tokens=200,
-                temperature=0.72,
+                max_new_tokens=max_new_tokens,
+                temperature=temperature,
                 top_k=50,
                 top_p=0.9,
                 repetition_penalty=1.15,
@@ -111,13 +119,54 @@ def create_app(checkpoint: Path, device: str) -> FastAPI:
             "step": service.step,
         }
 
+    @app.get("/api/info")
+    def info() -> dict[str, object]:
+        return {
+            "name": "ChudGPT-Public",
+            "description": "A public, experimental 21M-parameter conversational language model.",
+            "authentication": "none",
+            "endpoints": {
+                "status": "GET /api/status",
+                "info": "GET /api/info",
+                "chat": "POST /api/chat",
+                "generate": "POST /api/generate",
+                "clear": "POST /api/clear",
+            },
+            "limits": {
+                "message_characters": MAX_MESSAGE_CHARS,
+                "max_new_tokens": 400,
+                "context_tokens": service.model.config.context_length,
+            },
+        }
+
     @app.post("/api/chat")
     def chat(request: ChatRequest) -> dict[str, object]:
         try:
-            session_id, reply = service.chat(request.message, request.session_id)
+            session_id, reply = service.chat(
+                request.message,
+                request.session_id,
+                request.max_new_tokens,
+                request.temperature,
+            )
         except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
         return {"reply": reply, "session_id": session_id, "step": service.step}
+
+    @app.post("/api/generate")
+    def generate_once(request: ChatRequest) -> dict[str, object]:
+        temporary_session = uuid.uuid4().hex
+        try:
+            _, reply = service.chat(
+                request.message,
+                temporary_session,
+                request.max_new_tokens,
+                request.temperature,
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        finally:
+            service.clear(temporary_session)
+        return {"reply": reply, "step": service.step}
 
     @app.post("/api/clear")
     def clear(request: ClearRequest) -> dict[str, bool]:

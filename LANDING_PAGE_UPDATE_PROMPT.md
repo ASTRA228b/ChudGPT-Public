@@ -8,10 +8,10 @@ Use these details:
 - Badge: PUBLIC · 21M
 - Exact parameters: 20,999,184
 - Description: An independently trained, experimental general-purpose ChudGPT model with conversational answers, general information, basic math, and simple Python, C#, JavaScript, and Unity coding support.
-- Availability: Public website and HTTPS API hosted through Vercel, with inference running on the project owner's CUDA server.
+- Availability: Public website and keyless HTTPS API hosted through Vercel, with inference running on the project owner's CUDA server.
 - Limitations: Small experimental model; may be inaccurate; no live internet; availability depends on the owner-hosted inference server.
 - Primary button: **Try ChudGPT-Public**
 - Primary link: replace `CHUDGPT_PUBLIC_VERCEL_URL` with the deployed Vercel URL.
 - Secondary link: **API status**, pointing to `CHUDGPT_PUBLIC_VERCEL_URL/api/status`.
 
-Place it in the model/checkpoint library near ChudGPT Plus, Pro, Code, and Mega. Keep the existing design language, make the card responsive on phones, and do not claim it performs like a frontier model. Mention that developers can call `POST /api/chat` with JSON containing `message` and an optional `session_id`.
+Place it in the model/checkpoint library near ChudGPT Plus, Pro, Code, and Mega. Keep the existing design language, make the card responsive on phones, and do not claim it performs like a frontier model. Mention that developers can call the keyless `POST /api/chat` endpoint with JSON containing `message` and an optional `session_id`, or use stateless `POST /api/generate`.

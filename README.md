@@ -23,8 +23,7 @@ The model is a decoder-only causal transformer implemented in Python and PyTorch
 
 ```text
 ChudGPT-Public/
-├── api/                         Vercel serverless proxy
-├── public/                      Vercel chat website
+├── web/static/                  complete Vercel site and serverless proxy
 ├── chudlm/                      model, data, prompting, and generation code
 ├── configs/                     model and training settings
 ├── data/public_conversations.jsonl
@@ -36,7 +35,6 @@ ChudGPT-Public/
 ├── public_api_server.py         local CUDA inference API
 ├── start_training.cmd
 ├── train_pipeline.ps1
-├── vercel.json
 └── VERCEL_DEPLOYMENT.md
 ```
 
@@ -120,10 +118,10 @@ Vercel does **not** run the CUDA/PyTorch model. It hosts the website and serverl
    ```
 
 4. Import the GitHub repository into Vercel.
-5. Set **Root Directory** to `.` (the repository root). Do not select `public`.
+5. Set **Root Directory** to `web/static`.
 6. Select **Other** as the framework and leave build/install/output commands blank.
 7. Add `CHUDGPT_BACKEND_URL` using the printed `https://...trycloudflare.com` origin, without a trailing slash.
-8. Deploy. The site and API will share the same Vercel domain.
+8. Deploy. The site and keyless public API will share the same Vercel domain.
 
 Full instructions and an API-call example are in [VERCEL_DEPLOYMENT.md](VERCEL_DEPLOYMENT.md).
 

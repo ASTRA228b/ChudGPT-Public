@@ -1,30 +1,16 @@
-const ALLOWED_METHODS = "GET, POST, OPTIONS";
-
 export default async function handler(request, response) {
   response.setHeader("Access-Control-Allow-Origin", "*");
-  response.setHeader("Access-Control-Allow-Methods", ALLOWED_METHODS);
-  response.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");
+  response.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  response.setHeader("Access-Control-Allow-Headers", "Content-Type");
   response.setHeader("Cache-Control", "no-store");
-
   if (request.method === "OPTIONS") return response.status(204).end();
-
-  const requiredKey = process.env.CHUDGPT_API_KEY;
-  if (requiredKey && request.headers.authorization !== `Bearer ${requiredKey}`) {
-    return response.status(401).json({ error: "Missing or invalid API key" });
-  }
 
   const backend = (process.env.CHUDGPT_BACKEND_URL || "").replace(/\/$/, "");
   if (!backend) {
-    return response.status(503).json({
-      error: "CHUDGPT_BACKEND_URL is not configured in Vercel",
-    });
+    return response.status(503).json({ error: "CHUDGPT_BACKEND_URL is not configured" });
   }
-
-  const pathParts = Array.isArray(request.query.path)
-    ? request.query.path
-    : [request.query.path || "status"];
-  const target = `${backend}/api/${pathParts.map(encodeURIComponent).join("/")}`;
-
+  const parts = Array.isArray(request.query.path) ? request.query.path : [request.query.path || "status"];
+  const target = `${backend}/api/${parts.map(encodeURIComponent).join("/")}`;
   try {
     const upstream = await fetch(target, {
       method: request.method,

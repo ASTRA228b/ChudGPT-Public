@@ -5,15 +5,15 @@ Vercel hosts the website and HTTPS proxy. The 21M PyTorch model runs on your CUD
 ## Vercel project settings
 
 - Import `ASTRA228b/ChudGPT-Public`.
-- **Root Directory:** leave it as the repository root (`.`). Do not select `public` or `api`.
+- **Root Directory:** `web/static`
 - **Framework Preset:** Other.
 - Build Command: leave blank.
 - Output Directory: leave blank.
 - Install Command: leave blank.
 - Add environment variable `CHUDGPT_BACKEND_URL` with the current tunnel origin, such as `https://example.trycloudflare.com` (no trailing slash).
-- Optional: set `CHUDGPT_API_KEY`. If set, API callers must send `Authorization: Bearer YOUR_KEY`; the included browser chat is intended for deployments without this optional key.
+- No API key is required. Do not add secrets to browser code.
 
-Redeploy after changing an environment variable. The public endpoints are `GET /api/status`, `POST /api/chat`, and `POST /api/clear`.
+Redeploy after changing an environment variable. Public endpoints are `GET /api/status`, `GET /api/info`, `POST /api/chat`, `POST /api/generate`, and `POST /api/clear`.
 
 ## Run the model backend
 
@@ -40,5 +40,7 @@ curl -X POST https://YOUR-SITE.vercel.app/api/chat \
   -H "Content-Type: application/json" \
   -d "{\"message\":\"What is 7 + 5?\",\"session_id\":\"demo-user\"}"
 ```
+
+`POST /api/generate` accepts the same JSON but does not retain a conversation. Both chat endpoints optionally accept `max_new_tokens` from 1–400 and `temperature` from 0–1.5.
 
 Quick tunnels change address whenever restarted. For a stable production service, configure a named Cloudflare Tunnel and a hostname you own.

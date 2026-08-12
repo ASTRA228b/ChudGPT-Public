@@ -1,0 +1,8 @@
+{
+  "name": "chudgpt-public-web",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  }
+}

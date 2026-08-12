@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>ChudGPT-Public</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main class="shell">
+    <header><div><h1>ChudGPT-Public</h1><p id="status">Checking server…</p></div><span>21M PUBLIC</span></header>
+    <section class="api-note"><strong>Free public API</strong><span>No API key required · <a href="/api/info">View endpoints</a></span></section>
+    <section id="messages" aria-live="polite"><article class="assistant">Hey! I’m ChudGPT-Public. Ask me a question, try some math, or request simple code.</article></section>
+    <form id="chat-form"><textarea id="message" maxlength="8000" rows="1" placeholder="Message ChudGPT-Public…" required></textarea><button id="send" type="submit">Send</button></form>
+    <footer><button id="clear" type="button">Clear conversation</button><a href="/api/status">API status</a></footer>
+  </main>
+  <script src="/app.js" defer></script>
+</body>
+</html>
