@@ -1,0 +1,13 @@
+__pycache__/
+.pytest_cache/
+.venv/
+*.py[cod]
+data/raw/*
+data/processed/*
+checkpoints/*
+release/model.safetensors
+release-smoke/
+reports/*.json
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+!checkpoints/.gitkeep

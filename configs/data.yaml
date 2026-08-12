@@ -1,0 +1,8 @@
+input_path: data/raw
+output_dir: data/processed
+tokenizer_path: artifacts/tokenizer.json
+validation_fraction: 0.025
+seed: 228
+min_characters: 20
+text_field: text
+dialogue_field: messages
