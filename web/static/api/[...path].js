@@ -12,7 +12,13 @@ export default async function handler(request, response) {
   if (!backend) {
     return response.status(503).json({ error: "CHUDGPT_BACKEND_URL is not configured" });
   }
-  const parts = Array.isArray(request.query.path) ? request.query.path : [request.query.path || "status"];
+  const requestUrl = new URL(request.url, "https://chudgpt-public.invalid");
+  const urlPath = requestUrl.pathname.replace(/^\/api\/?/, "");
+  const queryPath = Array.isArray(request.query.path)
+    ? request.query.path.join("/")
+    : request.query.path;
+  const selectedPath = queryPath || urlPath || "status";
+  const parts = selectedPath.split("/").filter(Boolean);
   const target = `${backend}/api/${parts.map(encodeURIComponent).join("/")}`;
   try {
     const upstream = await fetch(target, {

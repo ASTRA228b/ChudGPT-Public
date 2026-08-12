@@ -49,6 +49,7 @@ def test_vercel_api_and_frontend_contract() -> None:
     deployment = json.loads((web / "vercel.json").read_text(encoding="utf-8"))
     assert "CHUDGPT_BACKEND_URL" in proxy
     assert "CHUDGPT_API_KEY" not in proxy
+    assert "requestUrl.pathname" in proxy
     assert "/api/chat" in (web / "app.js").read_text(encoding="utf-8")
     assert "ChudGPT-Public" in page
     assert deployment["cleanUrls"] is True
