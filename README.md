@@ -68,7 +68,7 @@ For an NVIDIA GPU, install a CUDA-enabled PyTorch build appropriate for the mach
 The easiest complete run on this machine is:
 
 ```cmd
-cd /d C:\Users\brian\OneDrive\Documents\ChudGPT\ChudGPT-Public
+cd /d C:\Users\admin\OneDrive\Documents\ChudGPT\ChudGPT-Public
 start_training.cmd
 ```
 
