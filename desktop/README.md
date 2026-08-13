@@ -67,7 +67,7 @@ Tagged releases use `.github/workflows/desktop-release.yml` to build independent
 
 - Windows: NSIS `.exe` installer and portable `.exe`
 - macOS: `.dmg` and `.zip`
-- Linux: `.AppImage` and `.deb`
+- Linux: portable `.AppImage`
 
 macOS artifacts are unsigned unless Apple signing/notarization credentials are configured. Windows packages are unsigned unless a code-signing certificate is configured. Linux packages do not require signing for local installation.
 

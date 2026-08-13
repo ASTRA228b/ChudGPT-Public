@@ -41,7 +41,7 @@ jobs:
             command: npm run build && npx electron-builder --mac dmg zip
           - name: Linux
             os: ubuntu-latest
-            command: npm run build && npx electron-builder --linux AppImage deb
+            command: npm run build && npx electron-builder --linux AppImage --publish never
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -65,7 +65,6 @@ jobs:
             desktop/release/*.dmg
             desktop/release/*.zip
             desktop/release/*.AppImage
-            desktop/release/*.deb
           if-no-files-found: error
 
   release:

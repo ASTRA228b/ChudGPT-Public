@@ -1,6 +1,6 @@
 {
   "name": "chudgpt-desktop",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Official native desktop client for ChudGPT-Public",
   "author": {
     "name": "ASTRA228b",
@@ -96,10 +96,7 @@
       "gatekeeperAssess": false
     },
     "linux": {
-      "target": [
-        "AppImage",
-        "deb"
-      ],
+      "target": ["AppImage"],
       "icon": "assets/icon.png",
       "category": "Utility",
       "synopsis": "Native ChudGPT-Public desktop client",
