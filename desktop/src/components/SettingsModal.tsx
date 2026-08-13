@@ -109,6 +109,26 @@ export function SettingsModal(props: Props): JSX.Element {
                 <option value="neon">Neon Dark</option>
                 <option value="midnight">Midnight</option>
                 <option value="black">Pure Black</option>
+                <option value="synthwave">Synthwave Arcade</option>
+                <option value="forest">Deep Forest</option>
+                <option value="ember">Ember Core</option>
+                <option value="arctic">Arctic Signal</option>
+                <option value="sunset">Solar Sunset</option>
+                <option value="toxic">Toxic Terminal</option>
+                <option value="royal">Royal Void</option>
+                <option value="rose">Rose Circuit</option>
+                <option value="terminal">Retro Terminal</option>
+                <option value="chud">Maximum CHUD</option>
+                <option value="deepsea">Deep Sea</option>
+                <option value="sandstorm">Sandstorm</option>
+                <option value="bubblegum">Bubblegum Glitch</option>
+                <option value="copper">Copper Machine</option>
+                <option value="galaxy">Galaxy Brain</option>
+                <option value="lavender">Lavender Night</option>
+                <option value="bloodmoon">Blood Moon</option>
+                <option value="cyberyellow">Cyber Yellow</option>
+                <option value="slate">Steel Slate</option>
+                <option value="mint">Mint Condition</option>
               </select>
             </Setting>
             <Setting

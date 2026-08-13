@@ -44,4 +44,9 @@ describe("desktop state", () => {
     expect(normalized.settings.theme).toBe("black");
     expect(normalized.version).toBe(1);
   });
+
+  it("rejects an unknown imported theme", () => {
+    const normalized = normalizeState({ settings: { theme: "broken-theme" } });
+    expect(normalized.settings.theme).toBe("neon");
+  });
 });

@@ -1,4 +1,35 @@
-import type { AppSettings, Conversation, PersistedState } from "../types";
+import type {
+  AppSettings,
+  Conversation,
+  PersistedState,
+  ThemeName,
+} from "../types";
+
+export const themeNames: readonly ThemeName[] = [
+  "neon",
+  "midnight",
+  "black",
+  "synthwave",
+  "forest",
+  "ember",
+  "arctic",
+  "sunset",
+  "toxic",
+  "royal",
+  "rose",
+  "terminal",
+  "chud",
+  "deepsea",
+  "sandstorm",
+  "bubblegum",
+  "copper",
+  "galaxy",
+  "lavender",
+  "bloodmoon",
+  "cyberyellow",
+  "slate",
+  "mint",
+];
 
 export const defaultSettings: AppSettings = {
   theme: "neon",
@@ -53,6 +84,8 @@ export function normalizeState(value: unknown): PersistedState {
     ? candidate.conversations.filter(isConversation).slice(0, 1_000)
     : [];
   const settings = { ...defaultSettings, ...(candidate.settings ?? {}) };
+  if (!themeNames.includes(settings.theme))
+    settings.theme = defaultSettings.theme;
   const active = conversations.some(
     (chat) => chat.id === candidate.activeConversationId,
   )

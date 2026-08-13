@@ -64,6 +64,208 @@ button {
   --panel: rgba(8, 8, 9, 0.92);
   background: #000;
 }
+.theme-synthwave {
+  --blue: #ff48d7;
+  --cyan: #62f5ff;
+  --panel: rgba(31, 8, 56, 0.82);
+  --line: rgba(255, 72, 215, 0.28);
+  --muted: #b89bcf;
+  background:
+    radial-gradient(circle at 70% 0%, #49206a, transparent 42%),
+    linear-gradient(145deg, #12051f, #26083c 55%, #071629);
+}
+.theme-forest {
+  --blue: #62d68b;
+  --cyan: #a6f7b9;
+  --panel: rgba(8, 31, 22, 0.84);
+  --line: rgba(116, 231, 149, 0.2);
+  --muted: #89aa96;
+  background:
+    radial-gradient(circle at 75% 0%, #174c35, transparent 44%),
+    linear-gradient(145deg, #04100c, #0b281c 60%, #020907);
+}
+.theme-ember {
+  --blue: #ff713d;
+  --cyan: #ffc05b;
+  --panel: rgba(39, 15, 8, 0.86);
+  --line: rgba(255, 120, 61, 0.25);
+  --muted: #bd9786;
+  background:
+    radial-gradient(circle at 70% -5%, #762514, transparent 43%),
+    linear-gradient(145deg, #160704, #351108 56%, #0b0503);
+}
+.theme-arctic {
+  --blue: #55aaff;
+  --cyan: #d0f7ff;
+  --panel: rgba(8, 28, 44, 0.78);
+  --line: rgba(146, 222, 255, 0.25);
+  --muted: #9bb9c9;
+  background:
+    radial-gradient(circle at 72% 0%, #1a5b7c, transparent 42%),
+    linear-gradient(145deg, #06111d, #0b314c 58%, #03101a);
+}
+.theme-sunset {
+  --blue: #ff8a68;
+  --cyan: #ffd47d;
+  --panel: rgba(45, 17, 36, 0.82);
+  --line: rgba(255, 148, 111, 0.25);
+  --muted: #c2a0ac;
+  background:
+    radial-gradient(circle at 72% 0%, #77365d, transparent 45%),
+    linear-gradient(145deg, #1c0b1c, #4a1c39 55%, #181022);
+}
+.theme-toxic {
+  --blue: #97ff38;
+  --cyan: #d4ff63;
+  --panel: rgba(18, 32, 5, 0.88);
+  --line: rgba(158, 255, 56, 0.26);
+  --muted: #a4b58e;
+  background:
+    radial-gradient(circle at 70% 0%, #405e0c, transparent 44%),
+    linear-gradient(145deg, #080d03, #1d2d08 58%, #050802);
+}
+.theme-royal {
+  --blue: #9c7dff;
+  --cyan: #d3b5ff;
+  --panel: rgba(25, 14, 47, 0.87);
+  --line: rgba(174, 133, 255, 0.25);
+  --muted: #a99dc2;
+  background:
+    radial-gradient(circle at 70% 0%, #44307c, transparent 44%),
+    linear-gradient(145deg, #0d0818, #241641 58%, #07040d);
+}
+.theme-rose {
+  --blue: #ff679d;
+  --cyan: #ffb7cc;
+  --panel: rgba(45, 12, 28, 0.84);
+  --line: rgba(255, 103, 157, 0.25);
+  --muted: #c19aaa;
+  background:
+    radial-gradient(circle at 70% 0%, #782848, transparent 44%),
+    linear-gradient(145deg, #18070e, #3d1024 58%, #0d0408);
+}
+.theme-terminal {
+  --blue: #36e56f;
+  --cyan: #8dffae;
+  --panel: rgba(2, 22, 8, 0.91);
+  --line: rgba(54, 229, 111, 0.24);
+  --muted: #73a780;
+  font-family: Consolas, "Courier New", monospace;
+  background:
+    radial-gradient(circle at 70% 0%, #0d4922, transparent 45%),
+    linear-gradient(145deg, #010703, #061b0c 60%, #000);
+}
+.theme-chud {
+  --blue: #ff3f89;
+  --cyan: #55ffd2;
+  --panel: rgba(32, 8, 25, 0.86);
+  --line: rgba(85, 255, 210, 0.24);
+  --muted: #b397ae;
+  background:
+    radial-gradient(circle at 80% 5%, #164e49, transparent 34%),
+    radial-gradient(circle at 30% 0%, #6d183e, transparent 40%),
+    linear-gradient(145deg, #100610, #211020 58%, #04120f);
+}
+.theme-deepsea {
+  --blue: #20b7d4;
+  --cyan: #75f2e7;
+  --panel: rgba(3, 29, 39, 0.87);
+  --line: rgba(52, 215, 220, 0.24);
+  --muted: #83abb2;
+  background:
+    radial-gradient(circle at 72% 0%, #064c5d, transparent 43%),
+    linear-gradient(145deg, #020b10, #062934 58%, #010709);
+}
+.theme-sandstorm {
+  --blue: #e2a956;
+  --cyan: #ffe2a1;
+  --panel: rgba(38, 28, 13, 0.88);
+  --line: rgba(226, 169, 86, 0.26);
+  --muted: #b9a484;
+  background:
+    radial-gradient(circle at 72% 0%, #72542a, transparent 45%),
+    linear-gradient(145deg, #120d06, #342713 58%, #0b0804);
+}
+.theme-bubblegum {
+  --blue: #ff6edb;
+  --cyan: #72eaff;
+  --panel: rgba(39, 13, 43, 0.84);
+  --line: rgba(255, 110, 219, 0.27);
+  --muted: #c3a0c6;
+  background:
+    radial-gradient(circle at 78% 0%, #315f7d, transparent 35%),
+    radial-gradient(circle at 30% 0%, #783066, transparent 42%), #160b21;
+}
+.theme-copper {
+  --blue: #c87f4a;
+  --cyan: #f3bd79;
+  --panel: rgba(37, 20, 12, 0.88);
+  --line: rgba(214, 137, 78, 0.25);
+  --muted: #b4947c;
+  background:
+    radial-gradient(circle at 70% 0%, #60351d, transparent 44%),
+    linear-gradient(145deg, #100905, #2d190e 58%, #080503);
+}
+.theme-galaxy {
+  --blue: #6f8cff;
+  --cyan: #dc7dff;
+  --panel: rgba(15, 13, 45, 0.86);
+  --line: rgba(124, 143, 255, 0.26);
+  --muted: #9e9bc4;
+  background:
+    radial-gradient(circle at 78% 8%, #4b2877, transparent 32%),
+    radial-gradient(circle at 30% -5%, #183b78, transparent 40%), #080716;
+}
+.theme-lavender {
+  --blue: #b89cff;
+  --cyan: #ead7ff;
+  --panel: rgba(31, 24, 49, 0.88);
+  --line: rgba(196, 168, 255, 0.24);
+  --muted: #b4abc5;
+  background:
+    radial-gradient(circle at 72% 0%, #5a477e, transparent 44%),
+    linear-gradient(145deg, #110e1a, #302642 58%, #09070e);
+}
+.theme-bloodmoon {
+  --blue: #e23f4f;
+  --cyan: #ff8a79;
+  --panel: rgba(39, 7, 12, 0.9);
+  --line: rgba(226, 63, 79, 0.27);
+  --muted: #b48c91;
+  background:
+    radial-gradient(circle at 75% 2%, #741c28, transparent 40%),
+    linear-gradient(145deg, #130306, #350911 58%, #070102);
+}
+.theme-cyberyellow {
+  --blue: #f4e327;
+  --cyan: #fff69c;
+  --panel: rgba(31, 30, 5, 0.89);
+  --line: rgba(244, 227, 39, 0.25);
+  --muted: #b8b486;
+  background:
+    radial-gradient(circle at 72% 0%, #595515, transparent 43%),
+    linear-gradient(145deg, #0d0d02, #292707 58%, #050500);
+}
+.theme-slate {
+  --blue: #8ca5b8;
+  --cyan: #d5e6ef;
+  --panel: rgba(19, 27, 34, 0.9);
+  --line: rgba(164, 190, 207, 0.2);
+  --muted: #94a3ad;
+  background:
+    radial-gradient(circle at 72% 0%, #3a4a55, transparent 44%),
+    linear-gradient(145deg, #0a0e12, #202b33 58%, #050709);
+}
+.theme-mint {
+  --blue: #59e6b5;
+  --cyan: #b1ffe4;
+  --panel: rgba(6, 32, 26, 0.87);
+  --line: rgba(89, 230, 181, 0.24);
+  --muted: #8db5a8;
+  background:
+    radial-gradient(circle at 72% 0%, #17634c, transparent 43%),
+    linear-gradient(145deg, #03100c, #0b3025 58%, #010806);
+}
 .titlebar {
   height: 36px;
   display: flex;

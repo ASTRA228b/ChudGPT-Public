@@ -1,5 +1,28 @@
 export type Role = "user" | "assistant" | "error";
-export type ThemeName = "neon" | "midnight" | "black";
+export type ThemeName =
+  | "neon"
+  | "midnight"
+  | "black"
+  | "synthwave"
+  | "forest"
+  | "ember"
+  | "arctic"
+  | "sunset"
+  | "toxic"
+  | "royal"
+  | "rose"
+  | "terminal"
+  | "chud"
+  | "deepsea"
+  | "sandstorm"
+  | "bubblegum"
+  | "copper"
+  | "galaxy"
+  | "lavender"
+  | "bloodmoon"
+  | "cyberyellow"
+  | "slate"
+  | "mint";
 export type Density = "comfortable" | "compact";
 
 export interface ChatMessage {

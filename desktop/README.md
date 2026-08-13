@@ -11,7 +11,7 @@ ChudGPT Desktop is the official native client for the independently trained Chud
 - Markdown, multiline answers, selectable text, fenced code blocks, and copy actions
 - Stop/cancel requests, duplicate-send prevention, timeouts, status checks, and offline-safe error messages
 - Local JSON export/import with validation and a 10 MB import safety limit
-- Neon Dark, Midnight, and Pure Black themes; scale, glow, density, and reduced-animation controls
+- Twenty-three themes (the original three plus twenty new choices), from Synthwave Arcade and Galaxy Brain to Retro Terminal and Maximum CHUD; scale, glow, density, and reduced-animation controls
 - Keyboard shortcuts: `Ctrl+N`, `Ctrl+K`, `Ctrl+,`, and `Ctrl+L`
 - First-launch explanation and experimental-model warning
 - No analytics, tracking, accounts, API keys, or code execution
