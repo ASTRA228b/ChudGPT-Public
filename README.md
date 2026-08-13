@@ -125,6 +125,8 @@ Vercel does **not** run the CUDA/PyTorch model. It hosts the website and serverl
 
 Full instructions and an API-call example are in [VERCEL_DEPLOYMENT.md](VERCEL_DEPLOYMENT.md).
 
+The latest prompt-alignment diagnosis, training details, and measured before/after results are in [IMPROVEMENT_REPORT.md](IMPROVEMENT_REPORT.md).
+
 Quick Cloudflare tunnel URLs change after restart. A named Cloudflare Tunnel with your own hostname is recommended for a stable deployment.
 
 For Windows CMD API testing, keep `curl.exe` on one line; `\` is a Linux/macOS line-continuation character and does not work in CMD.

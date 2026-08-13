@@ -8,6 +8,7 @@ from tokenizers import Tokenizer
 
 from chudlm.config import dataclass_from_dict, load_yaml
 from chudlm.model import ModelConfig, TransformerLM
+from public_api_server import PublicModelService
 
 ROOT = Path(__file__).resolve().parents[1]
 PUBLIC = ROOT
@@ -53,3 +54,11 @@ def test_vercel_api_and_frontend_contract() -> None:
     assert "/api/chat" in (web / "app.js").read_text(encoding="utf-8")
     assert "ChudGPT-Public" in page
     assert deployment["cleanUrls"] is True
+
+
+def test_serving_tools_are_general_and_contextual() -> None:
+    assert PublicModelService._calculate_arithmetic("What is 12 * 8?") == "12 * 8 is 96."
+    assert PublicModelService._greeting("Hello!") == "Hey! What would you like to talk about?"
+    facts: dict[str, str] = {}
+    PublicModelService._remember_user_fact("My favorite color is teal.", facts)
+    assert PublicModelService._recall_user_fact("What is my favorite color?", facts) == "You told me your favorite color is teal."
