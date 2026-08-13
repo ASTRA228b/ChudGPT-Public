@@ -83,7 +83,7 @@ jobs:
           name: ChudGPT Desktop ${{ github.ref_name }}
           generate_release_notes: true
           body: |
-            ## ChudGPT Desktop v0.1.0
+            ## ChudGPT Desktop ${{ github.ref_name }}
 
             The first native desktop client for ChudGPT-Public.
 

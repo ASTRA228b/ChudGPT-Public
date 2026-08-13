@@ -1,8 +1,11 @@
 {
   "name": "chudgpt-desktop",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Official native desktop client for ChudGPT-Public",
-  "author": "ASTRA228b",
+  "author": {
+    "name": "ASTRA228b",
+    "email": "ASTRA228b@users.noreply.github.com"
+  },
   "license": "MIT",
   "main": "dist-electron/main.js",
   "type": "module",
