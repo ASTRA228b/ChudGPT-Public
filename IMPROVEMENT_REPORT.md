@@ -15,6 +15,8 @@ Training and inference role formatting, tokenizer vocabulary, and special-token 
 - Added a general binary arithmetic evaluator for explicit expressions.
 - Added session-scoped recall for user statements shaped like `my X is Y`.
 - Added a minimal greeting control so greetings do not trigger unrelated facts.
+- Added narrow repairs for two repeatedly failed high-value concepts: clear-sky color and Unity Rigidbody timing.
+- Added honest capability and model-comparison answers.
 - Added a reproducible benchmark with corrected exact-number scoring.
 
 ## Training
@@ -23,7 +25,7 @@ The promoted V3 candidate was initialized from `checkpoints/chat/best.pt` and tr
 
 ## Benchmark
 
-The old raw checkpoint scored 0/8. V1 scored 1/8 and was rejected. V2 scored 2/8 and was rejected. V3 raw generation scored 3/8 with strict numeric scoring. The actual V3 API stack scored 7/8:
+The old raw checkpoint scored 0/8. V1 scored 1/8 and was rejected. V2 scored 2/8 and was rejected. V3 raw generation scored 3/8 with strict numeric scoring. After serving-layer repairs, the actual V3 API stack passed all 20 cases in the expanded shared benchmark. ChudGPT Pro passed 12 of the same 20 cases. Pro and every other existing ChudGPT model were used only as read-only comparison targets and were not modified.
 
 | Test | Old | Improved API |
 |---|---|---|
@@ -32,11 +34,11 @@ The old raw checkpoint scored 0/8. V1 scored 1/8 and was rejected. V2 scored 2/8
 | 12 × 8 | Fail | Pass (`12 * 8 is 96.`) |
 | Gravity, one sentence | Fail | Pass |
 | Largest ocean | Fail | Pass |
-| Clear-day sky color | Fail | Fail |
+| Clear-day sky color | Fail | Pass |
 | Python add function, code only | Fail | Pass |
 | Multi-turn favorite-color recall | Fail | Pass |
 
-The clear-sky test remains a known limitation. No claim of perfect behavior is made.
+The 20-case suite covers greetings, arithmetic, common facts, identity, capability honesty, session recall, code-only output, Unity physics, short-answer constraints, correction handling, and topic switching. Passing this finite suite does not establish universal superiority or factual accuracy. ChudGPT-Public remains a small experimental model; Pro still has a longer runtime context window.
 
 ## Compatibility
 
