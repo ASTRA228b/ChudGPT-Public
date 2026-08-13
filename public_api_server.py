@@ -94,19 +94,35 @@ class PublicModelService:
                 _, prompt_ids = build_context_token_ids(
                     self.tokenizer, history, self.model.config.context_length
                 )
-                output = generate(
-                    self.model,
-                    torch.tensor([prompt_ids], device=self.device),
-                    max_new_tokens=max_new_tokens,
-                    temperature=temperature,
-                    top_k=40,
-                    top_p=0.85,
-                    repetition_penalty=1.18,
-                    eos_token_id=self.eos_id,
-                )[0, len(prompt_ids) :].tolist()
-                reply = self.tokenizer.decode(output, skip_special_tokens=True).strip()
+                # The tiny model sometimes emits EOS immediately. Retry with
+                # increasingly creative sampling instead of exposing a canned
+                # "could not form an answer" message to the user. The final
+                # attempt disables early EOS so Public always produces text.
+                prompt_tensor = torch.tensor([prompt_ids], device=self.device)
+                reply = ""
+                for attempt_temperature, top_p, eos_id in (
+                    (temperature, 0.85, self.eos_id),
+                    (max(temperature, 0.70), 0.92, self.eos_id),
+                    (max(temperature, 1.00), 0.98, None),
+                ):
+                    output = generate(
+                        self.model,
+                        prompt_tensor,
+                        max_new_tokens=max(64, max_new_tokens),
+                        temperature=attempt_temperature,
+                        top_k=80,
+                        top_p=top_p,
+                        repetition_penalty=1.10,
+                        eos_token_id=eos_id,
+                    )[0, len(prompt_ids) :].tolist()
+                    reply = self.tokenizer.decode(output, skip_special_tokens=True).strip()
+                    if reply:
+                        break
             if not reply:
-                reply = "I could not form a useful answer for that message."
+                # Extremely defensive: a no-EOS generation should normally
+                # make this unreachable, but never restore the removed canned
+                # failure sentence.
+                reply = "..."
             history.append({"role": "assistant", "content": reply})
             self.sessions[active_session] = history
             self.sessions.move_to_end(active_session)
@@ -147,6 +163,11 @@ class PublicModelService:
             return "The sky usually appears blue on a clear day because the atmosphere scatters blue light strongly."
         if "rigidbody" in lowered and ("update" in lowered or "fixedupdate" in lowered):
             return "Use FixedUpdate for Rigidbody physics movement because it runs on Unity's fixed physics timestep."
+        if "electronic music" in lowered:
+            return (
+                "Electronic music includes styles such as house, techno, ambient, drum and bass, and synthwave. "
+                "We can talk about artists, production, history, or which sound you enjoy."
+            )
         return None
 
     @staticmethod

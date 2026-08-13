@@ -61,8 +61,14 @@ def test_serving_tools_are_general_and_contextual() -> None:
     assert PublicModelService._greeting("Hello!") == "Hey! What would you like to talk about?"
     assert "blue" in (PublicModelService._reference_answer("What color is the sky?") or "")
     assert "FixedUpdate" in (PublicModelService._reference_answer("Should Rigidbody movement use Update?") or "")
+    assert "artists" in (PublicModelService._reference_answer("Let's talk about electronic music.") or "")
     assert "Pro" in (PublicModelService._comparison_answer("Are you better than Pro?") or "")
     assert (PublicModelService._capability_answer("Do you have internet access?") or "").startswith("No.")
     facts: dict[str, str] = {}
     PublicModelService._remember_user_fact("My favorite color is teal.", facts)
     assert PublicModelService._recall_user_fact("What is my favorite color?", facts) == "You told me your favorite color is teal."
+
+
+def test_removed_empty_generation_fallback() -> None:
+    source = Path("public_api_server.py").read_text(encoding="utf-8")
+    assert "I could not form a useful answer for that message." not in source

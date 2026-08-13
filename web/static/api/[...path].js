@@ -5,10 +5,10 @@ export default async function handler(request, response) {
   response.setHeader("Cache-Control", "no-store");
   if (request.method === "OPTIONS") return response.status(204).end();
 
-  // Vercel's environment variable takes priority. The checked-in quick-tunnel
-  // fallback keeps a fresh deployment usable until that variable is added.
-  const fallbackBackend = "https://flame-publicly-supplied-jon.trycloudflare.com";
-  const backend = (process.env.CHUDGPT_BACKEND_URL || fallbackBackend).replace(/\/$/, "");
+  // This project currently uses a Cloudflare quick tunnel. Its checked-in URL
+  // is the active source of truth; an old Vercel environment variable can
+  // otherwise silently route requests to a stale backend after a restart.
+  const backend = "https://flame-publicly-supplied-jon.trycloudflare.com";
   if (!backend) {
     return response.status(503).json({ error: "CHUDGPT_BACKEND_URL is not configured" });
   }
