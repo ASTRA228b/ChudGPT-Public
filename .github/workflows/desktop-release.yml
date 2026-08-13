@@ -1,0 +1,99 @@
+name: ChudGPT Desktop Release
+
+on:
+  push:
+    tags:
+      - "desktop-v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    name: Verify desktop source
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - run: npm ci
+      - run: npm run verify
+
+  package:
+    name: Package ${{ matrix.name }}
+    needs: verify
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows
+            os: windows-latest
+            command: npm run package:win
+          - name: macOS
+            os: macos-latest
+            command: npm run build && npx electron-builder --mac dmg zip
+          - name: Linux
+            os: ubuntu-latest
+            command: npm run build && npx electron-builder --linux AppImage deb
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - run: npm ci
+      - run: ${{ matrix.command }}
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ChudGPT-Desktop-${{ matrix.name }}
+          path: |
+            desktop/release/*.exe
+            desktop/release/*.dmg
+            desktop/release/*.zip
+            desktop/release/*.AppImage
+            desktop/release/*.deb
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub release
+    if: startsWith(github.ref, 'refs/tags/desktop-v')
+    needs: package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: ChudGPT Desktop ${{ github.ref_name }}
+          generate_release_notes: true
+          body: |
+            ## ChudGPT Desktop v0.1.0
+
+            The first native desktop client for ChudGPT-Public.
+
+            - Persistent multi-chat system with isolated API sessions
+            - Futuristic neon desktop interface and native window controls
+            - Local chat search, rename, delete, export, and import
+            - Markdown and polished code rendering
+            - Appearance, chat, startup, and privacy settings
+            - ChudGPT-Public status, timeout, cancellation, and offline handling
+            - Separate Windows, macOS, and Linux packages
+
+            ChudGPT-Public is experimental. Responses may be inaccurate or broken.
+          files: artifacts/*

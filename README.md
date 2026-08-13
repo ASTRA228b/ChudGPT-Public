@@ -1,5 +1,9 @@
 # ChudGPT-Public
 
+## ChudGPT Desktop
+
+The native ChudGPT Desktop client now lives entirely in [`desktop/`](desktop/README.md). It provides persistent multi-chat history, local search and data controls, a futuristic native interface, safe ChudGPT-Public API integration, and Windows/macOS/Linux release packaging without bundling the model.
+
 ChudGPT-Public is an independently trained, experimental conversational language model and public web API. It has **20,999,184 trainable parameters** and is designed for general conversation, basic facts, arithmetic, and simple Python, C#, JavaScript, and Unity questions.
 
 It is a small custom model—not ChatGPT and not a frontier model. It can be inaccurate, has no live internet access, and should not be trusted for medical, legal, financial, or safety-critical decisions.
