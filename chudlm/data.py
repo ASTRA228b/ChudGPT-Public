@@ -10,7 +10,7 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 
-from .prompts import format_conversation
+from .prompts import format_pretraining_conversation
 
 
 def clean_text(text: str) -> str:
@@ -36,7 +36,7 @@ def iter_documents(path: Path, text_field: str, dialogue_field: str) -> Iterator
                 try:
                     record = json.loads(line)
                     if dialogue_field in record:
-                        yield format_conversation(record[dialogue_field])
+                        yield format_pretraining_conversation(record[dialogue_field])
                     else:
                         yield str(record[text_field])
                 except (json.JSONDecodeError, KeyError, TypeError) as exc:

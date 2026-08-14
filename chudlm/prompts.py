@@ -27,6 +27,7 @@ ROLE_MARKERS = {
     "assistant": "<assistant>",
 }
 CONVERSATION_ROLES = frozenset({"user", "assistant"})
+TRAINING_SYSTEM_PROMPT = "You are ChudGPT-Public, a helpful experimental AI assistant."
 
 
 def _sanitize_content(content: object) -> str:
@@ -64,6 +65,16 @@ def format_conversation(
     )
     if add_assistant_prompt:
         lines.append(f"{ROLE_MARKERS['assistant']}:")
+    return "\n".join(lines)
+
+
+def format_pretraining_conversation(messages: Sequence[Mapping[str, object]]) -> str:
+    """Compact serialization for causal pretraining without repeating the full policy."""
+    lines = [f"{ROLE_MARKERS['system']}: {TRAINING_SYSTEM_PROMPT}"]
+    lines.extend(
+        f"{ROLE_MARKERS[message['role']]}: {message['content']}"
+        for message in normalize_messages(messages)
+    )
     return "\n".join(lines)
 
 

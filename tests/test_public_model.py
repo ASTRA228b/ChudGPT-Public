@@ -101,6 +101,26 @@ def test_identity_assistance_does_not_route_normal_topics() -> None:
     assert PublicModelService._identity_subject("What other ChudGPTs exist?") == "family"
 
 
+def test_candidate_ranking_rejects_cross_topic_code_and_math() -> None:
+    relevant = "Hey! Good to hear from you. What is on your mind?"
+    code_leak = "```python\nprint(2 + 2)\n```"
+    assert PublicModelService._candidate_score("Hello mate", relevant) > PublicModelService._candidate_score("Hello mate", code_leak)
+
+    casual = "That sounds unusual; tell me what you mean by it."
+    math_leak = "Distance = 75 * 1.5 = 112.5 miles."
+    assert PublicModelService._candidate_score("tung tung sahur", casual) > PublicModelService._candidate_score("tung tung sahur", math_leak)
+
+
+def test_candidate_ranking_rewards_requested_output_type() -> None:
+    code = "```csharp\npublic class Player {}\n```"
+    chatter = "That is an interesting question about music."
+    assert PublicModelService._candidate_score("Write C# code", code) > PublicModelService._candidate_score("Write C# code", chatter)
+
+    result = "The answer is 43."
+    unrelated = "Saturn is known for its rings."
+    assert PublicModelService._candidate_score("What is 17 plus 26?", result) > PublicModelService._candidate_score("What is 17 plus 26?", unrelated)
+
+
 def test_v10_dataset_is_balanced_unique_and_large() -> None:
     rows = [json.loads(line) for line in Path("data/public_v10_conversations.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
     assert len(rows) == 12_000

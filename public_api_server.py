@@ -42,7 +42,8 @@ class ClearRequest(BaseModel):
 class PublicModelService:
     """Serve neural conversation with narrow stable-project identity repair."""
 
-    def __init__(self, checkpoint_path: Path, device_name: str, assistance_enabled: bool = True) -> None:
+    def __init__(self, checkpoint_path: Path, device_name: str, assistance_enabled: bool = True,
+                 tokenizer_path: Path | None = None) -> None:
         use_cuda = device_name == "cuda" or (device_name == "auto" and torch.cuda.is_available())
         if device_name == "cuda" and not torch.cuda.is_available():
             raise RuntimeError("CUDA was requested but is unavailable")
@@ -51,7 +52,10 @@ class PublicModelService:
         self.model = TransformerLM(ModelConfig(**checkpoint["model_config"])).to(self.device)
         self.model.load_state_dict(checkpoint["model"])
         self.model.eval()
-        self.tokenizer = Tokenizer.from_file(str(ROOT / "artifacts/tokenizer.json"))
+        self.tokenizer_path = tokenizer_path or ROOT / "artifacts/tokenizer.json"
+        self.tokenizer = Tokenizer.from_file(str(self.tokenizer_path))
+        if self.tokenizer.get_vocab_size() != self.model.config.vocab_size:
+            raise ValueError("Tokenizer vocabulary does not match checkpoint model configuration")
         self.eos_id = self.tokenizer.token_to_id("<eos>")
         self.step = int(checkpoint.get("step", 0))
         self.parameters = sum(parameter.numel() for parameter in self.model.parameters())
@@ -130,16 +134,21 @@ class PublicModelService:
             self.tokenizer, history, self.model.config.context_length
         )
         prompt_tensor = torch.tensor([prompt_ids], device=self.device)
-        temperatures = (max(0.48, temperature - 0.12), temperature, max(0.72, temperature), max(0.86, temperature))
+        sampling_profiles = (
+            (max(0.48, temperature - 0.12), 60, 0.90),
+            (temperature, 60, 0.90),
+            (max(0.72, temperature), 60, 0.90),
+            (max(0.86, temperature), 60, 0.90),
+        )
         candidates: list[str] = []
-        for attempt_temperature in temperatures:
+        for attempt_temperature, top_k, top_p in sampling_profiles:
             output = generate(
                 self.model,
                 prompt_tensor,
                 max_new_tokens=max_new_tokens,
                 temperature=attempt_temperature,
-                top_k=60,
-                top_p=0.9,
+                top_k=top_k,
+                top_p=top_p,
                 repetition_penalty=1.1,
                 eos_token_id=self.eos_id,
             )[0, len(prompt_ids):].tolist()
@@ -153,7 +162,9 @@ class PublicModelService:
     @staticmethod
     def _candidate_score(message: str, reply: str) -> float:
         """Rank neural outputs for readability and topical overlap, never replace them."""
-        msg_words = set(re.findall(r"[a-z]{3,}", message.lower()))
+        message_lower = message.lower()
+        reply_lower = reply.lower()
+        msg_words = set(re.findall(r"[a-z]{3,}", message_lower))
         reply_words = re.findall(r"[a-z]{2,}", reply.lower())
         reply_set = set(reply_words)
         score = min(len(reply_words), 45) * 0.025
@@ -161,10 +172,28 @@ class PublicModelService:
         score += 0.5 if reply.endswith((".", "?", "!", "```")) else 0.0
         score += 0.35 if 4 <= len(reply_words) <= 80 else 0.0
         score -= reply.count("�") * 4.0
-        score -= 2.0 if "```" in reply and not re.search(r"\b(code|python|javascript|c#|unity|script|program)\b", message.lower()) else 0.0
+        code_request = bool(re.search(r"\b(code|python|javascript|typescript|c#|c\+\+|unity|script|program|html|css|sql|debug)\b", message_lower))
+        math_request = bool(re.search(r"\b(calculate|solve|sum|product|percent|percentage|factorial|prime|plus|minus|times|divided)\b|\d\s*(?:[+*/%]|-(?=\s*\d))", message_lower))
+        code_output = "```" in reply or bool(re.search(r"\b(?:const|def|class|function|console\.log|using unityengine|public static|return)\b", reply_lower))
+        math_output = bool(re.search(r"(?:^|\s)-?\d+(?:\.\d+)?\s*(?:[+*/%=]|-(?=\s*\d))", reply_lower))
+        score -= 4.5 if code_output and not code_request else 0.0
+        score -= 3.5 if math_output and not math_request else 0.0
+        score += 1.5 if code_request and code_output else 0.0
+        score += 1.5 if math_request and re.search(r"\d", reply) else 0.0
+        greeting = bool(re.fullmatch(r"\s*(?:hi|hello|hey|yo)(?:\s+(?:there|mate|chudgpt))?[!.?]*\s*", message_lower))
+        if greeting:
+            score += 3.0 if re.search(r"\b(hi|hello|hey|welcome)\b", reply_lower) else -3.0
+            score -= 2.0 if re.search(r"\b(?:gravity|python|javascript|percent|calculate|recipe)\b", reply_lower) else 0.0
+        # Topic leakage was the main route into "Buggy" behavior. Penalize a
+        # response that invents an unrelated domain when the prompt supplied a
+        # clear content word, while leaving short/nonsense prompts generative.
+        domain_terms = {"book", "music", "movie", "game", "space", "food", "travel", "physics", "recipe", "computer", "robot"}
+        introduced = domain_terms & reply_set
+        requested = domain_terms & set(re.findall(r"[a-z]+", message_lower))
+        score -= 2.5 * len(introduced - requested) if requested or len(msg_words) >= 2 else 0.0
         score -= 1.4 if len(reply_words) != len(reply_set) and len(reply_words) > 8 and len(reply_set) / len(reply_words) < 0.58 else 0.0
-        score -= 1.2 * sum(fragment in reply.lower() for fragment in ("caption and conversation around it", "the main reason is that cha", "i am the joke-", "that has cha"))
-        score -= 0.8 if re.search(r"\b(?:is|are|the|a) (?:a |an )?(?:and|but|or|because)\b", reply.lower()) else 0.0
+        score -= 1.2 * sum(fragment in reply_lower for fragment in ("caption and conversation around it", "the main reason is that cha", "i am the joke-", "that has cha"))
+        score -= 0.8 if re.search(r"\b(?:is|are|the|a) (?:a |an )?(?:and|but|or|because)\b", reply_lower) else 0.0
         return score
 
     def chat(
@@ -199,8 +228,10 @@ class PublicModelService:
             self.sessions.pop(session_id, None)
 
 
-def create_app(checkpoint: Path, device: str, assistance_enabled: bool = True) -> FastAPI:
-    service = PublicModelService(checkpoint, device, assistance_enabled=assistance_enabled)
+def create_app(checkpoint: Path, device: str, assistance_enabled: bool = True,
+               tokenizer_path: Path | None = None) -> FastAPI:
+    service = PublicModelService(checkpoint, device, assistance_enabled=assistance_enabled,
+                                 tokenizer_path=tokenizer_path)
     app = FastAPI(title="ChudGPT-Public API", version="10.0")
     app.add_middleware(
         CORSMiddleware,
@@ -265,12 +296,14 @@ def create_app(checkpoint: Path, device: str, assistance_enabled: bool = True) -
 def main() -> None:
     parser = argparse.ArgumentParser(description="Serve raw ChudGPT-Public inference")
     parser.add_argument("--checkpoint", default="checkpoints/public_v10_balanced/best.pt")
+    parser.add_argument("--tokenizer", default="artifacts/tokenizer.json")
     parser.add_argument("--disable-assistance", action="store_true")
     parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
     parser.add_argument("--host", default=os.getenv("CHUDGPT_HOST", "127.0.0.1"))
     parser.add_argument("--port", type=int, default=int(os.getenv("CHUDGPT_PORT", "8010")))
     args = parser.parse_args()
-    app = create_app(ROOT / args.checkpoint, args.device, assistance_enabled=not args.disable_assistance)
+    app = create_app(ROOT / args.checkpoint, args.device, assistance_enabled=not args.disable_assistance,
+                     tokenizer_path=ROOT / args.tokenizer)
     uvicorn.run(app, host=args.host, port=args.port)
 
 
