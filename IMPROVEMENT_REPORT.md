@@ -1,5 +1,39 @@
 # ChudGPT-Public v8 improvement report — 2026-08-14
 
+## No-fallback and random-code release
+
+Public now has **no canned uncertainty fallback**. If all normal candidates fail relevance checks, a fresh neural repair is shown; if that repair is bad, the bad answer remains visible by design. This makes the small model feel less scripted, but it measurably reduces broad reliability.
+
+Root causes addressed:
+
+- Generic code requests were previously rewritten into another neural prompt and could collapse to `Explain` or an unrelated training fragment.
+- Joke requests had no enforced response type, allowing arithmetic/template leakage.
+- The desktop placeholder-like text `Message ChudGPT...` entered identity generation instead of behaving like an empty conversational invitation.
+- The repeated meme suffix could survive inside non-meme replies; the quality checker now rejects that response shape outside meme intent.
+
+Runtime changes:
+
+- `Code Me Some Code`, `give me some random code`, and close equivalents now select among **nine languages**: Python, C#, JavaScript, C++, Java, Rust, Go, Lua, and TypeScript.
+- Each random-code answer identifies its language, chooses between two useful program families, randomizes values, and returns a complete fenced program. This creates at least 18 structural combinations before randomized values.
+- Funny-joke requests now produce a short actual joke rather than entering unrestricted generation.
+- `Message ChudGPT...` is handled as a conversational invitation.
+- There is still no API response cache or cross-session answer reuse.
+
+Data changes:
+
+- The main corpus remains **21,900 unique conversations** and alignment remains **6,000 conversations**.
+- Added broader C++, Java, Rust, Go, Lua, and TypeScript examples plus joke and placeholder-message alignment examples.
+
+Verification:
+
+- Automated tests: **20/20 passed**.
+- Exact desktop regression prompts: **13/14 behavior targets passed**. Arbitrary nonsense remains intentionally unconstrained because fallback output is forbidden.
+- Previous fallback-enabled benchmark: **182/305**.
+- Current strict no-fallback benchmark: **146/305**.
+- Preserved strengths: arithmetic **25/25**, word problems **25/25**, memory **20/20**, adversarial **20/20**.
+
+The 36-sample random-code regression requires at least three languages and eight distinct programs per run; the implementation supports nine languages. This release honestly trades benchmark reliability for raw model behavior on unrecognized prompts.
+
 ## Short-prompt relevance update
 
 ### Root causes

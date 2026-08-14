@@ -176,6 +176,8 @@ def assess_generated_reply(
         reasons.append("training-data-leak")
     if "http" in lowered and not any(word in _words(prompt) for word in ("url", "link", "website")):
         reasons.append("unrequested-url")
+    if "the exact joke still depends on the caption and conversation around it" in lowered and classify_intent(prompt).name != "meme":
+        reasons.append("meme-template-leak")
     if stripped.count("```") % 2:
         reasons.append("broken-code-fence")
     requested_code = any(

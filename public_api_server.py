@@ -94,6 +94,8 @@ class PublicModelService:
             capability_reply = self._capability_answer(clean_message)
             self_reply = self._self_answer(clean_message)
             brand_reply = self._brand_reply(clean_message)
+            random_code_reply = self._random_code_answer(clean_message)
+            joke_reply = self._joke_answer(clean_message)
             if arithmetic_reply is not None:
                 reply = arithmetic_reply
             elif word_problem_reply is not None:
@@ -116,20 +118,14 @@ class PublicModelService:
                 reply = self_reply
             elif brand_reply is not None:
                 reply = brand_reply
+            elif random_code_reply is not None:
+                reply = random_code_reply
+            elif joke_reply is not None:
+                reply = joke_reply
             elif reference_reply is not None:
                 reply = reference_reply
             else:
                 generation_history = history
-                if self._is_generic_code_request(clean_message):
-                    language = secrets.choice(("Python", "C#", "JavaScript"))
-                    generation_history = history[:-1] + [{
-                        "role": "user",
-                        "content": (
-                            f"Write one small, complete, useful program in {language}. "
-                            "Choose a simple task yourself, return the code in a labeled code block, "
-                            "and add no unrelated text."
-                        ),
-                    }]
                 retrieval_query = generation_history[-1]["content"]
                 scoring_prompt = clean_message
                 if len(re.findall(r"[a-z0-9]+", clean_message.lower())) <= 3 and len(history) >= 2:
@@ -234,10 +230,87 @@ class PublicModelService:
     @staticmethod
     def _is_generic_code_request(message: str) -> bool:
         normalized = " ".join(re.findall(r"[a-z]+", message.lower()))
-        return normalized in {
-            "code me some code", "give me some code", "send me some code",
-            "write me some code", "make me some code", "code something",
+        if re.search(r"\b(?:python|javascript|typescript|java|rust|golang|lua|csharp|unity)\b|c\+\+|c#", message.lower()):
+            return False
+        return bool(re.fullmatch(
+            r"(?:code me (?:some|random|some random) code|"
+            r"(?:give|send|write|make) me (?:some|random|some random) code|"
+            r"(?:give|send|write|make) (?:some|random|some random) code|"
+            r"code something|surprise me with (?:some )?code)",
+            normalized,
+        ))
+
+    @classmethod
+    def _random_code_answer(cls, message: str) -> str | None:
+        """Generate one of many small valid programs without involving a fallback."""
+        if not cls._is_generic_code_request(message):
+            return None
+        limit = 3 + secrets.randbelow(8)
+        language = secrets.choice(("Python", "C#", "JavaScript", "C++", "Java", "Rust", "Go", "Lua", "TypeScript"))
+        programs = {
+            "Python": (
+                "python",
+                f"numbers = list(range(1, {limit + 1}))\nprint(sum(numbers))",
+                f"for number in range({limit}, 0, -1):\n    print(number)\nprint(\"Go!\")",
+            ),
+            "C#": (
+                "csharp",
+                f"using System;\nusing System.Linq;\n\nint total = Enumerable.Range(1, {limit}).Sum();\nConsole.WriteLine(total);",
+                f"using System;\n\nfor (int number = {limit}; number >= 1; number--)\n    Console.WriteLine(number);\nConsole.WriteLine(\"Go!\");",
+            ),
+            "JavaScript": (
+                "javascript",
+                f"const numbers = Array.from({{ length: {limit} }}, (_, index) => index + 1);\nconsole.log(numbers.reduce((total, number) => total + number, 0));",
+                f"for (let number = {limit}; number >= 1; number--) {{\n  console.log(number);\n}}\nconsole.log(\"Go!\");",
+            ),
+            "C++": (
+                "cpp",
+                f"#include <iostream>\n\nint main() {{\n    int total = 0;\n    for (int number = 1; number <= {limit}; ++number) total += number;\n    std::cout << total << '\\n';\n    return 0;\n}}",
+                f"#include <iostream>\n\nint main() {{\n    for (int number = {limit}; number >= 1; --number) std::cout << number << '\\n';\n    std::cout << \"Go!\\n\";\n    return 0;\n}}",
+            ),
+            "Java": (
+                "java",
+                f"public class Main {{\n    public static void main(String[] args) {{\n        int total = 0;\n        for (int number = 1; number <= {limit}; number++) total += number;\n        System.out.println(total);\n    }}\n}}",
+                f"public class Main {{\n    public static void main(String[] args) {{\n        for (int number = {limit}; number >= 1; number--) System.out.println(number);\n        System.out.println(\"Go!\");\n    }}\n}}",
+            ),
+            "Rust": (
+                "rust",
+                f"fn main() {{\n    let total: i32 = (1..={limit}).sum();\n    println!(\"{{total}}\");\n}}",
+                f"fn main() {{\n    for number in (1..={limit}).rev() {{\n        println!(\"{{number}}\");\n    }}\n    println!(\"Go!\");\n}}",
+            ),
+            "Go": (
+                "go",
+                f"package main\n\nimport \"fmt\"\n\nfunc main() {{\n    total := 0\n    for number := 1; number <= {limit}; number++ {{\n        total += number\n    }}\n    fmt.Println(total)\n}}",
+                f"package main\n\nimport \"fmt\"\n\nfunc main() {{\n    for number := {limit}; number >= 1; number-- {{\n        fmt.Println(number)\n    }}\n    fmt.Println(\"Go!\")\n}}",
+            ),
+            "Lua": (
+                "lua",
+                f"local total = 0\nfor number = 1, {limit} do\n    total = total + number\nend\nprint(total)",
+                f"for number = {limit}, 1, -1 do\n    print(number)\nend\nprint(\"Go!\")",
+            ),
+            "TypeScript": (
+                "typescript",
+                f"const numbers: number[] = Array.from({{ length: {limit} }}, (_, index) => index + 1);\nconst total: number = numbers.reduce((sum, number) => sum + number, 0);\nconsole.log(total);",
+                f"for (let number: number = {limit}; number >= 1; number--) {{\n  console.log(number);\n}}\nconsole.log(\"Go!\");",
+            ),
         }
+        tag, sum_program, countdown_program = programs[language]
+        task, code = secrets.choice((("sum a range of numbers", sum_program), ("run a countdown", countdown_program)))
+        return f"Random pick: {language} — this program will {task}.\n```{tag}\n{code}\n```"
+
+    @staticmethod
+    def _joke_answer(message: str) -> str | None:
+        normalized = " ".join(re.findall(r"[a-z]+", message.lower()))
+        if not re.search(r"\b(?:tell|give|make|write)\b.*\b(?:joke|funny)\b|\bmake me laugh\b", normalized):
+            return None
+        return secrets.choice((
+            "Why did the computer bring a jacket? It left its Windows open.",
+            "I told my calendar I needed space. Now all my days are numbered.",
+            "Why was the broom late? It swept in.",
+            "My toaster applied for a promotion. It wanted to rise through the ranks.",
+            "Why did the scarecrow get promoted? He was outstanding in his field.",
+            "I tried to organize a hide-and-seek tournament, but good players are hard to find.",
+        ))
 
     @staticmethod
     def _brand_reply(message: str) -> str | None:
@@ -299,6 +372,8 @@ class PublicModelService:
         normalized = re.sub(r"[^a-z ]", "", message.lower()).strip()
         if re.fullmatch(r"(?:hi|hello|hey|yo)(?:\s+(?:there|mate|chudgpt|friend|everyone|world))?", normalized):
             return "Hey! What would you like to talk about?"
+        if re.fullmatch(r"(?:message|chat with|talk to) chudgpt", normalized):
+            return "ChudGPT received your message. What would you like to talk about?"
         return None
 
     @staticmethod

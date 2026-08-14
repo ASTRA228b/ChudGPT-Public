@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections import Counter
 from pathlib import Path
 
@@ -67,6 +68,8 @@ def test_serving_tools_are_general_and_contextual() -> None:
     assert "162.5 miles" in (PublicModelService._calculate_word_problem("A train travels 65 mph for 2.5 hours. How far does it travel?") or "")
     assert PublicModelService._greeting("Hello!") == "Hey! What would you like to talk about?"
     assert PublicModelService._is_generic_code_request("Code me some code!")
+    assert PublicModelService._is_generic_code_request("give me some random code")
+    assert PublicModelService._is_generic_code_request("Surprise me with code")
     assert not PublicModelService._is_generic_code_request("Write C# code for a calculator")
     assert "blue" in (PublicModelService._reference_answer("What color is the sky?") or "")
     assert "FixedUpdate" in (PublicModelService._reference_answer("Should Rigidbody movement use Update?") or "")
@@ -111,6 +114,31 @@ def test_natural_chudgpt_comparison_wording() -> None:
     answer = PublicModelService._comparison_answer("What ChudGPT is better?")
     assert answer is not None
     assert "Public" in answer and "Code" in answer and "Ultimate" in answer
+
+
+def test_random_code_is_varied_labeled_and_fenced() -> None:
+    allowed = {"Python", "C#", "JavaScript", "C++", "Java", "Rust", "Go", "Lua", "TypeScript"}
+    languages: set[str] = set()
+    programs: set[str] = set()
+    for _ in range(36):
+        answer = PublicModelService._random_code_answer("Code Me Some Code")
+        assert answer is not None and answer.startswith("Random pick: ")
+        match = re.match(r"Random pick: ([^—]+) —", answer)
+        assert match is not None
+        assert match.group(1).strip() in allowed
+        assert answer.count("```") == 2
+        assert len(answer.splitlines()) >= 4
+        languages.add(match.group(1).strip())
+        programs.add(answer)
+    assert len(languages) >= 3
+    assert len(programs) >= 8
+
+
+def test_joke_and_placeholder_message_routes_are_relevant() -> None:
+    joke = PublicModelService._joke_answer("Tell me a funny joke")
+    assert joke is not None and len(joke.split()) >= 6
+    greeting = PublicModelService._greeting("Message ChudGPT...")
+    assert greeting is not None and "message" in greeting.lower()
 
 
 def test_held_out_suite_has_all_required_categories_and_305_cases() -> None:

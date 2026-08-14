@@ -59,6 +59,8 @@ def build(seed: int = 232) -> list[dict[str, object]]:
         record(("random nonsense jdkslfjskdf", "I do not recognize that last part. Is it a typo, intentional keyboard chaos, or a phrase from somewhere?")),
         record(("Tell me about memes.", "Memes are ideas, images, phrases, or formats that spread by being copied and remixed, usually with context-dependent humor.")),
         record(("Write a Unity movement script.", "```csharp\nusing UnityEngine;\n\npublic class PlayerMovement : MonoBehaviour\n{\n    [SerializeField] private float speed = 5f;\n\n    private void Update()\n    {\n        float x = Input.GetAxisRaw(\"Horizontal\");\n        float z = Input.GetAxisRaw(\"Vertical\");\n        Vector3 movement = new Vector3(x, 0f, z).normalized;\n        transform.Translate(movement * speed * Time.deltaTime, Space.World);\n    }\n}\n```")),
+        record(("Tell me a funny joke.", "Why did the computer bring a jacket? It left its Windows open.")),
+        record(("Message ChudGPT...", "ChudGPT received your message. What would you like to talk about?")),
     ]
 
     def add(row: dict[str, object]) -> None:

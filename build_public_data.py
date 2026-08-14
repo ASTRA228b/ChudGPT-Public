@@ -324,6 +324,12 @@ def build(seed: int = SEED, target: int = TARGET_CONVERSATIONS) -> list[dict[str
         ("C#", "roll a six-sided die", "using System;\n\nint roll = Random.Shared.Next(1, 7);\nConsole.WriteLine(roll);"),
         ("C#", "clamp a score to zero or higher", "int ClampScore(int score)\n{\n    return Math.Max(0, score);\n}"),
         ("Unity C#", "rotate a GameObject", "using UnityEngine;\n\npublic class Rotator : MonoBehaviour\n{\n    [SerializeField] float speed = 90f;\n    void Update() => transform.Rotate(0f, speed * Time.deltaTime, 0f);\n}"),
+        ("C++", "print a countdown", "#include <iostream>\n\nint main() {\n    for (int n = 5; n >= 1; --n) std::cout << n << '\\n';\n    std::cout << \"Go!\\n\";\n    return 0;\n}"),
+        ("Java", "sum the numbers from one to five", "public class Main {\n    public static void main(String[] args) {\n        int total = 0;\n        for (int n = 1; n <= 5; n++) total += n;\n        System.out.println(total);\n    }\n}"),
+        ("Rust", "print the squares from one to five", "fn main() {\n    for n in 1..=5 {\n        println!(\"{}\", n * n);\n    }\n}"),
+        ("Go", "print whether a number is even", "package main\n\nimport \"fmt\"\n\nfunc main() {\n    number := 12\n    fmt.Println(number%2 == 0)\n}"),
+        ("Lua", "count down from five", "for number = 5, 1, -1 do\n    print(number)\nend\nprint(\"Go!\")"),
+        ("TypeScript", "sum a small number array", "const numbers: number[] = [2, 4, 6];\nconst total = numbers.reduce((sum, number) => sum + number, 0);\nconsole.log(total);"),
     ]
     for language, task, code in code_templates:
         tag = "csharp" if "C#" in language else language.lower()
