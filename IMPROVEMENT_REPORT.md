@@ -1,6 +1,28 @@
 # ChudGPT-Public v8 improvement report — 2026-08-14
 
-## No-fallback and random-code release
+## Public v9 short-context training and fallback removal
+
+Public now serves the actual 20,999,184-parameter checkpoint output. Arithmetic, greeting, identity, joke, code, retrieval, comparison, correction, fact-memory, response-quality, and keyword-answer substitution were removed from the API. Empty decoding is retried technically; three empty attempts produce HTTP 503 instead of invented conversational content.
+
+Root causes and changes:
+
+- Public v8's raw checkpoint scored **14/40** on the new held-out short-prompt test. Its stronger production behavior primarily came from Python routing and response substitution.
+- The old alignment set contained malformed Unicode and repeated topic/math response shapes. Tokenizer inspection showed `67` and `67!` were encoded correctly, so the tokenizer was retained.
+- Built **9,000 unique clean conversations**: 8,280 training and 720 validation. Known leaked templates and malformed Unicode were removed, exact assistant repetition is capped at four, and every held-out turn is excluded.
+- Fine-tuned from v8 for 300 steps and refined for 600 CUDA steps using response-only loss. Final validation loss: **1.5104**.
+- Production now supplies at most four recent exchanges to reduce self-contamination without rewriting output.
+
+Raw results and verification:
+
+- Held-out short-context benchmark: **14/40 → 19/40**.
+- Existing raw eight-case benchmark: **0/8 → 0/8**.
+- Structural/data tests: **8/8 passed**.
+- The non-cherry-picked live 30-turn transcript is saved at `reports/public_v9_manual_30.json` and includes obvious remaining failures.
+- Production reports CUDA, step 600, `checkpoints/public_v9_refined/best.pt`, `raw_model_generation: true`, `conversational_fallbacks: false`, and `response_substitution: false`.
+
+**ChudGPT-Public no longer uses conversational fallback responses to hide bad model generations.** Public v9 is measurably better on the focused raw test but still frequently produces nonsense.
+
+## Archived v8 no-fallback and random-code release
 
 Public now has **no canned uncertainty fallback**. If all normal candidates fail relevance checks, a fresh neural repair is shown; if that repair is bad, the bad answer remains visible by design. This makes the small model feel less scripted, but it measurably reduces broad reliability.
 

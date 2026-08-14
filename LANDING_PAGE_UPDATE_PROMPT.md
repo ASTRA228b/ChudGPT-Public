@@ -1,37 +1,22 @@
-# Full update-log prompt for the ChudGPT-Pro / landing-page chat
+# Landing-page update log — ChudGPT-Public v9 raw-model release
 
-Add a new Public update entry titled **No-fallback + randomized code release**. State that canned uncertainty fallbacks were removed, so unrecognized prompts now expose a fresh neural repair and may be stupid or unrelated. Mention improved short-request routing for jokes, desktop placeholder messages, identity, model comparisons, math, memes, and Unity. Add the new random-code feature: `Code Me Some Code` and equivalent prompts select among Python, C#, JavaScript, C++, Java, Rust, Go, Lua, and TypeScript, vary the task and values, identify the language, and return fenced valid code. State the measured tradeoff honestly: 20/20 automated tests passed, the exact desktop suite passed 13/14 behavior targets, and the unchanged benchmark moved from 182/305 with fallback protection to 146/305 under the requested strict no-fallback policy; arithmetic, word problems, memory, and adversarial categories remained perfect. Preserve the existing visual style and do not claim that arbitrary nonsense is reliable.
+Update only the ChudGPT-Public card, detail section, and update log. Preserve every other model and existing desktop release entry.
 
-Public response-quality update: short prompts now use stricter intent and relevance checks, rejected candidates can no longer leak into the UI, `ChudGPT` is consistently recognized as the product name, short meme names are preserved during relevance scoring, and explicit code requests must return code. The 21,900-conversation main corpus and 6,000-conversation alignment set were rebuilt; 1,690 repeated `One useful way into...` topic starters were removed across both datasets, and maximum alignment answer repetition fell from 38 to 8. The unchanged 305-case held-out benchmark improved from 168/305 to 182/305 while arithmetic stayed 25/25, word problems 25/25, memory 20/20, and adversarial tests 20/20. Keep the existing warning that Public is a small experimental 21M model.
+Add an update titled **Public v9: raw model, zero conversational fallbacks**.
 
-Identity update: ChudGPT Public now answers natural self-identity questions consistently, including short wording such as "What are you?" and follow-ups such as "What are you fully?". Its answer explains that Public is a 20,999,184-parameter decoder-only transformer with an 8,192-token vocabulary and 1,024-token model context, plus local retrieval, arithmetic, session recall, and response-quality checks. It also clearly states its lack of consciousness, live browsing, and cross-chat memory.
+- Exact model size: **20,999,184 parameters**; vocabulary: 8,192; context: 1,024 tokens.
+- Selected checkpoint: `public_v9_refined/best.pt`, CUDA step **600**, after an earlier 300-step v9 candidate.
+- The API now returns raw checkpoint generation. Arithmetic, greetings, identity, jokes, code, retrieval, comparisons, corrections, fact-memory, quality selection, and keyword-answer substitution were removed.
+- Empty decoding is retried only as technical recovery; repeated empty decoding returns an API error instead of conversational content.
+- Dataset: **9,000 unique clean conversations**, split into 8,280 training and 720 validation records. Malformed Unicode and known leaked templates were removed; exact answer repetition is capped at four; held-out prompts are excluded.
+- Response-only validation loss: **1.5104**.
+- Raw held-out short-context score: **14/40 → 19/40**.
+- Existing raw eight-case benchmark: **0/8 → 0/8**.
+- Tests: **8/8 passed**.
+- Production reports CUDA, step 600, `raw_model_generation: true`, `conversational_fallbacks: false`, and `response_substitution: false`.
 
-Update the landing page’s **ChudGPT-Public** card and Public detail section using this verified release log. Do not modify the behavior or claims of Pro, Plus, Buggy, Ultimate, Code, Mega, or archived checkpoint cards. Preserve all routes and mobile responsiveness.
+Suggested card copy:
 
-## ChudGPT-Public v8 — smarter-per-token update
+> **Public v9 — raw 21M experiment.** No canned conversational fallbacks or hidden answer substitution. Short-context training improved the held-out raw score from 14/40 to 19/40, but the model still produces frequent nonsense and should not be trusted for important facts, math, or code.
 
-- Exact model size: **20,999,184 parameters** (21M badge)
-- Selected checkpoint: **Public v8 family-aware alignment, step 150**
-- Runtime: CUDA, 1,024-token model context, four neural candidates, strict local retrieval, exact math, and response-quality selection
-- Data: **21,900 unique dense conversations + 6,000 balanced alignment conversations**
-- Cleanup: removed **8,100 low-value selected rows** and reduced raw repetitive math/price/distance templates by **14,300 candidates**; corpus is 27% smaller but more informative per token
-- Meme literacy: **108 audited topics/formats**, spanning early internet image macros and rage comics through authored 2025–2026 slang and formats
-- New self-knowledge: explains AI, its decoder-only transformer design, exact limits, memory/internet/consciousness, what “chud” means, and why ChudGPT uses the name
-- Model-family knowledge: can describe and give a clearly labeled opinion about Buggy, Ultimate, Plus, Pro, Code, Mega, and checkpoints 700/1300/1500/1600 without calling those models
-- Math routing: one conservative classifier now prevents numbers, years, `Nothing`, and `No math` from accidentally triggering arithmetic
-- Retrieval: abstains on weak/short/negated matches and requires same-intent evidence
-- Focused quality-per-token score: **54.35 → 99.41/100**
-- Focused meme score: **50 → 100**
-- Math false-positive score: **90 → 97.31** while true-math score improved **50 → 100**
-- Full held-out benchmark: **Public 168/305**, previous Public 161/305, unchanged Pro baseline 106/305
-- Verified: 13/13 Python tests, 5/5 desktop tests, TypeScript checks, Vite build, and Electron build passed
-
-Suggested card line:
-
-> Public v8: stricter intent detection, 108-topic meme literacy, stronger short-context handling, complete AI/self/model-family knowledge, and denser training—168/305 held-out.
-
-Keep the honest limitation text: Public is still a small experimental local model with weak broad knowledge, common sense, strict instruction following, deep reasoning, and coding. It has no live internet and can confidently make mistakes.
-
-Primary link: https://chudgpt-public.vercel.app/
-
-API status: https://chudgpt-public.vercel.app/api/status
+Do not claim that v9 is accurate, reliable, generally intelligent, or comparable to a frontier model. Keep the existing desktop download information and mobile responsiveness.
