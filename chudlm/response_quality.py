@@ -11,6 +11,8 @@ import re
 from collections import Counter
 from collections.abc import Sequence
 
+from chudlm.intents import classify_intent, has_strong_math_intent
+
 STOP_WORDS = {
     "about", "after", "again", "also", "because", "been", "before", "being",
     "could", "does", "doing", "from", "give", "have", "help", "into", "just",
@@ -182,6 +184,13 @@ def assess_generated_reply(
     )
     if "```" in stripped and not requested_code:
         reasons.append("unrequested-code-block")
+    if classify_intent(prompt).name != "meme" and not has_strong_math_intent(prompt) and re.search(
+        r"(?:\$?\d+(?:\.\d+)?\s*(?:[+*/=×÷]|-(?=\s*\d))\s*\$?\d+|"
+        r"\b(?:multiply|divide|calculate|equals)\b.{0,50}\d)",
+        stripped,
+        re.I,
+    ):
+        reasons.append("unrequested-math")
     trigrams = [tuple(words[index:index + 3]) for index in range(max(0, len(words) - 2))]
     if trigrams and max(Counter(trigrams).values()) >= 3:
         reasons.append("repetition-loop")
@@ -226,7 +235,7 @@ def score_generated_reply(prompt: str, reply: str) -> float:
     reply_set = _content_words(reply)
     score = 2.0 + min(3.0, len(prompt_set & reply_set) * 0.75)
     normalized = " ".join(prompt_words)
-    asks_code = any(word in prompt_words for word in ("code", "python", "c#", "csharp", "javascript", "unity", "program", "script"))
+    asks_code = classify_intent(prompt).name == "code"
     has_code = "```" in reply or any(token in reply for token in ("def ", "class ", "using System", "function "))
     if asks_code:
         score += 4.0 if has_code else -5.0
@@ -235,6 +244,9 @@ def score_generated_reply(prompt: str, reply: str) -> float:
     asks_math = bool(re.search(r"\d\s*(?:[+*/×÷]|-(?=\s*\d))\s*\d", prompt)) or any(
         word in prompt_words for word in ("calculate", "solve", "distance", "percent")
     )
+    # Use the same conservative classifier as serving and retrieval.  This
+    # assignment intentionally replaces the legacy broad local heuristic.
+    asks_math = has_strong_math_intent(prompt)
     answer_style = bool(re.search(r"(?:^|\s)-?\d+(?:\.\d+)?(?:\s|[.,]|$)", reply))
     if asks_math and answer_style:
         score += 2.0

@@ -9,6 +9,9 @@ from tokenizers import Tokenizer
 from chudlm.config import dataclass_from_dict, load_yaml
 from chudlm.model import ModelConfig, TransformerLM
 from chudlm.response_quality import assess_generated_reply, score_generated_reply
+from chudlm.intents import classify_intent, has_strong_math_intent
+from chudlm.retrieval import ExampleRetriever
+from public_efficiency_eval import CASES as EFFICIENCY_CASES, quality_per_token
 from public_eval_cases import CASES
 from public_api_server import PublicModelService
 
@@ -27,8 +30,8 @@ def test_public_model_has_exact_expected_size() -> None:
 def test_public_dataset_is_large_clean_and_reproducible() -> None:
     path = PUBLIC / "data" / "public_conversations.jsonl"
     records = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
-    assert len(records) == 30_000
-    assert len({json.dumps(record["messages"], sort_keys=True) for record in records}) == 30_000
+    assert len(records) == 21_900
+    assert len({json.dumps(record["messages"], sort_keys=True) for record in records}) == 21_900
     assert all(message["role"] in {"user", "assistant"} and message["content"].strip() for record in records for message in record["messages"])
     assert all(record["source"] == "chudgpt-public-v3" for record in records)
     assistant_text = "\n".join(message["content"] for record in records for message in record["messages"] if message["role"] == "assistant")
@@ -74,6 +77,14 @@ def test_serving_tools_are_general_and_contextual() -> None:
     assert PublicModelService._recall_user_fact("What is my favorite color?", facts) == "You told me your favorite color is teal."
 
 
+def test_public_has_complete_stable_ai_and_chud_self_knowledge() -> None:
+    source = Path("public_api_server.py").read_text(encoding="utf-8")
+    for fact in ("Artificial intelligence", "decoder-only transformer", "Cannibalistic", "not as an insult"):
+        assert fact in source
+    for sibling in ("buggy", "ultimate", "plus", "pro", "code", "mega", "1300", "1600"):
+        assert sibling in source.lower()
+
+
 def test_removed_empty_generation_fallback() -> None:
     source = Path("public_api_server.py").read_text(encoding="utf-8")
     assert "I could not form a useful answer for that message." not in source
@@ -104,3 +115,25 @@ def test_everyday_and_random_prompts_are_represented_in_held_out_tests() -> None
     prompts = "\n".join(prompt for case in CASES for prompt in case.prompts).lower()
     for phrase in ("hello mate", "nothing much", "random words", "i'm bored", "what can we talk about", "pluh", "67"):
         assert phrase in prompts
+
+
+def test_math_intent_requires_positive_evidence_and_respects_negation() -> None:
+    for prompt in ("No math", "Nothing", "I have 2 dogs", "The movie 1917 was intense", "67", "Room 204"):
+        assert not has_strong_math_intent(prompt), prompt
+        assert classify_intent(prompt).name != "math"
+        assert PublicModelService._calculate_arithmetic(prompt) is None
+    for prompt in ("What is 12 * 8?", "Calculate 40 percent of 90.", "A car goes 50 mph for 2 hours. How far?"):
+        assert has_strong_math_intent(prompt), prompt
+
+
+def test_retrieval_abstains_for_short_corrections_and_weak_matches() -> None:
+    retriever = ExampleRetriever((PUBLIC / "data" / "alignment_conversations.jsonl",))
+    for prompt in ("Nothing", "No math", "not that", "stop explaining", "yeah", "why"):
+        assert retriever.retrieve(prompt) == [], prompt
+
+
+def test_efficiency_suite_covers_requested_held_out_behaviors() -> None:
+    categories = {case.category for case in EFFICIENCY_CASES}
+    assert categories == {"math_false_positive", "math_true_positive", "negation", "short_context", "meme"}
+    concise = next(case for case in EFFICIENCY_CASES if case.category == "meme")
+    assert quality_per_token(concise, "It jokes that the accusation keeps looking true because of their behavior.") > quality_per_token(concise, "word " * 160)

@@ -21,7 +21,9 @@ It is a small custom model—not ChatGPT and not a frontier model. It can be ina
 | Feed-forward width | 1,808 |
 | Positional encoding | RoPE |
 
-The model is a decoder-only causal transformer implemented in Python and PyTorch. Its cleaned project-authored corpus contains **30,000 unique conversations**, plus a balanced **6,000-conversation response-alignment set**. Public uses response-only fine-tuning, four-candidate generation, response-type/relevance scoring, and retrieval-guided generation from its own cleaned examples.
+The model is a decoder-only causal transformer implemented in Python and PyTorch. Its quality-audited project-authored corpus contains **21,900 unique, denser conversations**, plus a balanced **6,000-conversation response-alignment set**. Public uses response-only fine-tuning, four-candidate generation, response-type/relevance scoring, conservative intent detection, and strict retrieval from its own cleaned examples.
+
+Public now has explicit self-knowledge: it can explain artificial intelligence, its own 20,999,184-parameter transformer architecture and limitations, the film/slang/project meanings of “chud,” and the roles of Buggy, Ultimate, Plus, Pro, Code, Mega, and the archived numbered checkpoints. Those descriptions come from audited project metadata; Public does not call the sibling models to answer.
 
 ## Project layout
 
@@ -72,7 +74,7 @@ cd /d C:\Users\admin\OneDrive\Documents\ChudGPT\ChudGPT-Public
 start_training.cmd
 ```
 
-That runs data preparation, base pretraining, response-only fine-tuning, and evaluation. Timestamped logs are stored in `reports`. The currently selected API checkpoint is `checkpoints/public_v4/best.pt` (alignment step 800).
+That runs data preparation, base pretraining, response-only fine-tuning, and evaluation. Timestamped logs are stored in `reports`. The currently selected API checkpoint is `checkpoints/public_v8/best.pt` (family-aware alignment step 150).
 
 To reproduce the two Public-only improvement stages after the original chat checkpoint:
 
@@ -81,6 +83,10 @@ python build_public_data.py
 python fine_tune.py --config configs/public_v3.yaml --device cuda
 python build_alignment_data.py
 python fine_tune.py --config configs/public_v4_alignment.yaml --device cuda
+python fine_tune.py --config configs/public_v5_dense.yaml --device cuda
+python fine_tune.py --config configs/public_v6_alignment.yaml --device cuda
+python fine_tune.py --config configs/public_v7_identity.yaml --device cuda
+python fine_tune.py --config configs/public_v8_family.yaml --device cuda
 ```
 
 Individual commands:

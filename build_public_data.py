@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parent
 OUTPUT = ROOT / "data" / "public_conversations.jsonl"
 RAW_OUTPUT = ROOT / "data" / "raw" / "public_corpus.jsonl"
 SEED = 228
-TARGET_CONVERSATIONS = 30_000
+TARGET_CONVERSATIONS = 21_900
 
 FACTS = [
     ("the sky appears blue", "air molecules scatter shorter blue wavelengths of sunlight more strongly than longer red wavelengths"),
@@ -141,6 +141,46 @@ MEMES = [
     ("cooked", "slang that can mean exhausted, doomed, defeated, or in serious trouble depending on context"),
     ("no thoughts, head empty", "a playful phrase for a blank, relaxed, or adorably clueless mood"),
     ("67", "a deliberately vague 2025 meme derived from the '6-7' lyric in Skrilla's song 'Doot Doot,' boosted by basketball edits and used mainly for random, confusing humor"),
+    ("Trollface", "a rage-comic face associated with trolling, baiting, and smugly causing trouble online"),
+    ("Forever Alone", "a rage-comic character used to exaggerate loneliness or social rejection"),
+    ("Success Kid", "a toddler making a fist, captioned as a small but satisfying victory"),
+    ("Bad Luck Brian", "a school portrait captioned with setups that end in comically terrible luck"),
+    ("Overly Attached Girlfriend", "an intense reaction portrait used to parody possessive behavior"),
+    ("Grumpy Cat", "a naturally frowning cat used for exaggerated annoyance and dislike"),
+    ("Pepe the Frog", "a comic character used across many reaction emotions; its meaning depends heavily on the specific image and community"),
+    ("Wojak", "a simple line-drawn character whose many variants represent emotions, personalities, and online archetypes"),
+    ("Virgin vs Chad", "a contrast format that exaggerates an insecure or overcomplicated approach against a confident one, often ironically"),
+    ("NPC", "slang comparing repetitive or unthinking behavior to a non-player character; it can be joking but also dismissive"),
+    ("Press F to Pay Respects", "a game prompt from Call of Duty turned into a concise online expression of sympathy or mock sympathy"),
+    ("Leeroy Jenkins", "a World of Warcraft clip about charging in before the group is ready, used for reckless plans"),
+    ("The Cake Is a Lie", "a Portal reference used when a promised reward seems fake or manipulative"),
+    ("Arrow to the Knee", "a Skyrim guard line repeated as a joke about giving up an adventurous past"),
+    ("Do a Barrel Roll", "a Star Fox command that became a gaming catchphrase and playful instruction"),
+    ("Keyboard Cat", "a cat appearing to play a keyboard, traditionally used to play someone off after a failure"),
+    ("Nyan Cat", "a pixel cat flying through space with a rainbow trail, associated with cheerful early-internet absurdity"),
+    ("I Can Has Cheezburger", "a classic LOLcat caption style using intentionally broken grammar"),
+    ("Hide the Pain Harold", "a stock-photo smile that looks strained, used for politely hiding discomfort"),
+    ("Is This a Pigeon", "an anime screenshot used when someone confidently misidentifies a thing or situation"),
+    ("Two Buttons", "a sweating character choosing between two buttons, used for a difficult or hypocritical choice"),
+    ("UNO Draw 25", "a choice between doing an unwanted task and drawing 25 cards, used for stubborn refusal"),
+    ("They Had Us in the First Half", "a reaction for a statement that begins one way and then unexpectedly reverses"),
+    ("Spider-Man Pointing", "matching Spider-Men pointing at one another, used when two similar people or things meet"),
+    ("Confused Math Lady", "a reaction surrounded by equations, used for intense confusion rather than an actual calculation"),
+    ("Disaster Girl", "a girl smiling near a burning building, used to imply mischievous responsibility for chaos"),
+    ("Galaxy Brain", "an escalating brain-image format that ironically ranks increasingly extreme ideas as smarter"),
+    ("Nobody Asked", "a blunt reaction saying information was unsolicited; tone can range from teasing to rude"),
+    ("Ratio", "a social-media reply predicting or pointing out that a response receives more approval than the original post"),
+    ("Based", "slang expressing approval for a confident or unapologetic opinion, often used ironically"),
+    ("Mid", "slang dismissing something as mediocre or unimpressive"),
+    ("Peak", "strong praise meaning something is at or near the best of its kind, sometimes exaggerated for humor"),
+    ("Real", "a brief way to strongly agree or say that a statement feels relatable; it is not automatically a meme"),
+    ("Rizz", "slang for charm or skill at attracting someone, often measured or exaggerated as a joke"),
+    ("Delulu", "playful slang for being delusional, often about unrealistic hopes or romantic beliefs"),
+    ("It's Giving", "a phrase describing the impression, aesthetic, or energy something evokes"),
+    ("Bro Is NOT Beating the Allegations", "a joke that someone's new behavior appears to confirm an accusation or running stereotype"),
+    ("Average Discord Mod", "a stereotype joke portraying a Discord moderator as overly online, controlling, or socially awkward"),
+    ("POV Short-Video Format", "a caption that assigns the viewer a role or situation before a short scene"),
+    ("Duet and Stitch Reactions", "short-form-video formats that place a response beside or after another creator's clip"),
 ]
 
 
@@ -191,7 +231,10 @@ def build(seed: int = SEED, target: int = TARGET_CONVERSATIONS) -> list[dict[str
 
     # Exact arithmetic and word problems use broad, held-out number ranges.
     arithmetic_forms = ["What is {a} {op} {b}?", "Calculate {a} {op} {b}.", "Solve {a} {op} {b}.", "Give the result of {a} {op} {b}."]
-    for i in range(12_000):
+    # Exact helpers guarantee arithmetic at runtime, so thousands of nearly
+    # identical equations waste the model's limited learning budget.  Keep a
+    # varied foundation without allowing it to dominate ordinary language.
+    for i in range(4_000):
         op = rng.choice(["+", "-", "×"])
         a = rng.randint(-9_999, 99_999)
         b = rng.randint(-999, 9_999)
@@ -199,7 +242,7 @@ def build(seed: int = SEED, target: int = TARGET_CONVERSATIONS) -> list[dict[str
         prompt = rng.choice(arithmetic_forms).format(a=a, op=op, b=b)
         answer = str(value) if i % 5 == 0 else f"{a} {op} {b} = {value}."
         add_unique(rows, seen, conversation((prompt, answer)))
-    for i in range(3_000):
+    for i in range(1_200):
         speed = rng.randint(12, 95)
         hours = rng.choice([0.5, 1.5, 2.5, 3, 4.5, 6])
         distance = speed * hours
@@ -341,7 +384,7 @@ def build(seed: int = SEED, target: int = TARGET_CONVERSATIONS) -> list[dict[str
         add_unique(rows, seen, conversation((f"{prompt} {context}.", answer)))
 
     items = ["notebooks", "apples", "tickets", "paintbrushes", "sandwiches", "game cards", "flower pots", "batteries"]
-    for _ in range(6_000):
+    for _ in range(1_500):
         item = rng.choice(items)
         count = rng.randint(2, 80)
         price = rng.randint(2, 75)
@@ -372,6 +415,31 @@ def build(seed: int = SEED, target: int = TARGET_CONVERSATIONS) -> list[dict[str
     ]
     for prompt, answer in zip(meme_requests, meme_replies):
         add_unique(rows, seen, conversation((prompt, answer)))
+
+    # Dense, contextual examples teach slang interpretation, negation, and
+    # short follow-ups together instead of spending separate rows on filler.
+    contextual_meme_dialogues = [
+        (("I forgot the assignment and it is due in five minutes. Am I cooked?", "In that context, 'cooked' means you are in serious trouble or badly unprepared. Start with the smallest part you can submit."),
+         ("So it is not about food?", "Right. Here it is slang, not literal cooking.")),
+        (("My friend recovered from a terrible play and won. That was peak.", "You are praising the comeback as excellent or top-tier. 'Peak' is strong approval here."),
+         ("real", "Agreed—the comeback made the whole match.")),
+        (("He bragged and immediately fell over. Minus 500 aura.", "That jokes that the embarrassing fall damaged his imaginary coolness or status points."),
+         ("Does aura literally use points?", "No. The points are an invented score used for the joke.")),
+        (("Bro is NOT beating the allegations after doing that twice.", "That format jokes that repeated behavior is making a running accusation or stereotype look true."),
+         ("I do not mean a real crime.", "Understood—you mean the meme format, not a legal allegation.")),
+        (("What does Wojak mean?", "Wojak is a simple reaction character with many variants that represent feelings and online archetypes."),
+         ("Is every drawing the same joke?", "No. The face, variant, caption, and context determine the emotion or stereotype.")),
+        (("Explain Virgin vs Chad without taking it seriously.", "It exaggerates a supposedly awkward approach against a confident one. The contrast is often ironic, so neither side has to be a real judgment."),
+         ("Keep it short next time.", "Got it—I will keep the next answer brief.")),
+        (("Let's do math.", "Sure. Give me the calculation or word problem."),
+         ("No math actually.", "No problem—we can switch topics. What sounds better?")),
+        (("Write code for me.", "Tell me the language and what it should do."),
+         ("Don't give me code. Just explain the idea.", "Understood. I will explain the approach in plain language without a code block.")),
+        (("Tell me the long version.", "I can give the detailed explanation."),
+         ("Stop explaining.", "Okay. I will stop there.")),
+    ]
+    for dialogue in contextual_meme_dialogues:
+        add_unique(rows, seen, conversation(*dialogue))
 
     rng.shuffle(rows)
     if len(rows) < target:
