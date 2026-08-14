@@ -20,7 +20,7 @@ from tokenizers import Tokenizer
 from chudlm.checkpoint import load_checkpoint
 from chudlm.generation import generate
 from chudlm.model import ModelConfig, TransformerLM
-from chudlm.prompts import build_context_token_ids
+from chudlm.prompts import DEFAULT_SYSTEM_PROMPT, build_context_token_ids
 from project_facts import FAMILY_FACTS, FAMILY_SUMMARY, PUBLIC_IDENTITY
 
 ROOT = Path(__file__).resolve().parent
@@ -43,7 +43,8 @@ class PublicModelService:
     """Serve neural conversation with narrow stable-project identity repair."""
 
     def __init__(self, checkpoint_path: Path, device_name: str, assistance_enabled: bool = True,
-                 tokenizer_path: Path | None = None) -> None:
+                 tokenizer_path: Path | None = None,
+                 system_prompt: str = DEFAULT_SYSTEM_PROMPT) -> None:
         use_cuda = device_name == "cuda" or (device_name == "auto" and torch.cuda.is_available())
         if device_name == "cuda" and not torch.cuda.is_available():
             raise RuntimeError("CUDA was requested but is unavailable")
@@ -64,6 +65,7 @@ class PublicModelService:
         self.lock = threading.Lock()
         self.assistance_enabled = assistance_enabled
         self.last_assistance_reason: str | None = None
+        self.system_prompt = system_prompt
 
     @staticmethod
     def _identity_subject(message: str) -> str | None:
@@ -131,9 +133,12 @@ class PublicModelService:
     ) -> str:
         """Generate neural candidates and select the least broken relevant reply."""
         _, prompt_ids = build_context_token_ids(
-            self.tokenizer, history, self.model.config.context_length
+            self.tokenizer, history, self.model.config.context_length,
+            system_prompt=self.system_prompt,
         )
         prompt_tensor = torch.tensor([prompt_ids], device=self.device)
+        # Draw several neural candidates, then rank generated text for relevance
+        # and basic fluency. The selector never supplies or rewrites an answer.
         sampling_profiles = (
             (max(0.48, temperature - 0.12), 60, 0.90),
             (temperature, 60, 0.90),
@@ -194,6 +199,17 @@ class PublicModelService:
         score -= 1.4 if len(reply_words) != len(reply_set) and len(reply_words) > 8 and len(reply_set) / len(reply_words) < 0.58 else 0.0
         score -= 1.2 * sum(fragment in reply_lower for fragment in ("caption and conversation around it", "the main reason is that cha", "i am the joke-", "that has cha"))
         score -= 0.8 if re.search(r"\b(?:is|are|the|a) (?:a |an )?(?:and|but|or|because)\b", reply_lower) else 0.0
+        identity_request = bool(re.search(r"\b(?:who|what) (?:are|is) (?:you|chudgpt)|\bchudgpt (?:family|model|public|code|plus|pro|mega|buggy)\b", message_lower))
+        score -= 3.0 if "chudgpt" in reply_lower and not identity_request and "chudgpt" not in message_lower else 0.0
+        # Penalize characteristic fragments produced by damaged checkpoints:
+        # glued punctuation/words, replacement characters, unbalanced fences,
+        # and sentences with very little ordinary connective language.
+        score -= 2.5 if re.search(r"[a-z][A-Z]|\w[�]|ï¿½", reply) else 0.0
+        score -= 2.0 if reply.count("```") % 2 else 0.0
+        score -= min(3.0, len(re.findall(r"\b\w{18,}\b", reply)) * 0.75)
+        common = {"the", "a", "an", "is", "are", "was", "to", "of", "and", "or", "but", "it", "that", "this", "you", "i", "for", "with", "in", "on"}
+        if len(reply_words) >= 10 and len(common & reply_set) < 2:
+            score -= 2.0
         return score
 
     def chat(

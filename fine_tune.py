@@ -19,6 +19,7 @@ from tqdm import tqdm
 from chudlm.checkpoint import load_checkpoint, save_checkpoint
 from chudlm.config import dataclass_from_dict, load_yaml
 from chudlm.model import ModelConfig, TransformerLM
+from chudlm.prompts import DEFAULT_SYSTEM_PROMPT
 from chudlm.sft_data import SupervisedConversationDataset, load_sft_records, split_records
 from train import make_scheduler, seed_everything, select_device
 
@@ -48,6 +49,7 @@ class FineTuneConfig:
     num_workers: int = 0
     amp: bool = True
     resume_from: str | None = None
+    system_prompt: str | None = None
 
 
 def parse_args() -> argparse.Namespace:
@@ -122,10 +124,12 @@ def main() -> None:
         records, config.validation_fraction, config.seed
     )
     training_data = SupervisedConversationDataset(
-        training_records, tokenizer, model_config.context_length
+        training_records, tokenizer, model_config.context_length,
+        system_prompt=config.system_prompt or DEFAULT_SYSTEM_PROMPT,
     )
     validation_data = SupervisedConversationDataset(
-        validation_records, tokenizer, model_config.context_length
+        validation_records, tokenizer, model_config.context_length,
+        system_prompt=config.system_prompt or DEFAULT_SYSTEM_PROMPT,
     )
     training_loader = DataLoader(
         training_data,

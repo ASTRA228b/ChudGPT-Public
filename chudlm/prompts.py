@@ -55,10 +55,11 @@ def normalize_messages(messages: Sequence[Mapping[str, object]]) -> list[dict[st
 
 
 def format_conversation(
-    messages: Sequence[Mapping[str, object]], *, add_assistant_prompt: bool = False
+    messages: Sequence[Mapping[str, object]], *, add_assistant_prompt: bool = False,
+    system_prompt: str = DEFAULT_SYSTEM_PROMPT,
 ) -> str:
     """Serialize a conversation with the permanent system prompt first."""
-    lines = [f"{ROLE_MARKERS['system']}: {DEFAULT_SYSTEM_PROMPT}"]
+    lines = [f"{ROLE_MARKERS['system']}: {_sanitize_content(system_prompt)}"]
     lines.extend(
         f"{ROLE_MARKERS[message['role']]}: {message['content']}"
         for message in normalize_messages(messages)
@@ -82,11 +83,14 @@ def build_context_token_ids(
     tokenizer: object,
     messages: Sequence[Mapping[str, object]],
     context_length: int,
+    system_prompt: str = DEFAULT_SYSTEM_PROMPT,
 ) -> tuple[str, list[int]]:
     """Fit recent turns while always retaining the complete base system prompt."""
     turns = normalize_messages(messages)
     while True:
-        prompt = format_conversation(turns, add_assistant_prompt=True)
+        prompt = format_conversation(
+            turns, add_assistant_prompt=True, system_prompt=system_prompt
+        )
         token_ids = tokenizer.encode(prompt).ids  # type: ignore[attr-defined]
         if len(token_ids) <= context_length:
             return prompt, token_ids

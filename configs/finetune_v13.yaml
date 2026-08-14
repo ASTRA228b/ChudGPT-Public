@@ -1,0 +1,24 @@
+model_config: configs/model_v11.yaml
+tokenizer_path: artifacts/tokenizer_v11.json
+dataset_path: data/public_v13_conversations.jsonl
+base_checkpoint: checkpoints/public_v11_compact_base/best.pt
+output_dir: checkpoints/public_v13_sft
+system_prompt: "You are ChudGPT-Public, a helpful experimental AI assistant."
+seed: 1314
+validation_fraction: 0.08
+batch_size: 6
+gradient_accumulation_steps: 4
+learning_rate: 0.00005
+min_learning_rate: 0.000005
+weight_decay: 0.01
+epochs: 3
+warmup_steps: 30
+max_steps: 500
+gradient_clip: 1.0
+log_interval: 20
+eval_interval: 50
+eval_batches: 80
+save_interval: 100
+num_workers: 0
+amp: true
+resume_from: null

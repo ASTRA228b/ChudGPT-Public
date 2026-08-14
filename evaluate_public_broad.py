@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse, json
 from pathlib import Path
 from public_api_server import PublicModelService
+from chudlm.prompts import DEFAULT_SYSTEM_PROMPT, TRAINING_SYSTEM_PROMPT
 
 CASES = [
  ("identity","Tell me exactly which assistant is replying.",( "chudgpt","public")),
@@ -47,8 +48,14 @@ def matches(reply: str, expected: tuple[str,...]) -> bool:
 
 def main() -> None:
     p=argparse.ArgumentParser(); p.add_argument("--checkpoint",required=True); p.add_argument("--tokenizer",required=True)
-    p.add_argument("--mode",choices=("raw","production"),default="raw"); p.add_argument("--output",required=True); a=p.parse_args()
-    service=PublicModelService(Path(a.checkpoint),"cuda",assistance_enabled=a.mode=="production",tokenizer_path=Path(a.tokenizer))
+    p.add_argument("--mode",choices=("raw","production"),default="raw"); p.add_argument("--output",required=True)
+    p.add_argument("--compact-prompt", action="store_true", help="Use the compact system prompt used by v12/v13 training")
+    a=p.parse_args()
+    service=PublicModelService(
+        Path(a.checkpoint), "cuda", assistance_enabled=a.mode=="production",
+        tokenizer_path=Path(a.tokenizer),
+        system_prompt=TRAINING_SYSTEM_PROMPT if a.compact_prompt else DEFAULT_SYSTEM_PROMPT,
+    )
     results=[]
     for i,(cat,prompt,expected) in enumerate(CASES):
         _,reply=service.chat(prompt,f"single-{i}",140,.58); passed=matches(reply,expected)

@@ -9,7 +9,7 @@ from typing import Any
 import torch
 from torch.utils.data import Dataset
 
-from .prompts import build_context_token_ids, normalize_messages
+from .prompts import DEFAULT_SYSTEM_PROMPT, build_context_token_ids, normalize_messages
 
 
 def load_sft_records(path: Path) -> list[list[dict[str, str]]]:
@@ -60,6 +60,7 @@ class SupervisedConversationDataset(Dataset[tuple[torch.Tensor, torch.Tensor]]):
         records: Sequence[Sequence[Mapping[str, object]]],
         tokenizer: Any,
         context_length: int,
+        system_prompt: str = DEFAULT_SYSTEM_PROMPT,
     ) -> None:
         self.examples: list[tuple[torch.Tensor, torch.Tensor]] = []
         eos_id = tokenizer.token_to_id("<eos>")
@@ -71,7 +72,9 @@ class SupervisedConversationDataset(Dataset[tuple[torch.Tensor, torch.Tensor]]):
             normalized = normalize_messages(messages)
             response = normalized[-1]["content"]
             prompt_messages = normalized[:-1]
-            _, prompt_ids = build_context_token_ids(tokenizer, prompt_messages, context_length)
+            _, prompt_ids = build_context_token_ids(
+                tokenizer, prompt_messages, context_length, system_prompt=system_prompt
+            )
             response_ids = tokenizer.encode(f" {response}").ids + [int(eos_id)]
             available = context_length + 1 - len(prompt_ids)
             if available < 2:
