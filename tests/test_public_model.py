@@ -37,7 +37,7 @@ def test_context_keeps_recent_history_and_system_prompt() -> None:
     assert len(ids) <= 1024
 
 
-def test_runtime_has_no_conversational_substitution_systems() -> None:
+def test_runtime_assistance_is_narrow_and_auditable() -> None:
     source = Path("public_api_server.py").read_text(encoding="utf-8")
     forbidden = (
         "ExampleRetriever", "score_generated_reply", "classify_intent",
@@ -48,7 +48,11 @@ def test_runtime_has_no_conversational_substitution_systems() -> None:
     for symbol in forbidden:
         assert symbol not in source
     assert "raw_model_generation" in source
-    assert "response_substitution" in source
+    assert "_assist_identity" in source
+    assert "stable-public-identity" in source
+    assert "stable-family-metadata" in source
+    assert "_calculate_arithmetic" not in source
+    assert "_random_code_answer" not in source
 
 
 def test_technical_retry_does_not_invent_content() -> None:
@@ -86,3 +90,23 @@ def test_heldout_cases_are_not_in_training_data() -> None:
 
 def test_public_model_service_has_raw_generation_method() -> None:
     assert hasattr(PublicModelService, "_generate_raw")
+
+
+def test_identity_assistance_does_not_route_normal_topics() -> None:
+    normal = ("hello", "67", "67 + 8", "write Python", "tell me a joke", "tung tung sahur")
+    for prompt in normal:
+        assert PublicModelService._identity_subject(prompt) is None
+    assert PublicModelService._identity_subject("What are you?") == "public"
+    assert PublicModelService._identity_subject("What is ChudGPT Pro?") == "pro"
+    assert PublicModelService._identity_subject("What other ChudGPTs exist?") == "family"
+
+
+def test_v10_dataset_is_balanced_unique_and_large() -> None:
+    rows = [json.loads(line) for line in Path("data/public_v10_conversations.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
+    assert len(rows) == 12_000
+    fingerprints = {json.dumps(row["messages"], sort_keys=True, ensure_ascii=False) for row in rows}
+    assert len(fingerprints) == len(rows)
+    user_text = [" ".join(message["content"] for message in row["messages"] if message["role"] == "user").lower() for row in rows]
+    math_rows = sum(bool(__import__("re").search(r"calculate|arithmetic|factorial|percent|\d\s*[+*/x-]\s*\d", text)) for text in user_text)
+    assert math_rows <= 1_700
+    assert sum("chudgpt" in text or "who are you" in text or "what are you" in text for text in user_text) >= 90

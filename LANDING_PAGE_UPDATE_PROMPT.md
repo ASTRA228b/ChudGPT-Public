@@ -1,26 +1,9 @@
-# Landing-page update log — ChudGPT-Public v9 raw-model release
+# Landing-page update prompt
 
-Update only the ChudGPT-Public card, detail section, and update log. Preserve every other model and existing desktop release entry.
+Update only the ChudGPT-Public card and release notes on the ChudGPT landing page.
 
-Add an update titled **Public v9: raw model, zero conversational fallbacks**.
+Public v10 keeps the 20,999,184-parameter architecture and adds a balanced 12,000-conversation response-only tuning set, neural four-candidate selection, improved short-prompt coverage, and a small transparent identity/project-facts layer. Normal answers still come from the neural model; only exact ChudGPT identity and family metadata may be corrected by controlled assistance.
 
-- Exact model size: **20,999,184 parameters**; vocabulary: 8,192; context: 1,024 tokens.
-- Selected checkpoint: `public_v9_refined/best.pt`, CUDA step **600**, after an earlier 300-step v9 candidate.
-- The API now returns raw checkpoint generation. Arithmetic, greetings, identity, jokes, code, retrieval, comparisons, corrections, fact-memory, quality selection, and keyword-answer substitution were removed.
-- Empty decoding is retried only as technical recovery; repeated empty decoding returns an API error instead of conversational content.
-- Dataset: **9,000 unique clean conversations**, split into 8,280 training and 720 validation records. Malformed Unicode and known leaked templates were removed; exact answer repetition is capped at four; held-out prompts are excluded.
-- Response-only validation loss: **1.5104**.
-- Raw held-out short-context score: **14/40 → 19/40**.
-- Existing raw eight-case benchmark: **0/8 → 0/8**.
-- Tests: **8/8 passed**.
-- Production reports CUDA, step 600, `raw_model_generation: true`, `conversational_fallbacks: false`, and `response_substitution: false`.
+Use honest wording: this is an incremental experimental improvement, not a frontier model. The unseen mixed evaluation improved from 7/20 raw to 8/20 raw and reached 12/20 in production with identity assistance. Validation loss was 1.6730 after 800 CUDA/AMP tuning steps. Strict general reasoning, math, factual accuracy, coding, and long-context behavior remain weak, and important answers must be verified.
 
-Suggested card copy:
-
-> **Public v9 — raw 21M experiment.** No canned conversational fallbacks or hidden answer substitution. Short-context training improved the held-out raw score from 14/40 to 19/40, but the model still produces frequent nonsense and should not be trusted for important facts, math, or code.
-
-Do not claim that v9 is accurate, reliable, generally intelligent, or comparable to a frontier model. Keep the existing desktop download information and mobile responsiveness.
-
-## August 14 service compatibility update
-
-Add a short operational note to the Public update log: the CUDA service and Cloudflare proxy were restarted, the `/api/status` compatibility fields (`ready` and `model`) were restored for the desktop client, and the live website plus desktop API path were verified with a real chat request. Do not describe this as a model-quality improvement.
+Keep the existing Public website/API and desktop-download links. Do not change cards for Buggy, Plus, Pro, Code, Ultimate, Mega, or archived checkpoints.
