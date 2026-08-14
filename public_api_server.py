@@ -476,9 +476,18 @@ class PublicModelService:
                 "ChudGPT is the project's humorous custom name. 'GPT' refers to its generative transformer style, "
                 "while 'Chud' is the playful brand with older horror-film and internet-slang associations."
             )
+        if re.search(
+            r"\bwhat is chudgpt\b(?!\s+public)|\b(?:explain|describe|tell me about) chudgpt\b",
+            lowered,
+        ):
+            return (
+                "ChudGPT is ASTRA228b's custom experimental language-model project. It includes several local models "
+                "and serving profiles—Public, Buggy, Ultimate, Plus, Pro, Code, Mega, and archived checkpoints—built "
+                "to explore different sizes, training stages, and personalities. I am ChudGPT Public, the standalone "
+                "20,999,184-parameter member intended for public chat and API use. ChudGPT is independent and is not ChatGPT."
+            )
         asks_full_identity = bool(re.search(
             r"\b(?:what|who) are you(?:\s+(?:fully|exactly|really))?\b|"
-            r"\bwhat is chudgpt\b|"
             r"\bwhat (?:kind|type) of (?:ai|model) are you\b|"
             r"\b(?:explain|describe|tell me about) (?:yourself|what you are)\b|"
             r"\bwhat is chudgpt public\b|\bhow do you work\b|\byour architecture\b",
