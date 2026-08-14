@@ -1,5 +1,7 @@
 # Full update-log prompt for the ChudGPT-Pro / landing-page chat
 
+Identity update: ChudGPT Public now answers natural self-identity questions consistently, including short wording such as "What are you?" and follow-ups such as "What are you fully?". Its answer explains that Public is a 20,999,184-parameter decoder-only transformer with an 8,192-token vocabulary and 1,024-token model context, plus local retrieval, arithmetic, session recall, and response-quality checks. It also clearly states its lack of consciousness, live browsing, and cross-chat memory.
+
 Update the landing page’s **ChudGPT-Public** card and Public detail section using this verified release log. Do not modify the behavior or claims of Pro, Plus, Buggy, Ultimate, Code, Mega, or archived checkpoint cards. Preserve all routes and mobile responsiveness.
 
 ## ChudGPT-Public v8 — smarter-per-token update

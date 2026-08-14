@@ -83,6 +83,8 @@ def test_public_has_complete_stable_ai_and_chud_self_knowledge() -> None:
         assert fact in source
     for sibling in ("buggy", "ultimate", "plus", "pro", "code", "mega", "1300", "1600"):
         assert sibling in source.lower()
+    for identity_wording in ("what|who", "fully|exactly|really", "tell me about", "what is chudgpt public"):
+        assert identity_wording in source.lower()
 
 
 def test_removed_empty_generation_fallback() -> None:

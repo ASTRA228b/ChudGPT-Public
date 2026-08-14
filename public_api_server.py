@@ -447,12 +447,23 @@ class PublicModelService:
                 "ChudGPT is the project's humorous custom name. 'GPT' refers to its generative transformer style, "
                 "while 'Chud' is the playful brand with older horror-film and internet-slang associations."
             )
-        if re.search(r"\bwhat (?:kind|type) of ai\b|\bexactly what are you\b|\bhow do you work\b|\byour architecture\b", lowered):
+        asks_full_identity = bool(re.search(
+            r"\b(?:what|who) are you(?:\s+(?:fully|exactly|really))?\b|"
+            r"\bwhat (?:kind|type) of (?:ai|model) are you\b|"
+            r"\b(?:explain|describe|tell me about) (?:yourself|what you are)\b|"
+            r"\bwhat is chudgpt public\b|\bhow do you work\b|\byour architecture\b",
+            lowered,
+        ))
+        if asks_full_identity:
             return (
-                f"I am ChudGPT Public, a small decoder-only transformer language model with {self.parameters:,} "
-                f"parameters and a {self.model.config.context_length}-token model context. I predict text tokens from "
-                "your message and recent session history. Local retrieval, exact arithmetic, and quality checks support "
-                "the same Public model; I am not routed through Pro or an external AI."
+                f"I am ChudGPT Public, an experimental AI assistant powered by a small decoder-only transformer "
+                f"language model with {self.parameters:,} parameters, an 8,192-token vocabulary, and a "
+                f"{self.model.config.context_length}-token model context. I generate replies by predicting text tokens "
+                "from your message and recent session history. The Public server adds strict local retrieval from its own "
+                "reviewed data, exact arithmetic, session-fact recall, and response-quality checks around that neural model. "
+                "I am not a human or conscious, I have no senses or feelings, I do not browse the live internet, and I do "
+                "not remember separate chats. I can still misunderstand context or state false information confidently, so "
+                "important answers should be verified. I am Public—not ChatGPT, Pro, or another ChudGPT profile."
             )
         if re.search(r"\b(?:are you conscious|do you have feelings|do you think when|are you alive)\b", lowered):
             return (

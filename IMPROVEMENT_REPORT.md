@@ -1,5 +1,9 @@
 # ChudGPT-Public v8 improvement report — 2026-08-14
 
+## Identity wording hotfix
+
+Public now recognizes plain and conversational identity questions such as `What are you?`, `What are you fully?`, `Who are you really?`, `Tell me about yourself`, and `What kind of model are you?`. These forms return one consistent description of ChudGPT Public's architecture, parameter count, context, runtime helpers, limitations, and relationship to the other ChudGPT profiles instead of falling through to an unreliable neural generation.
+
 ## Final result
 
 Public now serves `checkpoints/public_v8/best.pt`, family-aware alignment step 150, on CUDA. The architecture is unchanged at exactly **20,999,184 parameters**, an 8,192-token vocabulary, and a 1,024-token model context.
