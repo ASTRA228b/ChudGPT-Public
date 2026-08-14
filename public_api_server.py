@@ -5,9 +5,11 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import secrets
 import threading
 import uuid
 from collections import OrderedDict
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 import torch
@@ -21,6 +23,8 @@ from chudlm.checkpoint import load_checkpoint
 from chudlm.generation import generate
 from chudlm.model import ModelConfig, TransformerLM
 from chudlm.prompts import build_context_token_ids
+from chudlm.response_quality import score_generated_reply
+from chudlm.retrieval import ExampleRetriever
 
 ROOT = Path(__file__).resolve().parent
 MAX_SESSIONS = 1_000
@@ -54,6 +58,10 @@ class PublicModelService:
         self.parameters = sum(parameter.numel() for parameter in self.model.parameters())
         self.sessions: OrderedDict[str, list[dict[str, str]]] = OrderedDict()
         self.session_facts: OrderedDict[str, dict[str, str]] = OrderedDict()
+        self.retriever = ExampleRetriever((
+            ROOT / "data" / "alignment_conversations.jsonl",
+            ROOT / "data" / "public_conversations.jsonl",
+        ))
         self.lock = threading.Lock()
 
     def chat(
@@ -68,6 +76,7 @@ class PublicModelService:
             raise ValueError("message cannot be blank")
         active_session = session_id or uuid.uuid4().hex
         arithmetic_reply = self._calculate_arithmetic(clean_message)
+        word_problem_reply = self._calculate_word_problem(clean_message)
         with self.lock:
             history = list(self.sessions.get(active_session, []))
             history.append({"role": "user", "content": clean_message})
@@ -80,6 +89,8 @@ class PublicModelService:
             capability_reply = self._capability_answer(clean_message)
             if arithmetic_reply is not None:
                 reply = arithmetic_reply
+            elif word_problem_reply is not None:
+                reply = word_problem_reply
             elif recall_reply is not None:
                 reply = recall_reply
             elif greeting_reply is not None:
@@ -91,33 +102,60 @@ class PublicModelService:
             elif reference_reply is not None:
                 reply = reference_reply
             else:
+                generation_history = history
+                if self._is_generic_code_request(clean_message):
+                    language = secrets.choice(("Python", "C#", "JavaScript"))
+                    generation_history = history[:-1] + [{
+                        "role": "user",
+                        "content": (
+                            f"Write one small, complete, useful program in {language}. "
+                            "Choose a simple task yourself, return the code in a labeled code block, "
+                            "and add no unrelated text."
+                        ),
+                    }]
+                retrieval_query = generation_history[-1]["content"]
+                demonstrations: list[dict[str, str]] = []
+                retrieved_pairs = self.retriever.retrieve(retrieval_query)
+                for example_prompt, example_answer in retrieved_pairs:
+                    demonstrations.extend((
+                        {"role": "user", "content": example_prompt},
+                        {"role": "assistant", "content": example_answer},
+                    ))
+                generation_history = demonstrations + generation_history
                 _, prompt_ids = build_context_token_ids(
-                    self.tokenizer, history, self.model.config.context_length
+                    self.tokenizer, generation_history, self.model.config.context_length
                 )
-                # The tiny model sometimes emits EOS immediately. Retry with
-                # increasingly creative sampling instead of exposing a canned
-                # "could not form an answer" message to the user. The final
-                # attempt disables early EOS so Public always produces text.
+                # Generate several neural candidates, then reject obvious
+                # response-type switches (for example code after a greeting).
                 prompt_tensor = torch.tensor([prompt_ids], device=self.device)
-                reply = ""
-                for attempt_temperature, top_p, eos_id in (
-                    (temperature, 0.85, self.eos_id),
-                    (max(temperature, 0.70), 0.92, self.eos_id),
-                    (max(temperature, 1.00), 0.98, None),
+                # Retrieved answers are legitimate candidates from Public's
+                # cleaned local corpus. Neural candidates can beat them, but a
+                # clearly unrelated neural completion cannot displace a strong
+                # semantically matched example.
+                candidates: list[tuple[float, str]] = [
+                    (score_generated_reply(clean_message, answer) + 2.5, answer)
+                    for _, answer in retrieved_pairs
+                ]
+                for attempt_temperature, top_p, top_k in (
+                    (max(0.20, temperature), 0.82, 50),
+                    (max(0.45, temperature), 0.88, 65),
+                    (max(0.65, temperature), 0.92, 80),
+                    (max(0.80, temperature), 0.95, 100),
                 ):
                     output = generate(
                         self.model,
                         prompt_tensor,
-                        max_new_tokens=max(64, max_new_tokens),
+                        max_new_tokens=max_new_tokens,
                         temperature=attempt_temperature,
-                        top_k=80,
+                        top_k=top_k,
                         top_p=top_p,
-                        repetition_penalty=1.10,
-                        eos_token_id=eos_id,
+                        repetition_penalty=1.12,
+                        eos_token_id=self.eos_id,
                     )[0, len(prompt_ids) :].tolist()
-                    reply = self.tokenizer.decode(output, skip_special_tokens=True).strip()
-                    if reply:
-                        break
+                    candidate = self.tokenizer.decode(output, skip_special_tokens=True).strip()
+                    if candidate:
+                        candidates.append((score_generated_reply(clean_message, candidate), candidate))
+                reply = max(candidates, default=(-999.0, ""), key=lambda item: item[0])[1]
             if not reply:
                 # Extremely defensive: a no-EOS generation should normally
                 # make this unreachable, but never restore the removed canned
@@ -133,20 +171,52 @@ class PublicModelService:
         return active_session, reply
 
     @staticmethod
+    def _is_generic_code_request(message: str) -> bool:
+        normalized = " ".join(re.findall(r"[a-z]+", message.lower()))
+        return normalized in {
+            "code me some code", "give me some code", "send me some code",
+            "write me some code", "make me some code", "code something",
+        }
+
+    @staticmethod
     def _calculate_arithmetic(message: str) -> str | None:
         """Answer one explicit binary arithmetic expression without an answer table."""
-        match = re.search(r"(?<!\w)(-?\d+)\s*(\+|-|\*|×|/|÷)\s*(-?\d+)(?!\w)", message)
+        match = re.search(r"(?<!\w)(-?\d+(?:\.\d+)?)\s*(\+|-|\*|×|/|÷)\s*(-?\d+(?:\.\d+)?)(?!\w)", message)
         if not match:
             return None
-        left, operator, right = int(match.group(1)), match.group(2), int(match.group(3))
-        if operator == "+": value: int | float = left + right
+        try:
+            left, right = Decimal(match.group(1)), Decimal(match.group(3))
+        except InvalidOperation:
+            return None
+        operator = match.group(2)
+        if operator == "+": value = left + right
         elif operator == "-": value = left - right
         elif operator in {"*", "×"}: value = left * right
         else:
             if right == 0: return "Division by zero is undefined."
             value = left / right
-            if value.is_integer(): value = int(value)
-        return f"{left} {operator} {right} is {value}."
+        return (
+            f"{format(left, 'f')} {operator} {format(right, 'f')} is "
+            f"{format(value.normalize(), 'f')}."
+        )
+
+    @staticmethod
+    def _calculate_word_problem(message: str) -> str | None:
+        """Solve general constant-speed distance questions from extracted values."""
+        lowered = message.lower()
+        if not any(term in lowered for term in ("mph", "miles per hour")):
+            return None
+        values = re.findall(r"(-?\d+(?:\.\d+)?)", lowered)
+        if len(values) < 2 or not any(
+            term in lowered for term in ("how far", "distance", "miles covered", "miles does")
+        ):
+            return None
+        speed, hours = Decimal(values[0]), Decimal(values[1])
+        distance = speed * hours
+        return (
+            f"Distance is speed times time: {format(speed, 'f')} × {format(hours, 'f')} = "
+            f"{format(distance.normalize(), 'f')} miles."
+        )
 
     @staticmethod
     def _greeting(message: str) -> str | None:
@@ -296,7 +366,7 @@ def create_app(checkpoint: Path, device: str) -> FastAPI:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Serve ChudGPT-Public over HTTP")
-    parser.add_argument("--checkpoint", default="checkpoints/chat/best.pt")
+    parser.add_argument("--checkpoint", default="checkpoints/public_v4/best.pt")
     parser.add_argument("--device", choices=["auto", "cpu", "cuda"], default="auto")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8010)

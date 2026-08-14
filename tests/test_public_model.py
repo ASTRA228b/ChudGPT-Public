@@ -8,6 +8,8 @@ from tokenizers import Tokenizer
 
 from chudlm.config import dataclass_from_dict, load_yaml
 from chudlm.model import ModelConfig, TransformerLM
+from chudlm.response_quality import assess_generated_reply, score_generated_reply
+from public_eval_cases import CASES
 from public_api_server import PublicModelService
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,15 +27,14 @@ def test_public_model_has_exact_expected_size() -> None:
 def test_public_dataset_is_large_clean_and_reproducible() -> None:
     path = PUBLIC / "data" / "public_conversations.jsonl"
     records = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
-    assert len(records) == 20_000
-    assert sum(len(record["messages"]) for record in records) == 60_000
+    assert len(records) == 30_000
+    assert len({json.dumps(record["messages"], sort_keys=True) for record in records}) == 30_000
     assert all(message["role"] in {"user", "assistant"} and message["content"].strip() for record in records for message in record["messages"])
-    assert all(record["source"] == "chudgpt-public-custom" for record in records)
+    assert all(record["source"] == "chudgpt-public-v3" for record in records)
     assistant_text = "\n".join(message["content"] for record in records for message in record["messages"] if message["role"] == "assistant")
-    assert "20,999,184 trainable parameters" in assistant_text
-    assert "Paris is the capital of France" in assistant_text
-    assert "The answer is 12." in assistant_text
-    assert "```c#" in assistant_text
+    assert "20,999,184" in assistant_text
+    assert "training data" not in assistant_text.lower()
+    assert "Ã" not in assistant_text and "â€" not in assistant_text and "�" not in assistant_text
 
 
 def test_public_tokenizer_matches_model() -> None:
@@ -58,7 +59,11 @@ def test_vercel_api_and_frontend_contract() -> None:
 
 def test_serving_tools_are_general_and_contextual() -> None:
     assert PublicModelService._calculate_arithmetic("What is 12 * 8?") == "12 * 8 is 96."
+    assert PublicModelService._calculate_arithmetic("What is 2.5 * 4?") == "2.5 * 4 is 10."
+    assert "162.5 miles" in (PublicModelService._calculate_word_problem("A train travels 65 mph for 2.5 hours. How far does it travel?") or "")
     assert PublicModelService._greeting("Hello!") == "Hey! What would you like to talk about?"
+    assert PublicModelService._is_generic_code_request("Code me some code!")
+    assert not PublicModelService._is_generic_code_request("Write C# code for a calculator")
     assert "blue" in (PublicModelService._reference_answer("What color is the sky?") or "")
     assert "FixedUpdate" in (PublicModelService._reference_answer("Should Rigidbody movement use Update?") or "")
     assert "artists" in (PublicModelService._reference_answer("Let's talk about electronic music.") or "")
@@ -72,3 +77,30 @@ def test_serving_tools_are_general_and_contextual() -> None:
 def test_removed_empty_generation_fallback() -> None:
     source = Path("public_api_server.py").read_text(encoding="utf-8")
     assert "I could not form a useful answer for that message." not in source
+
+
+def test_held_out_suite_has_all_required_categories_and_305_cases() -> None:
+    assert len(CASES) == 305
+    counts: dict[str, int] = {}
+    for case in CASES:
+        counts[case.category] = counts.get(case.category, 0) + 1
+    assert counts == {
+        "conversation": 25, "knowledge": 25, "arithmetic": 25,
+        "word_problem": 25, "common_sense": 25, "instruction": 25,
+        "coding": 25, "debugging": 25, "memory": 20, "reference": 20,
+        "identity": 20, "memes": 25, "adversarial": 20,
+    }
+
+
+def test_quality_ranking_rejects_wrong_response_types_and_training_leaks() -> None:
+    assert score_generated_reply("Hello! What can you do?", "The answer is 462.") < 0
+    assert score_generated_reply("Hello! What can you do?", "Hello! I can chat, answer questions, and help with basic math or code.") > 0
+    assert score_generated_reply("Which is heavier, steel or feathers?", "```python\nprint('hi')\n```") < 0
+    valid, reasons = assess_generated_reply("Tell me something.", "This training data example says hello.")
+    assert not valid and "training-data-leak" in reasons
+
+
+def test_everyday_and_random_prompts_are_represented_in_held_out_tests() -> None:
+    prompts = "\n".join(prompt for case in CASES for prompt in case.prompts).lower()
+    for phrase in ("hello mate", "nothing much", "random words", "i'm bored", "what can we talk about", "pluh", "67"):
+        assert phrase in prompts

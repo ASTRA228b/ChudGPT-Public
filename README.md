@@ -21,7 +21,7 @@ It is a small custom model—not ChatGPT and not a frontier model. It can be ina
 | Feed-forward width | 1,808 |
 | Positional encoding | RoPE |
 
-The model is a decoder-only causal transformer implemented in Python and PyTorch. Its project-authored dataset contains 20,000 conversations and 60,000 messages. Training consists of natural-language pretraining followed by response-only conversational fine-tuning.
+The model is a decoder-only causal transformer implemented in Python and PyTorch. Its cleaned project-authored corpus contains **30,000 unique conversations**, plus a balanced **6,000-conversation response-alignment set**. Public uses response-only fine-tuning, four-candidate generation, response-type/relevance scoring, and retrieval-guided generation from its own cleaned examples.
 
 ## Project layout
 
@@ -72,7 +72,16 @@ cd /d C:\Users\admin\OneDrive\Documents\ChudGPT\ChudGPT-Public
 start_training.cmd
 ```
 
-That runs data preparation, base pretraining, response-only fine-tuning, and evaluation. Timestamped logs are stored in `reports`. The final API checkpoint is `checkpoints/chat/best.pt`.
+That runs data preparation, base pretraining, response-only fine-tuning, and evaluation. Timestamped logs are stored in `reports`. The currently selected API checkpoint is `checkpoints/public_v4/best.pt` (alignment step 800).
+
+To reproduce the two Public-only improvement stages after the original chat checkpoint:
+
+```cmd
+python build_public_data.py
+python fine_tune.py --config configs/public_v3.yaml --device cuda
+python build_alignment_data.py
+python fine_tune.py --config configs/public_v4_alignment.yaml --device cuda
+```
 
 Individual commands:
 
@@ -141,7 +150,13 @@ For Windows CMD API testing, keep `curl.exe` on one line; `\` is a Linux/macOS l
 pytest -q
 ```
 
-Tests verify the exact parameter count, dataset shape, tokenizer/model compatibility, API contract, and Vercel files.
+Tests verify the exact parameter count, dataset uniqueness and encoding, tokenizer/model compatibility, API contract, Vercel files, response-quality routing, and the 305-case held-out evaluation definition.
+
+Run the identical live Public-vs-Pro benchmark after both APIs are running:
+
+```cmd
+python benchmark_vs_pro.py --models both
+```
 
 ## License and credit
 

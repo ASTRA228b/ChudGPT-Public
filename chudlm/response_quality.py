@@ -1,4 +1,4 @@
-"""Automated quality gates for Plus neural generations.
+"""Automated quality gates for Public neural generations.
 
 The transformer gets an opportunity to answer ordinary conversation. These
 checks reject obviously malformed, repeated, leaked, or unrelated generations
@@ -166,6 +166,12 @@ def assess_generated_reply(
             reasons.append("missing-story-subject")
     if "<system>" in lowered or "<assistant>" in lowered or "you are chudgpt" in lowered:
         reasons.append("prompt-leak")
+    if re.search(
+        r"\b(?:training (?:data|dataset|example|corpus)|dataset row|this prompt|this response|"
+        r"assistant response|user prompt|fine[- ]?tuning example)\b",
+        lowered,
+    ):
+        reasons.append("training-data-leak")
     if "http" in lowered and not any(word in _words(prompt) for word in ("url", "link", "website")):
         reasons.append("unrequested-url")
     if stripped.count("```") % 2:
@@ -203,3 +209,42 @@ def assess_generated_reply(
     if emotional_prompt and technical_reply:
         reasons.append("technical-reply-to-emotional-prompt")
     return not reasons, tuple(reasons)
+
+
+def score_generated_reply(prompt: str, reply: str) -> float:
+    """Rank valid candidates by response-type and lightweight lexical relevance.
+
+    This is intentionally general: it rewards matching the requested response
+    type and penalizes obvious category switches rather than looking up answers.
+    """
+    valid, reasons = assess_generated_reply(prompt, reply)
+    if not valid:
+        return -100.0 - 5.0 * len(reasons)
+    prompt_words = _words(prompt)
+    reply_words = _words(reply)
+    prompt_set = _content_words(prompt)
+    reply_set = _content_words(reply)
+    score = 2.0 + min(3.0, len(prompt_set & reply_set) * 0.75)
+    normalized = " ".join(prompt_words)
+    asks_code = any(word in prompt_words for word in ("code", "python", "c#", "csharp", "javascript", "unity", "program", "script"))
+    has_code = "```" in reply or any(token in reply for token in ("def ", "class ", "using System", "function "))
+    if asks_code:
+        score += 4.0 if has_code else -5.0
+    elif has_code:
+        score -= 8.0
+    asks_math = bool(re.search(r"\d\s*(?:[+*/×÷]|-(?=\s*\d))\s*\d", prompt)) or any(
+        word in prompt_words for word in ("calculate", "solve", "distance", "percent")
+    )
+    answer_style = bool(re.search(r"(?:^|\s)-?\d+(?:\.\d+)?(?:\s|[.,]|$)", reply))
+    if asks_math and answer_style:
+        score += 2.0
+    if not asks_math and re.fullmatch(r"(?:the answer is )?-?\d+(?:\.\d+)?[.!]?", reply.strip(), re.I):
+        score -= 12.0
+    greeting = bool(re.match(r"^(?:hi|hello|hey|yo)\b", normalized))
+    if greeting and any(word in reply_words for word in ("hello", "hey", "hi")):
+        score += 3.0
+    if "one sentence" in normalized and reply.count(".") + reply.count("!") + reply.count("?") > 2:
+        score -= 3.0
+    if "code only" in normalized and reply.strip().startswith("```") and reply.strip().endswith("```"):
+        score += 2.0
+    return score
