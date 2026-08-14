@@ -4,6 +4,7 @@ import {
   normalizeState,
   searchConversations,
   titleFromMessage,
+  visibleMessages,
 } from "./state";
 
 describe("desktop state", () => {
@@ -48,5 +49,34 @@ describe("desktop state", () => {
   it("rejects an unknown imported theme", () => {
     const normalized = normalizeState({ settings: { theme: "broken-theme" } });
     expect(normalized.settings.theme).toBe("neon");
+  });
+
+  it("repairs unsafe imported performance settings", () => {
+    const normalized = normalizeState({
+      settings: {
+        interfaceScale: 999,
+        glowIntensity: -40,
+        density: "broken",
+        statusPollSeconds: 7,
+        renderMessageLimit: 3,
+        contentWidth: 999,
+        sidebarWidth: 900,
+        composerFontSize: 2,
+      },
+    });
+    expect(normalized.settings.interfaceScale).toBe(125);
+    expect(normalized.settings.glowIntensity).toBe(0);
+    expect(normalized.settings.density).toBe("comfortable");
+    expect(normalized.settings.statusPollSeconds).toBe(60);
+    expect(normalized.settings.renderMessageLimit).toBe(250);
+    expect(normalized.settings.contentWidth).toBe(880);
+    expect(normalized.settings.sidebarWidth).toBe(360);
+    expect(normalized.settings.composerFontSize).toBe(12);
+  });
+
+  it("limits rendering without deleting chat history", () => {
+    const messages = Array.from({ length: 600 }, (_, index) => index);
+    expect(visibleMessages(messages, 250)).toEqual(messages.slice(-250));
+    expect(visibleMessages(messages, 0)).toBe(messages);
   });
 });

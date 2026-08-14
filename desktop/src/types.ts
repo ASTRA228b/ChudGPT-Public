@@ -24,6 +24,9 @@ export type ThemeName =
   | "slate"
   | "mint";
 export type Density = "comfortable" | "compact";
+export type StatusPollSeconds = 0 | 30 | 60 | 120 | 300;
+export type RenderMessageLimit = 0 | 100 | 250 | 500;
+export type ContentWidth = 720 | 880 | 1080 | 1400;
 
 export interface ChatMessage {
   id: string;
@@ -46,6 +49,7 @@ export interface AppSettings {
   interfaceScale: number;
   compactSidebar: boolean;
   reduceAnimations: boolean;
+  performanceMode: boolean;
   glowIntensity: number;
   density: Density;
   sendWithEnter: boolean;
@@ -57,6 +61,11 @@ export interface AppSettings {
   rememberLastChat: boolean;
   confirmDeletes: boolean;
   launchAtLogin: boolean;
+  statusPollSeconds: StatusPollSeconds;
+  renderMessageLimit: RenderMessageLimit;
+  contentWidth: ContentWidth;
+  sidebarWidth: number;
+  composerFontSize: number;
 }
 
 export interface PersistedState {

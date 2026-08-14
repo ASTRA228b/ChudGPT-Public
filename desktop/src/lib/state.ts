@@ -36,6 +36,7 @@ export const defaultSettings: AppSettings = {
   interfaceScale: 100,
   compactSidebar: false,
   reduceAnimations: false,
+  performanceMode: false,
   glowIntensity: 65,
   density: "comfortable",
   sendWithEnter: true,
@@ -47,6 +48,11 @@ export const defaultSettings: AppSettings = {
   rememberLastChat: true,
   confirmDeletes: true,
   launchAtLogin: false,
+  statusPollSeconds: 60,
+  renderMessageLimit: 250,
+  contentWidth: 880,
+  sidebarWidth: 268,
+  composerFontSize: 14,
 };
 
 export const emptyState = (): PersistedState => ({
@@ -86,6 +92,30 @@ export function normalizeState(value: unknown): PersistedState {
   const settings = { ...defaultSettings, ...(candidate.settings ?? {}) };
   if (!themeNames.includes(settings.theme))
     settings.theme = defaultSettings.theme;
+  if (!["comfortable", "compact"].includes(settings.density))
+    settings.density = defaultSettings.density;
+  if (![0, 30, 60, 120, 300].includes(settings.statusPollSeconds))
+    settings.statusPollSeconds = defaultSettings.statusPollSeconds;
+  if (![0, 100, 250, 500].includes(settings.renderMessageLimit))
+    settings.renderMessageLimit = defaultSettings.renderMessageLimit;
+  if (![720, 880, 1080, 1400].includes(settings.contentWidth))
+    settings.contentWidth = defaultSettings.contentWidth;
+  settings.sidebarWidth = Math.min(
+    360,
+    Math.max(220, Number(settings.sidebarWidth) || 268),
+  );
+  settings.composerFontSize = Math.min(
+    18,
+    Math.max(12, Number(settings.composerFontSize) || 14),
+  );
+  settings.interfaceScale = Math.min(
+    125,
+    Math.max(85, Number(settings.interfaceScale) || 100),
+  );
+  settings.glowIntensity = Math.min(
+    100,
+    Math.max(0, Number(settings.glowIntensity) || 0),
+  );
   const active = conversations.some(
     (chat) => chat.id === candidate.activeConversationId,
   )
@@ -137,4 +167,9 @@ export function groupDate(date: string): "Today" | "Previous" {
   const value = new Date(date);
   const today = new Date();
   return value.toDateString() === today.toDateString() ? "Today" : "Previous";
+}
+
+export function visibleMessages<T>(messages: T[], limit: number): T[] {
+  if (!limit || messages.length <= limit) return messages;
+  return messages.slice(-limit);
 }

@@ -2,4 +2,5 @@ dist
 dist-electron
 release
 node_modules
+.pytest_cache
 package-lock.json

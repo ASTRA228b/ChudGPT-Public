@@ -327,8 +327,8 @@ button {
   z-index: 1;
 }
 .sidebar {
-  width: 268px;
-  flex: 0 0 268px;
+  width: var(--sidebar-width, 268px);
+  flex: 0 0 var(--sidebar-width, 268px);
   background: rgba(3, 8, 14, 0.87);
   backdrop-filter: blur(16px);
   border-right: 1px solid var(--line);
@@ -558,7 +558,7 @@ button {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 28px max(36px, calc((100% - 880px) / 2)) 12px;
+  padding: 28px max(36px, calc((100% - var(--content-width, 880px)) / 2)) 12px;
 }
 .message {
   display: flex;
@@ -782,8 +782,33 @@ button {
   animation-delay: 0.3s;
 }
 .composer-wrap {
-  padding: 12px max(36px, calc((100% - 880px) / 2)) 20px;
+  padding: 12px max(36px, calc((100% - var(--content-width, 880px)) / 2)) 20px;
   background: linear-gradient(transparent, rgba(4, 8, 14, 0.94) 25%);
+}
+.history-window-note {
+  margin: 4px auto 18px;
+  padding: 8px 12px;
+  width: fit-content;
+  max-width: 90%;
+  border: 1px solid rgba(74, 171, 219, 0.2);
+  border-radius: 999px;
+  color: #7896aa;
+  font-size: 11px;
+  text-align: center;
+}
+.performance-mode,
+.performance-mode * {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+}
+.performance-mode .workspace,
+.performance-mode .sidebar,
+.performance-mode .model-header,
+.performance-mode .composer,
+.performance-mode .settings-modal {
+  backdrop-filter: none !important;
+  box-shadow: none !important;
 }
 .composer {
   display: flex;
@@ -810,6 +835,7 @@ button {
   background: transparent;
   color: #eefaff;
   line-height: 1.5;
+  font-size: var(--composer-font-size, 14px);
 }
 .composer-clear,
 .send-button {

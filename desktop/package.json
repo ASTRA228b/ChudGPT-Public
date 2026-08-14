@@ -1,6 +1,6 @@
 {
   "name": "chudgpt-desktop",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Official native desktop client for ChudGPT-Public",
   "author": {
     "name": "ASTRA228b",
@@ -12,8 +12,8 @@
   "scripts": {
     "dev": "concurrently -k \"vite --host 127.0.0.1\" \"npm:dev:electron\"",
     "dev:electron": "wait-on tcp:5173 && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:5173 npm run electron:build && electron .",
-    "format": "prettier --write .",
-    "format:check": "prettier --check .",
+    "format": "prettier --write src electron *.json *.ts *.html *.md",
+    "format:check": "prettier --check src electron *.json *.ts *.html *.md",
     "lint": "eslint . --max-warnings 0",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.electron.json --noEmit",
     "test": "vitest run",
@@ -62,6 +62,7 @@
       "output": "release"
     },
     "files": [
+      "!.pytest_cache{,/**/*}",
       "dist/**/*",
       "dist-electron/**/*",
       "assets/**/*",

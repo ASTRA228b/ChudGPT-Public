@@ -1,10 +1,11 @@
 import { Eraser, Send, Square } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 
 interface Props {
   value: string;
   busy: boolean;
   sendWithEnter: boolean;
+  focusKey: string | null;
   onChange: (value: string) => void;
   onSend: () => void;
   onStop: () => void;
@@ -14,16 +15,26 @@ export function Composer({
   value,
   busy,
   sendWithEnter,
+  focusKey,
   onChange,
   onSend,
   onStop,
 }: Props): JSX.Element {
   const ref = useRef<HTMLTextAreaElement>(null);
-  useEffect(() => {
-    const focus = () => ref.current?.focus();
-    window.addEventListener("chud:focus-composer", focus);
-    return () => window.removeEventListener("chud:focus-composer", focus);
+  const focusComposer = useCallback(() => {
+    window.requestAnimationFrame(() => {
+      const composer = ref.current;
+      if (!composer) return;
+      composer.focus({ preventScroll: true });
+      composer.setSelectionRange(composer.value.length, composer.value.length);
+    });
   }, []);
+  useEffect(() => {
+    window.addEventListener("chud:focus-composer", focusComposer);
+    return () =>
+      window.removeEventListener("chud:focus-composer", focusComposer);
+  }, [focusComposer]);
+  useLayoutEffect(() => focusComposer(), [focusKey, focusComposer]);
   useEffect(() => {
     if (!ref.current) return;
     ref.current.style.height = "0";
@@ -35,6 +46,7 @@ export function Composer({
         <textarea
           id="message-composer"
           ref={ref}
+          autoFocus
           value={value}
           maxLength={4000}
           rows={1}

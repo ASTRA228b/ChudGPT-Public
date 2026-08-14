@@ -14,6 +14,7 @@ import {
   emptyState,
   normalizeState,
   titleFromMessage,
+  visibleMessages,
 } from "./lib/state";
 import type {
   AppSettings,
@@ -51,6 +52,7 @@ export default function App(): JSX.Element {
   const [version, setVersion] = useState("0.1.0");
   const [toasts, setToasts] = useState<Toast[]>([]);
   const messagesEnd = useRef<HTMLDivElement>(null);
+  const activeRequest = useRef<string | null>(null);
   const active = useMemo(
     () =>
       state.conversations.find(
@@ -58,6 +60,16 @@ export default function App(): JSX.Element {
       ) ?? null,
     [state],
   );
+  const renderedMessages = useMemo(
+    () =>
+      active
+        ? visibleMessages(active.messages, state.settings.renderMessageLimit)
+        : [],
+    [active, state.settings.renderMessageLimit],
+  );
+  const hiddenMessageCount = active
+    ? active.messages.length - renderedMessages.length
+    : 0;
 
   const toast = useCallback((text: string) => {
     const id = crypto.randomUUID();
@@ -108,19 +120,27 @@ export default function App(): JSX.Element {
   useEffect(() => {
     if (!loaded) return;
     void checkConnection();
-    const id = window.setInterval(() => void checkConnection(), 60_000);
+    if (!state.settings.statusPollSeconds) return;
+    const id = window.setInterval(
+      () => void checkConnection(),
+      state.settings.statusPollSeconds * 1_000,
+    );
     return () => window.clearInterval(id);
-  }, [checkConnection, loaded]);
+  }, [checkConnection, loaded, state.settings.statusPollSeconds]);
   useEffect(() => {
     if (state.settings.autoScroll)
       messagesEnd.current?.scrollIntoView({
-        behavior: state.settings.reduceAnimations ? "auto" : "smooth",
+        behavior:
+          state.settings.reduceAnimations || state.settings.performanceMode
+            ? "auto"
+            : "smooth",
       });
   }, [
     active?.messages.length,
     busy,
     state.settings.autoScroll,
     state.settings.reduceAnimations,
+    state.settings.performanceMode,
   ]);
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
@@ -192,6 +212,7 @@ export default function App(): JSX.Element {
       updatedAt: now(),
     }));
     const id = makeRequestId();
+    activeRequest.current = id;
     setRequestId(id);
     try {
       const result = await chat(clean, target.sessionId, id);
@@ -202,6 +223,7 @@ export default function App(): JSX.Element {
       }));
       setConnection("online");
     } catch (error) {
+      if (activeRequest.current !== id) return;
       const text =
         error instanceof Error
           ? error.message
@@ -220,12 +242,16 @@ export default function App(): JSX.Element {
       setConnection("offline");
       toast("Could not connect to ChudGPT-Public");
     } finally {
-      setBusy(false);
-      setRequestId(null);
+      if (activeRequest.current === id) {
+        activeRequest.current = null;
+        setBusy(false);
+        setRequestId(null);
+      }
     }
   };
   const stop = () => {
     if (requestId) void cancel(requestId);
+    activeRequest.current = null;
     setBusy(false);
     setRequestId(null);
     toast("Generation stopped");
@@ -312,10 +338,13 @@ export default function App(): JSX.Element {
   const style = {
     "--ui-scale": state.settings.interfaceScale / 100,
     "--glow": state.settings.glowIntensity / 100,
+    "--content-width": `${state.settings.contentWidth}px`,
+    "--sidebar-width": `${state.settings.sidebarWidth}px`,
+    "--composer-font-size": `${state.settings.composerFontSize}px`,
   } as React.CSSProperties;
   return (
     <div
-      className={`app theme-${state.settings.theme} density-${state.settings.density} ${state.settings.reduceAnimations ? "reduce-motion" : ""}`}
+      className={`app theme-${state.settings.theme} density-${state.settings.density} ${state.settings.reduceAnimations ? "reduce-motion" : ""} ${state.settings.performanceMode ? "performance-mode" : ""}`}
       style={style}
     >
       <TitleBar />
@@ -326,9 +355,9 @@ export default function App(): JSX.Element {
           collapsed={sidebarCollapsed}
           onToggle={() => setSidebarCollapsed((value) => !value)}
           onNew={newChat}
-          onSelect={(id) =>
-            setState((current) => ({ ...current, activeConversationId: id }))
-          }
+          onSelect={(id) => {
+            setState((current) => ({ ...current, activeConversationId: id }));
+          }}
           onRename={renameChat}
           onDelete={removeChat}
           onSettings={() => setSettingsOpen(true)}
@@ -373,15 +402,23 @@ export default function App(): JSX.Element {
                   }}
                 />
               ) : (
-                active.messages.map((item) => (
-                  <MessageView
-                    key={item.id}
-                    message={item}
-                    showTimestamp={state.settings.showTimestamps}
-                    syntaxHighlighting={state.settings.syntaxHighlighting}
-                    onToast={toast}
-                  />
-                ))
+                <>
+                  {hiddenMessageCount > 0 && (
+                    <div className="history-window-note">
+                      {hiddenMessageCount.toLocaleString()} older messages are
+                      hidden by the render-limit setting. They remain saved.
+                    </div>
+                  )}
+                  {renderedMessages.map((item) => (
+                    <MessageView
+                      key={item.id}
+                      message={item}
+                      showTimestamp={state.settings.showTimestamps}
+                      syntaxHighlighting={state.settings.syntaxHighlighting}
+                      onToast={toast}
+                    />
+                  ))}
+                </>
               )}
               {busy && (
                 <div className="thinking">
@@ -400,6 +437,7 @@ export default function App(): JSX.Element {
               value={draft}
               busy={busy}
               sendWithEnter={state.settings.sendWithEnter}
+              focusKey={state.activeConversationId}
               onChange={setDraft}
               onSend={() => void send()}
               onStop={stop}

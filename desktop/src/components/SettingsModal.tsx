@@ -182,6 +182,98 @@ export function SettingsModal(props: Props): JSX.Element {
                 <option value="compact">Compact</option>
               </select>
             </Setting>
+            <Setting label="Chat content width">
+              <select
+                value={props.settings.contentWidth}
+                onChange={(event) =>
+                  set(
+                    "contentWidth",
+                    Number(event.target.value) as AppSettings["contentWidth"],
+                  )
+                }
+              >
+                <option value="720">Narrow · 720px</option>
+                <option value="880">Balanced · 880px</option>
+                <option value="1080">Wide · 1080px</option>
+                <option value="1400">Extra wide · 1400px</option>
+              </select>
+            </Setting>
+            <Setting label={`Sidebar width · ${props.settings.sidebarWidth}px`}>
+              <input
+                type="range"
+                min="220"
+                max="360"
+                step="4"
+                value={props.settings.sidebarWidth}
+                onChange={(event) =>
+                  set("sidebarWidth", Number(event.target.value))
+                }
+              />
+            </Setting>
+            <Setting
+              label={`Composer text · ${props.settings.composerFontSize}px`}
+            >
+              <input
+                type="range"
+                min="12"
+                max="18"
+                step="1"
+                value={props.settings.composerFontSize}
+                onChange={(event) =>
+                  set("composerFontSize", Number(event.target.value))
+                }
+              />
+            </Setting>
+          </SettingsSection>
+          <SettingsSection title="Performance">
+            <Setting label="Performance mode">
+              <Switch
+                checked={props.settings.performanceMode}
+                onChange={(value) => set("performanceMode", value)}
+              />
+            </Setting>
+            <Setting label="Server status checks">
+              <select
+                value={props.settings.statusPollSeconds}
+                onChange={(event) =>
+                  set(
+                    "statusPollSeconds",
+                    Number(
+                      event.target.value,
+                    ) as AppSettings["statusPollSeconds"],
+                  )
+                }
+              >
+                <option value="0">Manual only</option>
+                <option value="30">Every 30 seconds</option>
+                <option value="60">Every minute</option>
+                <option value="120">Every 2 minutes</option>
+                <option value="300">Every 5 minutes</option>
+              </select>
+            </Setting>
+            <Setting label="Messages rendered per chat">
+              <select
+                value={props.settings.renderMessageLimit}
+                onChange={(event) =>
+                  set(
+                    "renderMessageLimit",
+                    Number(
+                      event.target.value,
+                    ) as AppSettings["renderMessageLimit"],
+                  )
+                }
+              >
+                <option value="100">Latest 100</option>
+                <option value="250">Latest 250</option>
+                <option value="500">Latest 500</option>
+                <option value="0">All messages</option>
+              </select>
+            </Setting>
+            <p className="privacy-note">
+              Performance mode reduces glow, blur, and animation work. Render
+              limits only affect what is currently drawn; complete chats remain
+              saved and exportable.
+            </p>
           </SettingsSection>
           <SettingsSection title="Chat">
             <Setting label="Send with Enter">

@@ -84,13 +84,16 @@ jobs:
           body: |
             ## ChudGPT Desktop ${{ github.ref_name }}
 
-            The first native desktop client for ChudGPT-Public.
+            Native desktop client for ChudGPT-Public.
 
+            - Reliable composer focus for new and switched conversations
+            - Safer request cancellation and stale-response handling
             - Persistent multi-chat system with isolated API sessions
             - Futuristic neon desktop interface and native window controls
             - Local chat search, rename, delete, export, and import
             - Markdown and polished code rendering
-            - Appearance, chat, startup, and privacy settings
+            - Adjustable chat, sidebar, composer, theme, glow, density, startup, and privacy settings
+            - Performance mode, status-poll controls, and long-chat render limits
             - ChudGPT-Public status, timeout, cancellation, and offline handling
             - Separate Windows, macOS, and Linux packages
 
