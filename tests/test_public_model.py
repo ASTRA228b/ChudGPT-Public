@@ -103,6 +103,14 @@ def test_project_identity_is_distinct_from_public_identity() -> None:
 def test_removed_empty_generation_fallback() -> None:
     source = Path("public_api_server.py").read_text(encoding="utf-8")
     assert "I could not form a useful answer for that message." not in source
+    assert "I am not sure what {cleaned!r} refers to" not in source
+    assert "_natural_uncertainty" not in source
+
+
+def test_natural_chudgpt_comparison_wording() -> None:
+    answer = PublicModelService._comparison_answer("What ChudGPT is better?")
+    assert answer is not None
+    assert "Public" in answer and "Code" in answer and "Ultimate" in answer
 
 
 def test_held_out_suite_has_all_required_categories_and_305_cases() -> None:

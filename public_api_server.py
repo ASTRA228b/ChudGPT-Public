@@ -157,6 +157,7 @@ class PublicModelService:
                 # clearly unrelated neural completion cannot displace a strong
                 # semantically matched example.
                 candidates: list[tuple[float, str]] = []
+                repaired = ""
                 normalized_query = retrieval_query.lower().strip(" .!?")
                 for example_prompt, answer in retrieved_pairs:
                     # The strict retriever already requires same intent,
@@ -212,7 +213,10 @@ class PublicModelService:
                 viable = [item for item in candidates if item[0] > -50.0]
                 reply = max(viable, default=(-999.0, ""), key=lambda item: item[0])[1]
                 if not reply:
-                    reply = self._natural_uncertainty(clean_message, current_intent.name)
+                    # No canned uncertainty fallback: use the freshly generated
+                    # prompt-conditioned repair. If generation was empty, keep
+                    # the highest-scoring neural/retrieval candidate instead.
+                    reply = repaired or max(candidates, default=(-999.0, ""), key=lambda item: item[0])[1]
             if not reply:
                 # Extremely defensive: a no-EOS generation should normally
                 # make this unreachable, but never restore the removed canned
@@ -234,19 +238,6 @@ class PublicModelService:
             "code me some code", "give me some code", "send me some code",
             "write me some code", "make me some code", "code something",
         }
-
-    @staticmethod
-    def _natural_uncertainty(message: str, intent_name: str) -> str:
-        """Return a concise response shaped by the prompt after all candidates fail."""
-        cleaned = " ".join(message.split()).strip(" .!?")
-        if intent_name == "meme":
-            return (
-                "That sounds like meme or absurdist slang, but I am not confident "
-                "about the exact reference. What context did you see it in?"
-            )
-        if len(cleaned) <= 48:
-            return f"I am not sure what {cleaned!r} refers to. Is it a phrase, a typo, or intentional nonsense?"
-        return "I am not confident I understood that message. Give me one clue about what you meant and I will try again."
 
     @staticmethod
     def _brand_reply(message: str) -> str | None:
@@ -373,9 +364,17 @@ class PublicModelService:
     @staticmethod
     def _comparison_answer(message: str) -> str | None:
         lowered = message.lower()
-        asks_comparison = any(phrase in lowered for phrase in ("better than", "best model", "compare yourself", "other models"))
+        asks_comparison = any(phrase in lowered for phrase in ("better than", "best model", "compare yourself", "other models")) or bool(
+            re.search(r"\b(?:what|which) chudgpt (?:is|model is|version is)?\s*(?:the )?(?:better|best)\b", lowered)
+        )
         if not asks_comparison:
             return None
+        if "chudgpt" in lowered and ("better" in lowered or "best" in lowered):
+            return (
+                "For a useful general assistant, ChudGPT Public is the best current default based on the shared project benchmark. "
+                "Choose Code for a coding-focused interface, Ultimate for the strongest 14M experience, or Buggy and Mega when you "
+                "want intentional chaos. If you do not have a special goal, I would pick Public."
+            )
         return (
             "On the current shared ChudGPT benchmark, ChudGPT-Public scored higher than ChudGPT Pro. "
             "Public is especially stronger at exact basic arithmetic, short instruction following, and session recall, "
