@@ -132,7 +132,9 @@ def create_app(checkpoint: Path, device: str) -> FastAPI:
     def info() -> dict[str, object]:
         return {
             "name": "ChudGPT-Public",
+            "model": "ChudGPT-Public",
             "status": "online",
+            "ready": True,
             "device": str(service.device),
             "parameters": service.parameters,
             "step": service.step,

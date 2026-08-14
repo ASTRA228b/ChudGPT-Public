@@ -88,7 +88,10 @@ async function requestApi(
     try {
       parsed = JSON.parse(raw);
     } catch {
-      throw new Error("ChudGPT-Public returned a malformed response.");
+      const contentType = response.headers.get("content-type") || "unknown content type";
+      throw new Error(
+        `ChudGPT-Public returned HTTP ${response.status} as ${contentType}, not JSON. The public tunnel may be restarting.`,
+      );
     }
     if (!response.ok) {
       const value = parsed as { error?: string; detail?: string };

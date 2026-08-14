@@ -20,3 +20,7 @@ Suggested card copy:
 > **Public v9 — raw 21M experiment.** No canned conversational fallbacks or hidden answer substitution. Short-context training improved the held-out raw score from 14/40 to 19/40, but the model still produces frequent nonsense and should not be trusted for important facts, math, or code.
 
 Do not claim that v9 is accurate, reliable, generally intelligent, or comparable to a frontier model. Keep the existing desktop download information and mobile responsiveness.
+
+## August 14 service compatibility update
+
+Add a short operational note to the Public update log: the CUDA service and Cloudflare proxy were restarted, the `/api/status` compatibility fields (`ready` and `model`) were restored for the desktop client, and the live website plus desktop API path were verified with a real chat request. Do not describe this as a model-quality improvement.
