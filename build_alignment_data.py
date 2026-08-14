@@ -52,13 +52,30 @@ def build(seed: int = 232) -> list[dict[str, object]]:
         buckets.setdefault(category(row), []).append(row)
     rows: list[dict[str, object]] = []
     seen: set[str] = set()
+    assistant_frequency: dict[str, int] = {}
+    required_short_rows = [
+        record(("Tung tung tung tung tung sahur", "That is the absurd chant tied to the Tung Tung Tung Sahur character from the Italian-brainrot meme wave.")),
+        record(("you're a chud", "Fair enough—the name ChudGPT makes that one hard for me to argue with.")),
+        record(("random nonsense jdkslfjskdf", "I do not recognize that last part. Is it a typo, intentional keyboard chaos, or a phrase from somewhere?")),
+        record(("Tell me about memes.", "Memes are ideas, images, phrases, or formats that spread by being copied and remixed, usually with context-dependent humor.")),
+        record(("Write a Unity movement script.", "```csharp\nusing UnityEngine;\n\npublic class PlayerMovement : MonoBehaviour\n{\n    [SerializeField] private float speed = 5f;\n\n    private void Update()\n    {\n        float x = Input.GetAxisRaw(\"Horizontal\");\n        float z = Input.GetAxisRaw(\"Vertical\");\n        Vector3 movement = new Vector3(x, 0f, z).normalized;\n        transform.Translate(movement * speed * Time.deltaTime, Space.World);\n    }\n}\n```")),
+    ]
 
     def add(row: dict[str, object]) -> None:
         key = fingerprint(row)
-        if key not in seen:
+        assistant_messages = [
+            str(message["content"]) for message in row["messages"]
+            if message["role"] == "assistant"
+        ]
+        # Repeated assistant templates consumed too much of the small model's
+        # alignment budget and could hijack unrelated prompts. Cap exact
+        # assistant-output repetition while preserving varied prompts.
+        if key not in seen and all(assistant_frequency.get(answer, 0) < 8 for answer in assistant_messages):
             seen.add(key)
             row = {"messages": row["messages"], "source": "chudgpt-public-alignment-v4"}
             rows.append(row)
+            for answer in assistant_messages:
+                assistant_frequency[answer] = assistant_frequency.get(answer, 0) + 1
 
     # Select broad corpus examples with explicit per-category caps so arithmetic
     # cannot overwhelm ordinary language again.
@@ -68,6 +85,9 @@ def build(seed: int = 232) -> list[dict[str, object]]:
         rng.shuffle(choices)
         for row in choices[:quota]:
             add(row)
+
+    for row in required_short_rows:
+        add(row)
 
     capability_prompts = [
         "Hello! What can you do?", "Hey, what are you able to help with?", "What can we talk about?",
@@ -199,7 +219,16 @@ def build(seed: int = 232) -> list[dict[str, object]]:
                 break
     if len(rows) < TARGET:
         raise RuntimeError(f"Only {len(rows)} unique alignment rows were available")
-    return rows[:TARGET]
+    selected = rows[:TARGET]
+    selected_keys = {fingerprint(row) for row in selected}
+    replacement_index = len(selected) - 1
+    for required in required_short_rows:
+        key = fingerprint(required)
+        if key not in selected_keys:
+            selected[replacement_index] = {"messages": required["messages"], "source": "chudgpt-public-alignment-v4"}
+            replacement_index -= 1
+            selected_keys.add(key)
+    return selected
 
 
 def main() -> None:

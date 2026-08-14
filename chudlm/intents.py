@@ -47,10 +47,19 @@ def classify_intent(text: str) -> IntentResult:
         return IntentResult("correction", 0.99, True)
     if has_strong_math_intent(text):
         return IntentResult("math", 0.98)
-    tokens = set(lowered.split())
+    tokens = set(re.findall(r"[a-z0-9+#]+", lowered))
+    # Product identity wins before slang classification: "chud" inside
+    # ChudGPT is part of the brand, not a standalone insult.
+    if any(phrase in lowered for phrase in (
+        "who are you", "what are you", "your name", "chudgpt",
+        "what model are you", "what kind of model", "what can you do",
+    )):
+        return IntentResult("identity", 0.97)
     if tokens & {"code", "python", "c#", "csharp", "javascript", "unity", "sql", "debug", "program", "script", "rust"}:
         return IntentResult("code", 0.92)
-    if tokens & {"meme", "rickroll", "brainrot", "amogus", "wojak", "doge", "pepe", "rizz", "aura", "skibidi", "gigachad", "chad"} or lowered == "67" or re.search(r"\b(?:this is peak|what does (?:cooked|peak|real) mean|bro is not|average discord mod|i['’]?m cooked|virgin (?:vs|versus) chad|let (?:him|her|them) cook)\b", text, re.I):
+    if "sahur" in tokens or re.search(r"\btung\s+tung\b|\bwhat does 67 mean\b", lowered):
+        return IntentResult("meme", 0.94)
+    if tokens & {"meme", "memes", "rickroll", "brainrot", "amogus", "wojak", "doge", "pepe", "rizz", "aura", "skibidi", "gigachad", "chad"} or lowered == "67" or re.search(r"\b(?:this is peak|what does (?:cooked|peak|real) mean|bro is not|average discord mod|i['’]?m cooked|virgin (?:vs|versus) chad|let (?:him|her|them) cook)\b", text, re.I):
         return IntentResult("meme", 0.90)
     if any(phrase in lowered for phrase in ("who are you", "what are you", "your name", "chudgpt", "what can you do")):
         return IntentResult("identity", 0.95)

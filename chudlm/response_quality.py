@@ -184,9 +184,23 @@ def assess_generated_reply(
     )
     if "```" in stripped and not requested_code:
         reasons.append("unrequested-code-block")
+    explicit_code_request = bool(re.search(
+        r"\b(?:write|make|create|generate|send|give|code)\b.{0,50}"
+        r"\b(?:code|script|program|monobehaviour|mono ?behaviour)\b|"
+        r"\b(?:unity|python|c#|csharp|javascript)\b.{0,40}\b(?:script|code|program)\b",
+        prompt,
+        re.I,
+    ))
+    has_code = "```" in stripped or bool(re.search(
+        r"\b(?:using\s+(?:System|UnityEngine)|class\s+\w+|def\s+\w+|function\s+\w+|const\s+\w+\s*=)",
+        stripped,
+    ))
+    if explicit_code_request and not has_code:
+        reasons.append("missing-requested-code")
     if classify_intent(prompt).name != "meme" and not has_strong_math_intent(prompt) and re.search(
         r"(?:\$?\d+(?:\.\d+)?\s*(?:[+*/=×÷]|-(?=\s*\d))\s*\$?\d+|"
-        r"\b(?:multiply|divide|calculate|equals)\b.{0,50}\d)",
+        r"\b(?:multiply|divide|calculate|equals)\b.{0,50}\d|"
+        r"\b(?:distance equals|speed times time|percent of|split equally into)\b)",
         stripped,
         re.I,
     ):
@@ -201,8 +215,18 @@ def assess_generated_reply(
         phrase in f" {' '.join(_words(prompt))} "
         for phrase in (" i feel ", " i am ", " i'm ", " talk ", " chat ", " hello ", " hi ")
     )
-    if prompt_words and not social_prompt and not (prompt_words & reply_words):
+    shared_subject = bool(prompt_words & reply_words)
+    if classify_intent(prompt).name == "meme":
+        # Meme names are often numbers or very short slang (67, F, POV), so
+        # the normal four-character content-word filter is too destructive.
+        prompt_anchors = set(_words(prompt)) - STOP_WORDS - {"mean", "meme", "memes"}
+        reply_anchors = set(_words(stripped))
+        shared_subject = shared_subject or bool(prompt_anchors & reply_anchors)
+    if prompt_words and not social_prompt and not shared_subject:
         reasons.append("no-shared-subject")
+    topic_starter = re.search(r"\bone useful way into ([a-z][a-z -]{1,40}) is\b", lowered)
+    if topic_starter and topic_starter.group(1).strip() not in prompt.lower():
+        reasons.append("unrelated-topic-starter")
     unrelated_technical = any(word in reply_words for word in ("javascript", "rigidbody", "fixedupdate"))
     requested_technical = any(word in _words(prompt) for word in ("code", "javascript", "unity", "physics", "python", "c#", "csharp", "script", "program"))
     if unrelated_technical and not requested_technical:

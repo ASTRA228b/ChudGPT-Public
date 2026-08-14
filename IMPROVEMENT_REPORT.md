@@ -1,5 +1,50 @@
 # ChudGPT-Public v8 improvement report — 2026-08-14
 
+## Short-prompt relevance update
+
+### Root causes
+
+- When every neural and retrieved candidate failed validation, serving still selected the least-bad rejected candidate. This directly exposed unrelated arithmetic, books, recipes, and other topic leakage.
+- Public's topic-dialogue generator produced 990 copies of the `One useful way into ...` starter in the main corpus and 700 in alignment data.
+- Alignment data allowed a single assistant answer to repeat up to 38 times, giving generic response shapes too much influence.
+- Identity routing recognized `What are you?` but not the equally direct `What is ChudGPT?` form.
+- Meme names made of numbers or very short words were discarded by the normal content-word relevance filter.
+- Code requests could remain technically valid candidates even when the candidate contained no code.
+
+### Changes
+
+- Rejected candidates can no longer reach the user. Candidate selection is repeated after the neural repair pass, and an intent-shaped concise uncertainty response is used only when every candidate remains invalid.
+- Product identity classification now runs before slang classification, and `ChudGPT` is treated as one product name rather than as the standalone word `chud`.
+- Added general checks for missing requested code, unrequested math templates, unrelated topic starters, and short meme-name anchors.
+- Added compact training conversations for slang, unknown text, meme overview, and Unity movement code.
+- Rebuilt both runtime corpora. Main corpus remains **21,900 unique conversations**; alignment remains **6,000 conversations**.
+
+### Dataset audit, before → after
+
+| Dataset | Max identical answer | `One useful way into...` rows | Unique assistant answers |
+|---|---:|---:|---:|
+| Main Public corpus | 48 → 32 | 990 → 0 | 16,839 → 16,902 |
+| Alignment corpus | 38 → 8 | 700 → 0 | 3,925 → 4,495 |
+
+Alignment duplicate instances fell from **2,990 to 2,226** (764 removed). The main corpus gained varied multi-turn answers while preserving its exact 21,900-conversation size.
+
+### Verification
+
+- Automated tests: **16/16 passed** (previously 13 tests).
+- Full unchanged held-out benchmark: **182/305**, up from **168/305**.
+- Preserved category scores: arithmetic **25/25**, word problems **25/25**, memory **20/20**, adversarial **20/20**.
+- Meme score: **20/25**.
+
+Observed corrections:
+
+- `What is ChudGPT?` previously returned the second half of an insult dialogue; it now gives Public's direct identity.
+- `you're a chud` previously wandered into books or corrupted math; it now gives a short, relevant playful response.
+- `Tung tung tung tung tung sahur` previously produced arithmetic contamination; it now identifies the absurdist meme chant.
+- `write a Unity movement script` previously returned debugging advice; it now returns a complete C# `MonoBehaviour`.
+- Unknown keyboard text now gets a concise clarification instead of an unrelated memorized fact.
+
+Remaining limitations: the 21M checkpoint is still weak on brand-new world knowledge, complex code, reference tracking, and some ordinary phrasings. Runtime relevance improved substantially, but this update does not turn the small checkpoint into a frontier model.
+
 ## Identity wording hotfix
 
 Public now recognizes plain and conversational identity questions such as `What are you?`, `What are you fully?`, `Who are you really?`, `Tell me about yourself`, and `What kind of model are you?`. These forms return one consistent description of ChudGPT Public's architecture, parameter count, context, runtime helpers, limitations, and relationship to the other ChudGPT profiles instead of falling through to an unreliable neural generation.

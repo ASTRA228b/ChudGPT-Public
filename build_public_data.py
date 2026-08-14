@@ -126,6 +126,7 @@ MEMES = [
     ("Aura", "slang and jokes about gaining or losing imaginary coolness points"),
     ("Queen Never Cry", "a redraw and reaction format centered on an exaggeratedly stoic baby from a webcomic"),
     ("Italian Brainrot", "surreal AI-generated creatures with pseudo-Italian names and intentionally nonsensical narration"),
+    ("Tung Tung Tung Sahur", "an Italian-brainrot-style wooden character and chant associated with waking people for the pre-dawn Ramadan meal; online uses are usually intentionally absurd"),
     ("Tralalero Tralala", "a shark wearing sneakers associated with the 2025 Italian-brainrot wave"),
     ("Still Water", "a brainrot-style phrase used in exaggerated danger edits about supposedly hazardous motionless water"),
     ("Low Taper Fade", "a phrase and remix format kept alive through repeated jokes about the meme's longevity"),
@@ -287,7 +288,7 @@ def build(seed: int = SEED, target: int = TARGET_CONVERSATIONS) -> list[dict[str
         add_unique(rows, seen, conversation((prompt, answer)))
 
     # Everyday topic changes and brief replies teach response type and grounding.
-    for i in range(3_000):
+    for i in range(1_200):
         topic = rng.choice(TOPICS)
         opener = rng.choice([f"Let's talk about {topic}.", f"I have been thinking about {topic}.", f"What is interesting about {topic}?", f"Switch topics: {topic}."])
         response = rng.choice([
@@ -296,7 +297,13 @@ def build(seed: int = SEED, target: int = TARGET_CONVERSATIONS) -> list[dict[str
             f"I am with you on the new topic: {topic}. Tell me what brought it to mind.",
         ])
         follow = rng.choice(["The creative side.", "Something surprising.", "Just casually.", "Tell me one thing you know."])
-        follow_answer = f"One useful way into {topic} is to pick a specific example and notice what makes it memorable, useful, or enjoyable. We can build from there."
+        follow_answer = rng.choice([
+            f"A good place to start with {topic} is one concrete example. Which example comes to mind for you?",
+            f"The surprising part of {topic} often depends on the people, place, or specific case involved.",
+            f"We can keep {topic} casual. Tell me one opinion or experience and I will respond to that.",
+            f"For {topic}, I would rather discuss a real detail than give you a generic introduction.",
+            f"There are several directions within {topic}; name one detail and we can follow it naturally.",
+        ])
         add_unique(rows, seen, conversation((opener, response), (follow, follow_answer)))
 
     for i in range(2_000):
@@ -419,6 +426,16 @@ def build(seed: int = SEED, target: int = TARGET_CONVERSATIONS) -> list[dict[str
     # Dense, contextual examples teach slang interpretation, negation, and
     # short follow-ups together instead of spending separate rows on filler.
     contextual_meme_dialogues = [
+        (("Tung tung tung tung tung sahur", "That is the absurd chant tied to the Tung Tung Tung Sahur character from the Italian-brainrot meme wave."),
+         ("Is it math?", "No. It is meme slang and a repeated chant, not a calculation.")),
+        (("you're a chud", "Fair enough—the name ChudGPT makes that one hard for me to argue with."),
+         ("Was that an insult?", "It can be used as one online, but here I took it as playful because of my name.")),
+        (("random nonsense jdkslfjskdf", "I do not recognize that last part. Is it a typo, intentional keyboard chaos, or a phrase from somewhere?"),
+         ("keyboard chaos", "Got it. Then it succeeded magnificently as keyboard chaos.")),
+        (("Tell me about memes.", "Memes are ideas, images, phrases, or formats that spread by being copied and remixed, usually with context-dependent humor."),
+         ("Do they stay the same?", "Usually not. People alter the caption, format, or meaning as a meme moves between communities.")),
+        (("Write a Unity movement script.", "```csharp\nusing UnityEngine;\n\npublic class PlayerMovement : MonoBehaviour\n{\n    [SerializeField] private float speed = 5f;\n    private void Update()\n    {\n        float x = Input.GetAxisRaw(\"Horizontal\");\n        float z = Input.GetAxisRaw(\"Vertical\");\n        Vector3 movement = new Vector3(x, 0f, z).normalized;\n        transform.Translate(movement * speed * Time.deltaTime, Space.World);\n    }\n}\n```"),
+         ("What does it do?", "It reads keyboard input each frame, builds a normalized direction, and moves the GameObject at a frame-rate-independent speed.")),
         (("I forgot the assignment and it is due in five minutes. Am I cooked?", "In that context, 'cooked' means you are in serious trouble or badly unprepared. Start with the smallest part you can submit."),
          ("So it is not about food?", "Right. Here it is slang, not literal cooking.")),
         (("My friend recovered from a terrible play and won. That was peak.", "You are praising the comeback as excellent or top-tier. 'Peak' is strong approval here."),

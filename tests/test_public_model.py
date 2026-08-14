@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections import Counter
 from pathlib import Path
 
 import torch
@@ -139,3 +140,42 @@ def test_efficiency_suite_covers_requested_held_out_behaviors() -> None:
     assert categories == {"math_false_positive", "math_true_positive", "negation", "short_context", "meme"}
     concise = next(case for case in EFFICIENCY_CASES if case.category == "meme")
     assert quality_per_token(concise, "It jokes that the accusation keeps looking true because of their behavior.") > quality_per_token(concise, "word " * 160)
+
+
+def test_adversarial_short_prompt_intents_do_not_cross_topics() -> None:
+    expected = {
+        "What is ChudGPT?": "identity",
+        "you're a chud": "conversation",
+        "Tung tung tung tung tung sahur": "meme",
+        "hello": "conversation",
+        "67": "meme",
+        "what does 67 mean?": "meme",
+        "2 + 2": "math",
+        "write a Unity movement script": "code",
+        "tell me about memes": "meme",
+        "random nonsense jdkslfjskdf": "conversation",
+    }
+    for prompt, intent in expected.items():
+        assert classify_intent(prompt).name == intent, prompt
+
+
+def test_quality_gate_rejects_wrong_topic_math_templates_and_missing_code() -> None:
+    bad_pairs = (
+        ("you're a chud", "One useful way into books is to pick a specific example and notice it."),
+        ("Tung tung tung tung tung sahur", "Distance equals speed times time: 75 × 1.5 = 112.5 miles."),
+        ("random nonsense jdkslfjskdf", "Here is a recipe for vanilla cake."),
+        ("write a Unity movement script", "Check the Inspector and read the stack trace."),
+    )
+    for prompt, reply in bad_pairs:
+        valid, _ = assess_generated_reply(prompt, reply)
+        assert not valid, (prompt, reply)
+
+
+def test_alignment_caps_repeated_answers_and_contains_short_prompt_repairs() -> None:
+    records = [json.loads(line) for line in (PUBLIC / "data" / "alignment_conversations.jsonl").read_text(encoding="utf-8").splitlines()]
+    answers = [message["content"] for row in records for message in row["messages"] if message["role"] == "assistant"]
+    counts = Counter(answers)
+    assert max(counts.values()) <= 8
+    prompts = "\n".join(message["content"] for row in records for message in row["messages"] if message["role"] == "user").lower()
+    for phrase in ("tung tung tung tung tung sahur", "you're a chud", "random nonsense jdkslfjskdf", "tell me about memes"):
+        assert phrase in prompts

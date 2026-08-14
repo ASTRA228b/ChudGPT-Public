@@ -93,6 +93,7 @@ class PublicModelService:
             family_reply = self._model_family_answer(clean_message)
             capability_reply = self._capability_answer(clean_message)
             self_reply = self._self_answer(clean_message)
+            brand_reply = self._brand_reply(clean_message)
             if arithmetic_reply is not None:
                 reply = arithmetic_reply
             elif word_problem_reply is not None:
@@ -113,6 +114,8 @@ class PublicModelService:
                 reply = capability_reply
             elif self_reply is not None:
                 reply = self_reply
+            elif brand_reply is not None:
+                reply = brand_reply
             elif reference_reply is not None:
                 reply = reference_reply
             else:
@@ -203,7 +206,13 @@ class PublicModelService:
                     repaired = self.tokenizer.decode(output, skip_special_tokens=True).strip()
                     if repaired:
                         candidates.append((score_generated_reply(scoring_prompt, repaired), repaired))
-                reply = max(candidates, default=(-999.0, ""), key=lambda item: item[0])[1]
+                # Re-evaluate after repair. Previously max(candidates) selected
+                # the least-bad rejected answer when every option was invalid.
+                # That leaked unrelated math and canned topic starters.
+                viable = [item for item in candidates if item[0] > -50.0]
+                reply = max(viable, default=(-999.0, ""), key=lambda item: item[0])[1]
+                if not reply:
+                    reply = self._natural_uncertainty(clean_message, current_intent.name)
             if not reply:
                 # Extremely defensive: a no-EOS generation should normally
                 # make this unreachable, but never restore the removed canned
@@ -225,6 +234,26 @@ class PublicModelService:
             "code me some code", "give me some code", "send me some code",
             "write me some code", "make me some code", "code something",
         }
+
+    @staticmethod
+    def _natural_uncertainty(message: str, intent_name: str) -> str:
+        """Return a concise response shaped by the prompt after all candidates fail."""
+        cleaned = " ".join(message.split()).strip(" .!?")
+        if intent_name == "meme":
+            return (
+                "That sounds like meme or absurdist slang, but I am not confident "
+                "about the exact reference. What context did you see it in?"
+            )
+        if len(cleaned) <= 48:
+            return f"I am not sure what {cleaned!r} refers to. Is it a phrase, a typo, or intentional nonsense?"
+        return "I am not confident I understood that message. Give me one clue about what you meant and I will try again."
+
+    @staticmethod
+    def _brand_reply(message: str) -> str | None:
+        """Handle standalone slang without confusing it with the product name."""
+        if re.search(r"\b(?:you(?:'re| are)|u r)\s+(?:a\s+)?chud\b", message, re.I):
+            return "Fair enough—the name ChudGPT makes that one hard for me to argue with."
+        return None
 
     @staticmethod
     def _calculate_arithmetic(message: str) -> str | None:
@@ -449,6 +478,7 @@ class PublicModelService:
             )
         asks_full_identity = bool(re.search(
             r"\b(?:what|who) are you(?:\s+(?:fully|exactly|really))?\b|"
+            r"\bwhat is chudgpt\b|"
             r"\bwhat (?:kind|type) of (?:ai|model) are you\b|"
             r"\b(?:explain|describe|tell me about) (?:yourself|what you are)\b|"
             r"\bwhat is chudgpt public\b|\bhow do you work\b|\byour architecture\b",
