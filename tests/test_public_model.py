@@ -5,7 +5,7 @@ from collections import Counter
 from pathlib import Path
 
 from chudlm.prompts import DEFAULT_SYSTEM_PROMPT, build_context_token_ids, format_conversation
-from public_api_server import PublicModelService
+from public_api_server import PublicModelService, selected_checkpoint
 from public_meme_facts import find_meme_fact
 from public_math import exact_integer_arithmetic
 from short_prompt_benchmark import CASES
@@ -92,6 +92,13 @@ def test_heldout_cases_are_not_in_training_data() -> None:
 
 def test_public_model_service_has_raw_generation_method() -> None:
     assert hasattr(PublicModelService, "_generate_raw")
+
+
+def test_serving_config_selects_v8_and_keeps_newer_archives() -> None:
+    config = json.loads(Path("serving_config.json").read_text(encoding="utf-8"))
+    assert selected_checkpoint() == "checkpoints/public_v8/best.pt"
+    assert config["archived_checkpoints"]["v10_balanced"] == "checkpoints/public_v10_balanced/best.pt"
+    assert config["archived_checkpoints"]["v18"] == "checkpoints/public_v18_sft/best.pt"
 
 
 def test_identity_assistance_does_not_route_normal_topics() -> None:

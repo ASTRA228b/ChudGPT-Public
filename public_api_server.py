@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import threading
@@ -28,6 +29,24 @@ from public_math import exact_integer_arithmetic
 ROOT = Path(__file__).resolve().parent
 MAX_SESSIONS = 1_000
 MAX_MESSAGE_CHARS = 8_000
+SERVING_CONFIG_PATH = ROOT / "serving_config.json"
+
+
+def selected_checkpoint() -> str:
+    """Load the selected relative checkpoint without moving archived models."""
+    try:
+        config = json.loads(SERVING_CONFIG_PATH.read_text(encoding="utf-8"))
+        checkpoint = config["selected_checkpoint"]
+    except (OSError, KeyError, TypeError, json.JSONDecodeError) as error:
+        raise RuntimeError(f"Invalid serving configuration: {SERVING_CONFIG_PATH}") from error
+    if not isinstance(checkpoint, str) or not checkpoint.strip():
+        raise RuntimeError("selected_checkpoint must be a non-empty string")
+    resolved = (ROOT / checkpoint).resolve()
+    if ROOT.resolve() not in resolved.parents or resolved.suffix != ".pt":
+        raise RuntimeError("selected_checkpoint must be a .pt file inside the project")
+    if not resolved.is_file():
+        raise RuntimeError(f"Selected checkpoint does not exist: {checkpoint}")
+    return checkpoint
 
 
 class ChatRequest(BaseModel):
@@ -359,14 +378,19 @@ def create_app(checkpoint: Path, device: str, assistance_enabled: bool = True,
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Serve raw ChudGPT-Public inference")
-    parser.add_argument("--checkpoint", default="checkpoints/public_v10_balanced/best.pt")
+    parser.add_argument(
+        "--checkpoint",
+        default=None,
+        help="Checkpoint override. By default, use serving_config.json (or CHUDGPT_CHECKPOINT).",
+    )
     parser.add_argument("--tokenizer", default="artifacts/tokenizer.json")
     parser.add_argument("--disable-assistance", action="store_true")
     parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
     parser.add_argument("--host", default=os.getenv("CHUDGPT_HOST", "127.0.0.1"))
     parser.add_argument("--port", type=int, default=int(os.getenv("CHUDGPT_PORT", "8010")))
     args = parser.parse_args()
-    app = create_app(ROOT / args.checkpoint, args.device, assistance_enabled=not args.disable_assistance,
+    checkpoint = args.checkpoint or os.getenv("CHUDGPT_CHECKPOINT") or selected_checkpoint()
+    app = create_app(ROOT / checkpoint, args.device, assistance_enabled=not args.disable_assistance,
                      tokenizer_path=ROOT / args.tokenizer)
     uvicorn.run(app, host=args.host, port=args.port)
 

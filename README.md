@@ -74,7 +74,13 @@ cd /d C:\Users\admin\OneDrive\Documents\ChudGPT\ChudGPT-Public
 start_training.cmd
 ```
 
-That runs data preparation, base pretraining, response-only fine-tuning, and evaluation. Timestamped logs are stored in `reports`. The currently selected API checkpoint is `checkpoints/public_v10_balanced/best.pt` (800 response-only tuning steps from the healthier v8 base). Public v10 uses a balanced 12,000-conversation tuning set, neural multi-candidate selection, and a small auditable identity/project-facts layer. Normal conversation remains neural. Strict unseen tests are still weak, so expect occasional malformed or unrelated text.
+That runs data preparation, base pretraining, response-only fine-tuning, and evaluation. Timestamped logs are stored in `reports`. The Public API checkpoint is selected in `serving_config.json`; it is currently downgraded to `checkpoints/public_v8/best.pt`. Newer checkpoints remain archived in their existing directories and are listed in the same configuration file for easy switching. Runtime identity, meme, and exact-arithmetic handling remain unchanged.
+
+To switch versions, stop the Public server, edit only `selected_checkpoint` in `serving_config.json`, and restart it. You can also perform a one-run override without editing the file:
+
+```bat
+python public_api_server.py --checkpoint checkpoints/public_v10_balanced/best.pt --device cuda
+```
 
 To reproduce the two Public-only improvement stages after the original chat checkpoint:
 
