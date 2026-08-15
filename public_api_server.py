@@ -23,6 +23,7 @@ from chudlm.model import ModelConfig, TransformerLM
 from chudlm.prompts import DEFAULT_SYSTEM_PROMPT, build_context_token_ids
 from project_facts import FAMILY_FACTS, FAMILY_SUMMARY, PUBLIC_IDENTITY
 from public_meme_facts import find_meme_fact
+from public_math import exact_integer_arithmetic
 
 ROOT = Path(__file__).resolve().parent
 MAX_SESSIONS = 1_000
@@ -270,10 +271,15 @@ class PublicModelService:
             # generations remain in view. Keep the four most recent exchanges;
             # this is context selection only and never changes model output.
             generation_history = history[-8:]
-            raw_reply = self._generate_raw(generation_history, max_new_tokens, temperature)
-            reply, self.last_assistance_reason = self._assist_identity(clean_message, raw_reply)
-            if self.last_assistance_reason is None:
-                reply, self.last_assistance_reason = self._assist_meme(clean_message, reply)
+            arithmetic_reply = exact_integer_arithmetic(clean_message)
+            if arithmetic_reply is not None:
+                reply = arithmetic_reply
+                self.last_assistance_reason = "exact-integer-arithmetic"
+            else:
+                raw_reply = self._generate_raw(generation_history, max_new_tokens, temperature)
+                reply, self.last_assistance_reason = self._assist_identity(clean_message, raw_reply)
+                if self.last_assistance_reason is None:
+                    reply, self.last_assistance_reason = self._assist_meme(clean_message, reply)
             history.append({"role": "assistant", "content": reply})
             self.sessions[active_session] = history
             self.sessions.move_to_end(active_session)

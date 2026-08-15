@@ -7,6 +7,7 @@ from pathlib import Path
 from chudlm.prompts import DEFAULT_SYSTEM_PROMPT, build_context_token_ids, format_conversation
 from public_api_server import PublicModelService
 from public_meme_facts import find_meme_fact
+from public_math import exact_integer_arithmetic
 from short_prompt_benchmark import CASES
 
 
@@ -191,6 +192,35 @@ def test_candidate_ranking_rewards_requested_output_type() -> None:
     result = "The answer is 43."
     unrelated = "Saturn is known for its rings."
     assert PublicModelService._candidate_score("What is 17 plus 26?", result) > PublicModelService._candidate_score("What is 17 plus 26?", unrelated)
+
+
+def test_exact_integer_arithmetic_handles_large_values() -> None:
+    assert exact_integer_arithmetic(
+        "9843589485394583945834 + 948923492347932472394723947923742"
+    ) == "9843589485394583945834 + 948923492347932472394723947923742 = 948923492357776061880118531869576"
+    assert exact_integer_arithmetic("Compute 999999999999999999999 - 1") == (
+        "999999999999999999999 - 1 = 999999999999999999998"
+    )
+    assert exact_integer_arithmetic("12345678901234567890 times 9876543210") == (
+        "12345678901234567890 * 9876543210 = 121932631124828532111263526900"
+    )
+
+
+def test_exact_integer_division_never_uses_float_precision() -> None:
+    assert exact_integer_arithmetic("100000000000000000000 / 4") == (
+        "100000000000000000000 / 4 = 25000000000000000000"
+    )
+    assert exact_integer_arithmetic("7 divided by 2") == "7 / 2 = 3.5"
+    assert exact_integer_arithmetic("10 / 3") == "10 / 3 = 10/3"
+    assert exact_integer_arithmetic("5 / 0") == "Division by zero is undefined."
+
+
+def test_exact_math_gate_does_not_capture_non_math_prompts() -> None:
+    non_math = (
+        "67", "hello", "What does 67 mean?", "Python raises ZeroDivisionError for 5/0—why?",
+        "The 2024-2025 season was wild", "write code that adds two numbers",
+    )
+    assert all(exact_integer_arithmetic(prompt) is None for prompt in non_math)
 
 
 def test_v10_dataset_is_balanced_unique_and_large() -> None:
