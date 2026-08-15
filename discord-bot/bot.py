@@ -244,6 +244,13 @@ def main() -> None:
 
     @client.event
     async def on_ready() -> None:
+        nonlocal developer_user_id
+        if developer_user_id is None:
+            try:
+                application = await client.application_info()
+                developer_user_id = application.owner.id
+            except discord.DiscordException as error:
+                LOGGER.warning("Could not resolve Discord application owner: %s", error)
         state["discord_ready"] = True
         state["bot_user"] = str(client.user)
         state["guild_count"] = len(client.guilds)

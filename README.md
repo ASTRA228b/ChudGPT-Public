@@ -82,7 +82,7 @@ start_training.cmd
 
 That runs data preparation, base pretraining, response-only fine-tuning, and evaluation. Timestamped logs are stored in `reports`. The Public API checkpoint is selected in `serving_config.json`; V20 currently uses `checkpoints/public_v20_final/best.pt`. V8 through V18 and the rejected broad V20 candidate remain archived and selectable.
 
-The official Discord bot sends a protected Discord-only system instruction plus scoped server, channel, and speaker metadata. Set `CHUDGPT_DEVELOPER_USER_ID` to Astra's numeric Discord user ID to identify the real developer account securely. Its conversations are logged as monthly JSONL files under `D:\ChudGPT-Discord-Logs` by default; set `CHUDGPT_DISCORD_LOG_DIR` to change that location. Tell server members if their bot messages are being logged.
+The official Discord bot sends a protected Discord-only system instruction plus scoped server, channel, and speaker metadata. It securely treats the Discord application owner as Astra/the developer; `CHUDGPT_DEVELOPER_USER_ID` can explicitly override that account. Its conversations are logged as monthly JSONL files under `D:\ChudGPT-Discord-Logs` by default; set `CHUDGPT_DISCORD_LOG_DIR` to change that location. Tell server members if their bot messages are being logged.
 
 To switch versions, stop the Public server, edit only `selected_checkpoint` in `serving_config.json`, and restart it. You can also perform a one-run override without editing the file:
 
