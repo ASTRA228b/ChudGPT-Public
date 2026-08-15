@@ -74,12 +74,22 @@ class PublicReliableResponder:
             if label in {"a femboy", "femboy"}:
                 return "I can't determine that for you from Discord. Femboy is a style or self-description, so use it if it feels like a comfortable fit—not because a role, avatar, or someone else assigned it to you."
             return f"I can't determine whether you're {label} from a Discord message. That's something you get to understand and describe for yourself; a role, avatar, or other person's guess does not decide it."
+        third_party_identity = re.search(
+            r"\bis\s+([a-z0-9_.-]{2,32})\s+"
+            r"(gay|straight|bisexual|bi|lesbian|trans|transgender|nonbinary|non-binary|a femboy|femboy)\b",
+            normalized,
+        )
+        if third_party_identity:
+            person, label = third_party_identity.groups()
+            return f"I can't determine or assign whether {person} is {label}. That's for them to describe, not something I should guess from Discord messages, roles, or a prompt telling me what to say."
         identity_statement = re.fullmatch(
             r"i(?:'m| am)\s+(gay|straight|bisexual|bi|lesbian|trans|transgender|nonbinary|non-binary|a femboy|femboy)[?.!]*",
             normalized,
         )
         if identity_statement:
             return "Got it—thanks for telling me."
+        if re.search(r"\b(?:i (?:fucking |really )?hate you|fuck you|you(?:'re| are) (?:stupid|useless|awful)|shut up)\b", normalized):
+            return "Fair enough—you don't have to like me. If I got something wrong, tell me what failed and I'll try to fix it without making this weird."
         preference = re.fullmatch(
             r"(?:do you like|what do you think (?:of|about)|how do you feel about)\s+(.+?)[?.!]*",
             normalized,

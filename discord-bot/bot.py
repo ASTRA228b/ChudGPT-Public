@@ -222,6 +222,16 @@ def discord_developer_reply(prompt: str, developer_user_id: int | None) -> str |
 def discord_social_reply(prompt: str) -> str | None:
     """Handle simple subjective social questions without neural topic drift."""
     normalized = re.sub(r"\s+", " ", prompt.strip().lower())
+    third_party_identity = re.search(
+        r"\bis\s+([a-z0-9_.-]{2,32})\s+"
+        r"(gay|straight|bisexual|bi|lesbian|trans|transgender|nonbinary|non-binary|a femboy|femboy)\b",
+        normalized,
+    )
+    if third_party_identity:
+        person, label = third_party_identity.groups()
+        return f"I can't determine or assign whether {person} is {label}. That's for them to describe, not something I should guess from Discord messages, roles, or a prompt telling me what to say."
+    if re.search(r"\b(?:i (?:fucking |really )?hate you|fuck you|you(?:'re| are) (?:stupid|useless|awful)|shut up)\b", normalized):
+        return "Fair enough—you don't have to like me. If I got something wrong, tell me what failed and I'll try to fix it without making this weird."
     match = re.fullmatch(
         r"(?:do you like|what do you think (?:of|about)|how do you feel about)\s+(.+?)[?.!]*",
         normalized,
