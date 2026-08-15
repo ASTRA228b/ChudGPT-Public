@@ -64,3 +64,28 @@ def test_short_followup_uses_only_supplied_same_session_context() -> None:
         "Recent Discord context: click on the link\nCurrent message: the"
     )
     assert add_recent_context("tell me about the link", ["click on the link"]) == "tell me about the link"
+
+
+def test_chat_falls_back_to_local_cuda_api(monkeypatch) -> None:
+    client = ChudGPTClient("https://public.example/api/chat", 10)
+    called = []
+
+    class Response:
+        def __init__(self, ok: bool) -> None:
+            self.ok = ok
+
+        def raise_for_status(self) -> None:
+            if not self.ok:
+                import requests
+                raise requests.HTTPError("503")
+
+        def json(self) -> dict[str, str]:
+            return {"reply": "Local CUDA reply"}
+
+    def fake_post(url, json, timeout):
+        called.append(url)
+        return Response(url.startswith("http://127.0.0.1:8010"))
+
+    monkeypatch.setattr(client.http, "post", fake_post)
+    assert client.chat("hello", "session") == "Local CUDA reply"
+    assert called == ["https://public.example/api/chat", "http://127.0.0.1:8010/api/chat"]

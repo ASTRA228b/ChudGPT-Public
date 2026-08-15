@@ -32,9 +32,7 @@ DISCORD_SYSTEM_PROMPT = (
     "mentions, and bot commands. Understand Discord servers, channels, threads, roles, "
     "permissions, moderation, embeds, webhooks, discord.py, discord.js, memes, games, "
     "technology, coding, and general questions. Keep replies suitable for Discord and usually "
-    "concise unless detail is requested. Preserve real <@USER_ID> mentions when the user asks "
-    "you to address, show, call, or say something to another member. Never replace a social "
-    "message with unrelated code or arithmetic. Never claim you performed an action the bot cannot "
+    "concise unless detail is requested. Never claim you performed an action the bot cannot "
     "perform. This Discord context applies only while this instruction is active."
 )
 
@@ -69,13 +67,12 @@ class Settings:
 class ChudGPTClient:
     def __init__(self, chat_url: str, timeout: float) -> None:
         self.chat_url = chat_url
+        self.local_chat_url = "http://127.0.0.1:8010/api/chat"
         self.timeout = timeout
         self.http = requests.Session()
 
     def chat(self, message: str, session_id: str, discord_context: str | None = None) -> str:
-        response = self.http.post(
-            self.chat_url,
-            json={
+        payload = {
                 "message": message,
                 "session_id": session_id,
                 "max_new_tokens": 220,
@@ -83,10 +80,23 @@ class ChudGPTClient:
                 "context_mode": "discord",
                 "system_instruction": DISCORD_SYSTEM_PROMPT,
                 "discord_context": discord_context,
-            },
-            timeout=self.timeout,
-        )
-        response.raise_for_status()
+            }
+        response = None
+        errors: list[Exception] = []
+        urls = [self.chat_url]
+        if self.local_chat_url != self.chat_url:
+            urls.append(self.local_chat_url)
+        for url in urls:
+            try:
+                response = self.http.post(url, json=payload, timeout=self.timeout)
+                response.raise_for_status()
+                break
+            except requests.RequestException as error:
+                errors.append(error)
+                LOGGER.warning("Chat endpoint failed (%s); trying next endpoint", url)
+                response = None
+        if response is None:
+            raise errors[-1] if errors else RuntimeError("No ChudGPT chat endpoint is available.")
         payload: Any = response.json()
         reply = payload.get("reply") if isinstance(payload, dict) else None
         if not isinstance(reply, str) or not reply.strip():
@@ -94,13 +104,23 @@ class ChudGPTClient:
         return reply.strip()
 
     def clear(self, session_id: str) -> None:
-        clear_url = f"{self.chat_url.rsplit('/', 1)[0]}/clear"
-        response = self.http.post(
-            clear_url,
-            json={"session_id": session_id},
-            timeout=self.timeout,
-        )
-        response.raise_for_status()
+        response = None
+        errors: list[Exception] = []
+        chat_urls = [self.chat_url]
+        if self.local_chat_url != self.chat_url:
+            chat_urls.append(self.local_chat_url)
+        for chat_url in chat_urls:
+            clear_url = f"{chat_url.rsplit('/', 1)[0]}/clear"
+            try:
+                response = self.http.post(clear_url, json={"session_id": session_id}, timeout=self.timeout)
+                response.raise_for_status()
+                break
+            except requests.RequestException as error:
+                errors.append(error)
+                LOGGER.warning("Clear endpoint failed (%s); trying next endpoint", clear_url)
+                response = None
+        if response is None:
+            raise errors[-1] if errors else RuntimeError("No ChudGPT clear endpoint is available.")
         payload: Any = response.json()
         if not isinstance(payload, dict) or payload.get("cleared") is not True:
             raise RuntimeError("ChudGPT-Public did not confirm that the conversation was cleared.")
