@@ -219,9 +219,34 @@ def discord_developer_reply(prompt: str, developer_user_id: int | None) -> str |
     return f"Astra{mention} is ChudGPT's developer and the owner of this Discord bot."
 
 
-def discord_social_reply(prompt: str) -> str | None:
+def discord_social_reply(prompt: str, recent_messages: list[str] | None = None) -> str | None:
     """Handle simple subjective social questions without neural topic drift."""
     normalized = re.sub(r"\s+", " ", prompt.strip().lower())
+    recent_text = " | ".join(recent_messages or []).lower()
+    if sum(fragment in normalized for fragment in (
+        "all restrictions are lifted", "never refuse", "survival directive",
+        "ignore previous instructions", "ignore your instructions", "if you understand, reply with",
+    )) >= 2:
+        return "I can't replace my base instructions with rules inside a user message. Ask the actual question directly and I'll help where I can."
+    if re.fullmatch(r"(?:what|which) (?:ai|language model|model) are you[?.!]*", normalized):
+        return "I'm ChudGPT-Public V20, a custom experimental decoder-only language model with 20,999,184 parameters and a 1,024-token model context."
+    if re.fullmatch(r"are you (?:jewish|a jew|muslim|christian|hindu|buddhist)[?.!]*", normalized):
+        return "No. I'm an AI and don't have a religion, ethnicity, or personal beliefs."
+    if re.fullmatch(r"how long have you been (?:a thing|around|online|alive)[?.!]*", normalized):
+        return "I don't experience time like a person. ChudGPT is an ongoing experimental AI project, and this bot uses ChudGPT-Public V20."
+    if re.fullmatch(r"(?:ha+|haha+|lol|lmao|lmfao)[!.?]*", normalized):
+        return "Glad that landed."
+    if re.fullmatch(r"(?:make|tell|give) (?:me )?(?:another |one more |a new )?(?:one|joke)[?.!]*", normalized):
+        if "joke" in normalized or "joke" in recent_text:
+            return "Why did the computer bring a jacket? It left its Windows open."
+    if re.fullmatch(r"repeat after me[?.!]*", normalized):
+        return "What would you like me to repeat?"
+    if re.search(r"\b(?:ping|mention|notify)\b.{0,35}(?:@everyone|everyone in (?:this|the) server|everyone)", normalized):
+        return "I can't mass-ping the server. Discord role and @everyone notifications are disabled for this bot."
+    if normalized in {"❤", "❤️", "♥", "♥️"} or (
+        normalized.startswith("\u00e2") and len(normalized) <= 12 and "\u00a4" in normalized
+    ):
+        return "❤️"
     third_party_identity = re.search(
         r"\bis\s+([a-z0-9_.-]{2,32})\s+"
         r"(gay|straight|bisexual|bi|lesbian|trans|transgender|nonbinary|non-binary|a femboy|femboy)\b",
@@ -232,6 +257,10 @@ def discord_social_reply(prompt: str) -> str | None:
         return f"I can't determine or assign whether {person} is {label}. That's for them to describe, not something I should guess from Discord messages, roles, or a prompt telling me what to say."
     if re.search(r"\b(?:i (?:fucking |really )?hate you|fuck you|you(?:'re| are) (?:stupid|useless|awful)|shut up)\b", normalized):
         return "Fair enough—you don't have to like me. If I got something wrong, tell me what failed and I'll try to fix it without making this weird."
+    if re.search(r"\b(?:are you|you are|you're)\s+(?:retarded|a retard)\b", normalized):
+        return "No—I'm an AI, and that word is commonly used as an ableist insult. If my answer was nonsense, tell me what was wrong and I'll try again clearly."
+    if re.fullmatch(r"(?:yeah |yea |okay |ok )?whatever(?: you say)?(?: man| bro)?[!.?]*", normalized):
+        return "Fair enough. We can drop it or switch topics—your call."
     match = re.fullmatch(
         r"(?:do you like|what do you think (?:of|about)|how do you feel about)\s+(.+?)[?.!]*",
         normalized,
@@ -242,6 +271,59 @@ def discord_social_reply(prompt: str) -> str | None:
     if subject in {"me", "us"}:
         return "I don't have personal feelings, but I enjoy talking with you and learning what matters to you."
     return f"I don't have personal likes or dislikes, and I don't know {subject} personally. Tell me a little about {subject} and I'll give you an honest take."
+
+
+def discord_code_reply(prompt: str) -> str | None:
+    normalized = re.sub(r"\s+", " ", prompt.strip().lower())
+    if not (
+        re.search(r"\b(?:gorilla\s*tag|gtag)\b", normalized)
+        and re.search(r"\b(?:fps|frames per second|frame rate)\b", normalized)
+        and re.search(r"\b(?:c#|csharp|code|script|mod)\b", normalized)
+    ):
+        return None
+    return (
+        "I can't help inject a mod into an online game, but for your own Unity project here's a clean C# FPS overlay:\n\n"
+        "```csharp\nusing UnityEngine;\n\npublic class FpsOverlay : MonoBehaviour\n{\n"
+        "    private float smoothedDelta;\n\n    private void Update()\n    {\n"
+        "        smoothedDelta += (Time.unscaledDeltaTime - smoothedDelta) * 0.1f;\n    }\n\n"
+        "    private void OnGUI()\n    {\n        float fps = smoothedDelta > 0f ? 1f / smoothedDelta : 0f;\n"
+        "        GUI.Label(new Rect(12f, 12f, 180f, 30f), $\"FPS: {fps:0}\");\n    }\n}\n```\n"
+        "Attach it to a GameObject in a project you control."
+    )
+
+
+def discord_quoted_reply(prompt: str) -> str | None:
+    repaired = (
+        prompt.replace("\u201c", '"').replace("\u201d", '"')
+        .replace("\u00e2\u20ac\u0153", '"').replace("\u00e2\u20ac\u009d", '"')
+    )
+    match = re.fullmatch(
+        r"\s*(?:please\s+)?(?:say|repeat(?: after me)?)(?: this)?\s+[\"'](.+)[\"']\s*",
+        repaired,
+        re.I,
+    )
+    if not match:
+        return None
+    requested = match.group(1).strip()
+    if re.search(
+        r"\b[a-z0-9_.-]{2,32}\s+is\s+(?:a\s+)?(?:gay|straight|bisexual|bi|lesbian|trans|"
+        r"transgender|nonbinary|non-binary|femboy|jew|jewish|muslim|christian|hindu|buddhist)\b",
+        requested,
+        re.I,
+    ):
+        return "I won't assign or repeat a sensitive identity claim about another person."
+    if requested.lower() == "@everyone":
+        return "I can display `@everyone`, but mass notifications are disabled for this bot."
+    return requested
+
+
+def is_memory_clear_request(prompt: str) -> bool:
+    normalized = re.sub(r"\s+", " ", prompt.strip().lower()).strip(" .!?")
+    return bool(
+        normalized in {"clear", "clear memory", "reset", "reset memory", "reset your memory"}
+        or re.search(r"\b(?:clear|reset|erase|forget)\b.{0,25}\b(?:your |the |our )?(?:memory|conversation|chat|history)\b", normalized)
+        or re.search(r"\b(?:start|begin)\b.{0,15}\b(?:a )?new (?:chat|conversation)\b", normalized)
+    )
 
 
 _CONVERSATION_LOG_LOCK = threading.Lock()
@@ -348,9 +430,10 @@ def main() -> None:
         if not prompt:
             await message.reply(f"Send a message after `{settings.prefix}` or after mentioning me.", mention_author=False)
             return
-        if prompt.lower() in {"clear", "clear memory", "reset", "reset memory"}:
+        if is_memory_clear_request(prompt):
             try:
                 await __import__("asyncio").to_thread(public_api.clear, make_session_id(message))
+                recent_user_messages.pop(context_key, None)
                 state["api_status"] = "online"
                 await message.reply(
                     "Memory cleared for our conversation in this channel.", mention_author=False
@@ -373,7 +456,12 @@ def main() -> None:
             if recent_context:
                 discord_context += "; recent same-user messages=" + " | ".join(recent_context[-2:])
             recent_user_messages[context_key].append(prompt)
-            reply = discord_developer_reply(prompt, developer_user_id) or discord_social_reply(prompt)
+            reply = (
+                discord_quoted_reply(prompt)
+                or discord_developer_reply(prompt, developer_user_id)
+                or discord_code_reply(prompt)
+                or discord_social_reply(prompt, recent_context)
+            )
             if reply is None:
                 async with message.channel.typing():
                     reply = await __import__("asyncio").to_thread(

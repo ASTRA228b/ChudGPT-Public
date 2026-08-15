@@ -1,5 +1,11 @@
 # ChudGPT-Public V20 final report
 
+## Final private-log review
+
+The last review found weak handling of joke follow-ups, laughter, model and religion questions, memory-reset sentences, smart-quoted text, mass-ping requests, prompt-injection walls, dismissive replies, and a Gorilla Tag FPS-code request. Narrow intent checks now handle those cases before neural generation while ordinary unknown prompts still use the Public model. Clearing memory also removes the bot's short local context. Sensitive identity claims about another person are not repeated, and `@everyone` remains inert because mass notifications are disabled. The Gorilla Tag request receives a legitimate Unity C# FPS overlay for projects the user controls rather than broken Python or online-game injection instructions.
+
+Verified results: **74/74 Public tests** and **11/11 Discord-bot tests**. Private source logs remain only on the host and were not committed.
+
 ## Verdict
 
 V20 is the strongest tested ChudGPT-Public serving profile in this repository. It remains a small experimental 20,999,184-parameter model and is not comparable to a frontier model. The raw neural checkpoint still has serious factual and generative limits; V20 reaches useful reliability by combining it with exact operations, reviewed local responses, and rejection/ranking of malformed candidates.

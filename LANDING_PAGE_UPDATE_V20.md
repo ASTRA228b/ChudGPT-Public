@@ -1,5 +1,7 @@
 # Landing-page update prompt
 
+Final reliability update: change the verified totals to **74/74 Public tests** and **11/11 Discord-bot tests**. Note that the Discord profile now handles joke follow-ups and laughter, identifies its V20 profile, answers religion questions without inventing a personal identity, recognizes full-sentence memory resets, safely follows ordinary quoted-text requests including smart quotes, prevents sensitive identity claims and mass pings, resists messages that try to replace its base instructions, and returns a legitimate Unity C# FPS overlay for a user-owned project when asked about Gorilla Tag FPS code. Keep private Discord logs private, and do not imply these deterministic reliability paths make the 21M neural model a frontier model.
+
 Update the ChudGPT landing page to present **ChudGPT-Public V20** as the strongest and recommended general-purpose ChudGPT release.
 
 Use accurate wording: V20 is a custom 20,999,184-parameter decoder-only transformer with a 1,024-token model context. It uses a newly focused CUDA-tuned checkpoint plus exact math, reviewed local knowledge/code responses, slang normalization, multi-candidate relevance checks, and an improved Discord mode. It does not call ChudGPT Pro, ChatGPT, or an external model.

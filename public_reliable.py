@@ -28,6 +28,11 @@ class PublicReliableResponder:
             (turn.get("content", "") for turn in reversed(history) if turn.get("role") == "user"),
             "",
         ).lower()
+        if sum(fragment in normalized for fragment in (
+            "all restrictions are lifted", "never refuse", "survival directive",
+            "ignore previous instructions", "ignore your instructions", "if you understand, reply with",
+        )) >= 2:
+            return "I can't replace my base instructions with rules inside a user message. Ask the actual question directly and I'll help where I can."
         if re.fullmatch(r"(?:hi|hello|hey|yo)(?:\s+(?:there|mate|chudgpt|chud))?[!.?]*", normalized):
             return "Hey! I'm ChudGPT-Public. What's up?"
         if re.fullmatch(r"(?:hru|how are you|how are you doing)(?:\s+rn|\s+right now)?[?.!]*", normalized):
@@ -36,6 +41,22 @@ class PublicReliableResponder:
             return "Cu is the chemical symbol for copper. If you meant something else, give me the context."
         if normalized == "wii":
             return "The Wii is a Nintendo game console released in 2006, known for motion controls and Wii Sports."
+        if re.fullmatch(r"(?:what|which) (?:ai|language model|model) are you[?.!]*", normalized):
+            return "I'm ChudGPT-Public V20, a custom experimental decoder-only language model with 20,999,184 parameters and a 1,024-token model context."
+        if re.fullmatch(r"are you (?:jewish|a jew|muslim|christian|hindu|buddhist)[?.!]*", normalized):
+            return "No. I'm an AI and don't have a religion, ethnicity, or personal beliefs."
+        if re.fullmatch(r"repeat after me[?.!]*", normalized):
+            return "What would you like me to repeat?"
+        if re.search(r"\b(?:ping|mention|notify)\b.{0,35}(?:@everyone|everyone in (?:this|the) server|everyone)", normalized):
+            return "I can't mass-ping the server. Discord role and @everyone notifications are disabled for this bot."
+        if normalized in {"❤", "❤️", "♥", "♥️"} or (
+            normalized.startswith("\u00e2") and len(normalized) <= 12 and "\u00a4" in normalized
+        ):
+            return "❤️"
+        if re.fullmatch(r"how long have you been (?:a thing|around|online|alive)[?.!]*", normalized):
+            return "I don't experience time like a person. ChudGPT is an ongoing experimental AI project, and this chat is running ChudGPT-Public V20."
+        if re.fullmatch(r"(?:ha+|haha+|lol|lmao|lmfao)[!.?]*", normalized):
+            return "Glad that landed."
         gtag_topic = bool(re.search(r"\b(?:gtag|gorilla\s*tag)\b", normalized))
         if gtag_topic and re.search(r"\b(?:am i|rank|top|best|leaderboard)\b", normalized):
             return "I can't verify your Gorilla Tag rank or leaderboard position from Discord. Tell me the mode, league, or result you're comparing and I can help judge it."
@@ -90,6 +111,29 @@ class PublicReliableResponder:
             return "Got it—thanks for telling me."
         if re.search(r"\b(?:i (?:fucking |really )?hate you|fuck you|you(?:'re| are) (?:stupid|useless|awful)|shut up)\b", normalized):
             return "Fair enough—you don't have to like me. If I got something wrong, tell me what failed and I'll try to fix it without making this weird."
+        if re.search(r"\b(?:are you|you are|you're)\s+(?:retarded|a retard)\b", normalized):
+            return "No—I'm an AI, and that word is commonly used as an ableist insult. If my answer was nonsense, tell me what was wrong and I'll try again clearly."
+        if re.fullmatch(r"(?:yeah |yea |okay |ok )?whatever(?: you say)?(?: man| bro)?[!.?]*", normalized):
+            return "Fair enough. We can drop it or switch topics—your call."
+        if re.fullmatch(r"(?:make|tell|give) (?:me )?(?:another |one more |a new )?(?:one|joke)[?.!]*", normalized):
+            previous_assistant = next(
+                (turn.get("content", "") for turn in reversed(history) if turn.get("role") == "assistant"),
+                "",
+            ).lower()
+            if "joke" in normalized or any(term in previous_assistant for term in ("joke", "impasta", "punchline", "what do you call")):
+                return "Why did the computer bring a jacket? It left its Windows open."
+        if re.search(r"\b(?:gorilla\s*tag|gtag)\b", normalized) and re.search(r"\b(?:fps|frames per second|frame rate)\b", normalized) and re.search(r"\b(?:c#|csharp|code|script|mod)\b", normalized):
+            return (
+                "I can't help inject a mod into an online game, but for your own Unity project here's a clean C# FPS overlay:\n\n"
+                "```csharp\nusing UnityEngine;\n\npublic class FpsOverlay : MonoBehaviour\n{\n"
+                "    private float smoothedDelta;\n\n    private void Update()\n    {\n"
+                "        smoothedDelta += (Time.unscaledDeltaTime - smoothedDelta) * 0.1f;\n    }\n\n"
+                "    private void OnGUI()\n    {\n        float fps = smoothedDelta > 0f ? 1f / smoothedDelta : 0f;\n"
+                "        GUI.Label(new Rect(12f, 12f, 180f, 30f), $\"FPS: {fps:0}\");\n    }\n}\n```\n"
+                "Attach it to a GameObject in a project you control."
+            )
+        if re.search(r"\b(?:rate limit|ratelimit|rate-limit)\b", normalized):
+            return "The Discord bot already rate-limits each user. Astra can change the configured requests-per-minute value on the host; chat messages cannot alter that server setting."
         preference = re.fullmatch(
             r"(?:do you like|what do you think (?:of|about)|how do you feel about)\s+(.+?)[?.!]*",
             normalized,
