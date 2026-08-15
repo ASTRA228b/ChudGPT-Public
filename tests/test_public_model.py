@@ -147,12 +147,16 @@ def test_family_and_public_identity_questions_are_distinct() -> None:
     service.model = type("Model", (), {"config": type("Config", (), {"context_length": 1024})()})()
     family, family_reason = service._assist_identity("Explain the ChudGPT project", "unrelated")
     public, public_reason = service._assist_identity("Tell me about ChudGPT-Public", "unrelated")
+    repaired_public, _ = service._assist_identity(
+        "What is ChudGPT Public?", "ChudGPT-Public is the current model and Lis predict."
+    )
     assert "overall project and model family" in family.lower()
     assert "public-facing model" in public.lower()
     assert "public chat and api" in public.lower()
     assert "20,999,184 parameters" in public
     assert "1024-token context" in public
     assert family != public
+    assert repaired_public == public
     assert family_reason == "stable-family-metadata"
     assert public_reason == "stable-public-identity"
     unchanged, reason = service._assist_meme("What exactly is ChudGPT Public?", public)

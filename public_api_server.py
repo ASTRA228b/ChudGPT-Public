@@ -127,7 +127,10 @@ class PublicModelService:
 
     def _assist_identity(self, message: str, raw_reply: str) -> tuple[str, str | None]:
         subject = self._identity_subject(message)
-        if not self.assistance_enabled or subject is None or self._identity_reply_is_sound(raw_reply, subject):
+        # Identity is stable project metadata, so explicit identity questions
+        # always use the verified source. A tiny model can mention the correct
+        # name while surrounding it with malformed or invented details.
+        if not self.assistance_enabled or subject is None:
             return raw_reply, None
         if subject == "public":
             return (
