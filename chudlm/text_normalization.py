@@ -43,6 +43,7 @@ EXPANSIONS = {
     "ik": "I know",
     "ikr": "I know, right",
     "mb": "my bad",
+    "smt": "something",
 }
 
 CORRECTIONS = {

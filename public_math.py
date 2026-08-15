@@ -53,6 +53,12 @@ def _render(value: Decimal) -> str:
 def exact_math_response(message: str) -> str | None:
     """Return an exact answer for a clearly recognized arithmetic request."""
     text = " ".join(message.strip().split())
+    if re.search(
+        rf"(?:{NUMBER})\s*(?:\+|-|\*|\u00d7|\u00c3\u0097|x|/|\u00f7|\u00c3\u00b7|plus|minus|times|multiplied\s+by|divided\s+by)\s*[?.!]*$",
+        text,
+        re.IGNORECASE,
+    ):
+        return "That expression is missing the number after the operator."
     with localcontext() as context:
         context.prec = 10_000
         match = _DIRECT.fullmatch(text)

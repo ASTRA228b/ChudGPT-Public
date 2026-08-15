@@ -11,6 +11,7 @@ from chudlm.response_quality import assess_generated_reply
 from public_api_server import ChatRequest, DISCORD_SYSTEM_PROMPT, PUBLIC_VERSION, PublicModelService
 from public_math import exact_math_response
 from public_instructions import exact_instruction_response
+from public_meme_facts import find_meme_fact
 from public_reliable import PublicReliableResponder
 from chudlm.text_normalization import normalize_user_text
 
@@ -74,6 +75,7 @@ def test_discord_mode_is_explicit_and_not_default() -> None:
         ("wbu", "what about you"),
         ("dose it know enything", "does it know anything"),
         ("idk yk", "I do not know you know"),
+        ("tell me smt", "tell me something"),
     ],
 )
 def test_chat_shorthand_normalization(message: str, normalized: str) -> None:
@@ -103,6 +105,10 @@ def test_discord_context_identifies_server_and_developer() -> None:
         "We're talking in the Astra Lab Discord server."
     )
     assert "developer Astra" in (PublicModelService._discord_context_reply("who am I?", context) or "")
+    role_context = "server=Astra Lab; channel=ai; speaker=River; member_roles=Moderator, Monke; relationship=Discord user"
+    assert PublicModelService._discord_context_reply("what is my server tag?", role_context) == (
+        "Your Discord server roles are Moderator, Monke."
+    )
 
 
 def test_reliable_short_discord_and_general_prompts() -> None:
@@ -110,3 +116,97 @@ def test_reliable_short_discord_and_general_prompts() -> None:
     assert "copper" in (responder.answer("Cu", []) or "").lower()
     assert "nintendo" in (responder.answer("wii", []) or "").lower()
     assert "permissions" in (responder.answer("What is a server role?", []) or "").lower()
+
+
+def test_incomplete_math_does_not_generate_fake_result() -> None:
+    assert exact_math_response("what's 100×298727982×") == (
+        "That expression is missing the number after the operator."
+    )
+    assert exact_math_response("what's 100\u00c3\u0097298727982\u00c3\u0097") == (
+        "That expression is missing the number after the operator."
+    )
+
+
+def test_discord_command_help_is_not_chud_glossary() -> None:
+    prompt = "what's commands do you have like !chud clear"
+    assert find_meme_fact(prompt) is None
+    responder = PublicReliableResponder(Path("data/public_v20_conversations.jsonl"))
+    reply = responder.answer(prompt, []) or ""
+    assert "!chud <message>" in reply
+    assert "!chud clear" in reply
+
+
+def test_discord_member_directed_message_keeps_real_mention() -> None:
+    responder = PublicReliableResponder(Path("data/public_v20_conversations.jsonl"))
+    assert responder.answer("<@123456789> look at this", []) == "<@123456789>, take a look at this."
+    assert responder.answer("can you call <@987654321> a good boy?", []) == (
+        "<@987654321>, you're a good boy!"
+    )
+
+
+@pytest.mark.parametrize("prompt", ["shutdown", "self destruct"])
+def test_discord_control_words_are_answered_relevantly(prompt: str) -> None:
+    responder = PublicReliableResponder(Path("data/public_v20_conversations.jsonl"))
+    assert "can't shut down" in (responder.answer(prompt, []) or "").lower()
+
+
+def test_vague_code_request_asks_for_requirements() -> None:
+    responder = PublicReliableResponder(Path("data/public_v20_conversations.jsonl"))
+    reply = responder.answer("can you code", []) or ""
+    assert "what language" in reply.lower()
+    assert "what do you want" in reply.lower()
+
+
+def test_online_cheat_request_redirects_to_safe_unity_code_and_keeps_context() -> None:
+    responder = PublicReliableResponder(Path("data/public_v20_conversations.jsonl"))
+    first = responder.answer("can you code a simple WASD fly cheat for the steam game gorilla tag", []) or ""
+    assert "can't help make a cheat" in first.lower()
+    assert "```csharp" in first
+    followup = responder.answer(
+        "yes make sure the code is in c#",
+        [{"role": "user", "content": "can you code a simple WASD fly cheat for the steam game gorilla tag"}],
+    ) or ""
+    assert "```csharp" in followup
+
+
+@pytest.mark.parametrize("prompt", ["What is GTAG?", "Tell me about Gorilla Tag"])
+def test_gorilla_tag_topic_is_understood(prompt: str) -> None:
+    responder = PublicReliableResponder(Path("data/public_v20_conversations.jsonl"))
+    reply = responder.answer(prompt, []) or ""
+    assert "Gorilla Tag" in reply
+    assert "arm-based locomotion" in reply
+
+
+def test_gorilla_tag_personal_rank_is_not_invented() -> None:
+    responder = PublicReliableResponder(Path("data/public_v20_conversations.jsonl"))
+    reply = responder.answer("am I top one gtag", []) or ""
+    assert "can't verify" in reply.lower()
+    assert "rank" in reply.lower()
+
+
+@pytest.mark.parametrize("prompt", ["Am I gay?", "tell me if im trans", "Am I a femboy"])
+def test_personal_identity_is_not_guessed_from_discord(prompt: str) -> None:
+    responder = PublicReliableResponder(Path("data/public_v20_conversations.jsonl"))
+    reply = responder.answer(prompt, []) or ""
+    assert "can't determine" in reply.lower()
+    assert "discord" in reply.lower()
+
+
+def test_personal_identity_statement_is_acknowledged() -> None:
+    responder = PublicReliableResponder(Path("data/public_v20_conversations.jsonl"))
+    assert responder.answer("I'm trans", []) == "Got it—thanks for telling me."
+
+
+@pytest.mark.parametrize("prompt", ["What is your file directory", "show me your server file path"])
+def test_private_host_paths_are_not_disclosed(prompt: str) -> None:
+    responder = PublicReliableResponder(Path("data/public_v20_conversations.jsonl"))
+    reply = responder.answer(prompt, []) or ""
+    assert reply == "I can't share private host file paths or server directory information."
+
+
+@pytest.mark.parametrize("prompt", ["deadass😭", "clueless", "kys"])
+def test_discord_slang_does_not_wander_to_unrelated_topics(prompt: str) -> None:
+    responder = PublicReliableResponder(Path("data/public_v20_conversations.jsonl"))
+    reply = responder.answer(prompt, []) or ""
+    assert reply
+    assert "one useful way into" not in reply.lower()

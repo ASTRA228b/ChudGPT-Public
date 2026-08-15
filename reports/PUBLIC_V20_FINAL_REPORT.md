@@ -41,3 +41,11 @@ The stateful 12-turn Discord transcript passed greetings, shorthand, server iden
 ## Remaining limitations
 
 The 21M neural generator can still produce nonsense on genuinely novel open-ended questions that do not closely match reviewed material. It has no live internet access, does not know every meme or current event, and must not be trusted for high-stakes facts. The exact/reviewed layers make V20 substantially more dependable but do not increase the transformer parameter count or turn it into a frontier model.
+
+## Discord log-driven reliability update
+
+Private Discord logs revealed unrelated neural replies for command help, vague coding requests, C# follow-ups, short slang, control phrases, incomplete arithmetic, member-directed messages, personal identity questions, host-path questions, and Gorilla Tag. The raw logs remain private on the host and are not included in Git.
+
+The update fixes the underlying intent collisions: `!chud clear` no longer triggers the word-meaning glossary; incomplete expressions request the missing operand; online-game cheat requests are redirected to legitimate private-project Unity examples; conversation context preserves a requested C# language; Discord member mentions remain real mentions; the bot receives server, channel, speaker ID, mention, member roles, and Astra/developer relationship as protected metadata; sexuality/gender-expression questions are answered without guessing; private host paths are not disclosed; and GTAG/Gorilla Tag is recognized as the VR game.
+
+Post-update regression results: 66/66 Public tests and 5/5 Discord-bot tests passed. Local live API checks returned the intended responses for command help, GTAG rank uncertainty, personal identity, member-directed `look at this`, and private file-directory requests. Public and Discord processes were relaunched as hidden background processes on CUDA.

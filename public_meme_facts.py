@@ -47,6 +47,17 @@ def find_meme_fact(message: str) -> str | None:
     for aliases, explanation in MEME_FACTS:
         # Whole-phrase boundaries prevent the `chud` glossary entry from
         # matching inside the product name `ChudGPT`.
-        if any(re.search(rf"(?<![a-z0-9]){re.escape(alias)}(?![a-z0-9])", normalized) for alias in aliases):
+        matched = any(re.search(rf"(?<![a-z0-9]){re.escape(alias)}(?![a-z0-9])", normalized) for alias in aliases)
+        if not matched:
+            continue
+        if "chud" in aliases and not (
+            re.fullmatch(r"chud[?.!]*", normalized)
+            or re.search(r"\bwhat(?:'s| is)\s+(?:a\s+)?chud\b", normalized)
+            or re.search(r"\bwhat does\s+chud\s+mean\b", normalized)
+            or re.search(r"\b(?:define|definition of|meaning of)\s+chud\b", normalized)
+            or re.search(r"\bchud\b.{0,20}\b(?:mean|means|slang|insult)\b", normalized)
+        ):
+            continue
+        if matched:
             return explanation
     return None

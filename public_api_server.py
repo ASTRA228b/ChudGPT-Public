@@ -209,13 +209,16 @@ class PublicModelService:
     def _discord_context_reply(message: str, discord_context: str | None) -> str | None:
         if not discord_context:
             return None
-        fields = dict(re.findall(r"(?:^|;\s*)(server|channel|speaker|relationship)=([^;]+)", discord_context))
+        fields = dict(re.findall(r"(?:^|;\s*)(server|channel|speaker|relationship|member_roles)=([^;]+)", discord_context))
         normalized = message.lower()
         if re.search(r"\b(?:what|which) server\b|\bwhere are we\b", normalized) and fields.get("server"):
             return f"We're talking in the {fields['server']} Discord server."
         if re.search(r"\bwho am i\b|\bdo you know me\b", normalized) and fields.get("speaker"):
             relation = fields.get("relationship", "Discord user")
             return f"You're {fields['speaker']}, identified here as {relation}."
+        if re.search(r"\b(?:what|which) (?:is |are )?my (?:server )?(?:tag|role|roles)\b", normalized):
+            roles = fields.get("member_roles", "none")
+            return f"Your Discord server role{'s are' if ',' in roles else ' is'} {roles}."
         return None
 
     def _generate_raw(

@@ -32,7 +32,9 @@ DISCORD_SYSTEM_PROMPT = (
     "mentions, and bot commands. Understand Discord servers, channels, threads, roles, "
     "permissions, moderation, embeds, webhooks, discord.py, discord.js, memes, games, "
     "technology, coding, and general questions. Keep replies suitable for Discord and usually "
-    "concise unless detail is requested. Never claim you performed an action the bot cannot "
+    "concise unless detail is requested. Preserve real <@USER_ID> mentions when the user asks "
+    "you to address, show, call, or say something to another member. Never replace a social "
+    "message with unrelated code or arithmetic. Never claim you performed an action the bot cannot "
     "perform. This Discord context applies only while this instruction is active."
 )
 
@@ -170,7 +172,16 @@ def discord_identity_context(message: discord.Message, developer_user_id: int | 
     channel_name = getattr(message.channel, "name", None) or "direct-message"
     is_developer = developer_user_id is not None and message.author.id == developer_user_id
     role = "ChudGPT developer Astra" if is_developer else "Discord user"
-    return f"server={guild_name}; channel={channel_name}; speaker={display_name}; relationship={role}"
+    member_roles = [item.name for item in getattr(message.author, "roles", []) if item.name != "@everyone"]
+    mentioned = ", ".join(
+        f"{getattr(user, 'display_name', user.name)}=<@{user.id}>" for user in message.mentions
+        if user.id != message.author.id
+    ) or "none"
+    return (
+        f"server={guild_name}; channel={channel_name}; speaker={display_name}; "
+        f"speaker_id={message.author.id}; speaker_mention=<@{message.author.id}>; "
+        f"mentioned_users={mentioned}; member_roles={', '.join(member_roles) or 'none'}; relationship={role}"
+    )
 
 
 _CONVERSATION_LOG_LOCK = threading.Lock()
@@ -312,9 +323,14 @@ def main() -> None:
             )
             for index, chunk in enumerate(split_discord_message(reply)):
                 if index == 0:
-                    # Native reply mentions resolve to the real Discord user;
-                    # the model never has to guess or reproduce an account ID.
-                    await message.reply(chunk, mention_author=True, allowed_mentions=safe_mentions)
+                    # Put the real Discord mention in the visible response. It
+                    # is constructed from Discord's author object, never from
+                    # generated model text or a guessed account ID.
+                    await message.reply(
+                        f"{message.author.mention} {chunk}",
+                        mention_author=False,
+                        allowed_mentions=safe_mentions,
+                    )
                 else:
                     await message.channel.send(chunk, allowed_mentions=safe_mentions)
         except requests.Timeout:
