@@ -100,6 +100,7 @@ def test_identity_assistance_does_not_route_normal_topics() -> None:
     assert PublicModelService._identity_subject("What are you?") == "public"
     assert PublicModelService._identity_subject("What is ChudGPT Pro?") == "pro"
     assert PublicModelService._identity_subject("What other ChudGPTs exist?") == "family"
+    assert PublicModelService._identity_subject("What is ChudGPT, and which version is better?") == "family"
     assert PublicModelService._identity_subject("What is ChudGPT-Waffle, and is it better?") == "unknown:waffle"
 
 

@@ -100,15 +100,15 @@ class PublicModelService:
         for subject, names in aliases.items():
             if any(name in normalized for name in names):
                 return subject
+        if re.search(r"\bwhat is chudgpt\b|\bexplain chudgpt\b|\btell me about chudgpt\b", normalized):
+            return "family"
         # Keep project metadata exact without pretending that an arbitrary
         # made-up suffix is a real released profile.
         unknown_profile = re.search(r"\bchudgpt[ -]([a-z][a-z0-9_-]{1,30})\b", normalized)
         if unknown_profile:
             candidate = unknown_profile.group(1)
-            if candidate not in {"is", "family", "model", "project"}:
+            if candidate not in {"and", "or", "is", "family", "model", "project"}:
                 return f"unknown:{candidate}"
-        if re.search(r"\bwhat is chudgpt\b|\bexplain chudgpt\b|\btell me about chudgpt\b", normalized):
-            return "family"
         return None
 
     @staticmethod
