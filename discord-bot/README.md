@@ -45,6 +45,15 @@ notepad .env
 !chud Hello! What can you do?
 ```
 
+Clear your private conversation session in the current channel with:
+
+```text
+!chud clear
+```
+
+The clear command affects only that Discord user in that channel; it does not
+erase another user's session or switch the model checkpoint.
+
 ## Hosting
 
 This is a persistent Discord connection, so it must run on a long-lived host

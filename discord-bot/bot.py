@@ -70,6 +70,18 @@ class ChudGPTClient:
             raise RuntimeError("ChudGPT-Public returned an empty or malformed reply.")
         return reply.strip()
 
+    def clear(self, session_id: str) -> None:
+        clear_url = f"{self.chat_url.rsplit('/', 1)[0]}/clear"
+        response = self.http.post(
+            clear_url,
+            json={"session_id": session_id},
+            timeout=self.timeout,
+        )
+        response.raise_for_status()
+        payload: Any = response.json()
+        if not isinstance(payload, dict) or payload.get("cleared") is not True:
+            raise RuntimeError("ChudGPT-Public did not confirm that the conversation was cleared.")
+
 
 class SlidingWindowLimiter:
     def __init__(self, limit: int, window_seconds: float = 60.0) -> None:
@@ -183,6 +195,21 @@ def main() -> None:
         prompt = clean_prompt(message.content, client.user.id, settings.prefix)
         if not prompt:
             await message.reply(f"Send a message after `{settings.prefix}` or after mentioning me.", mention_author=False)
+            return
+        if prompt.lower() in {"clear", "clear memory", "reset", "reset memory"}:
+            try:
+                await __import__("asyncio").to_thread(public_api.clear, make_session_id(message))
+                state["api_status"] = "online"
+                await message.reply(
+                    "Memory cleared for our conversation in this channel.", mention_author=False
+                )
+            except (requests.RequestException, RuntimeError, ValueError) as error:
+                state["api_status"] = "error"
+                LOGGER.exception("Public API clear request failed: %s", error)
+                await message.reply(
+                    "I couldn't clear the conversation right now. Please try again shortly.",
+                    mention_author=False,
+                )
             return
         if not limiter.allow(message.author.id):
             await message.reply("You are sending messages a little too quickly. Try again in about a minute.", mention_author=False)
