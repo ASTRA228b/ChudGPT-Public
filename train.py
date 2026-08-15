@@ -46,6 +46,7 @@ class TrainConfig:
     amp: bool = True
     compile: bool = False
     resume_from: str | None = None
+    initialize_from: str | None = None
 
 
 def parse_args() -> argparse.Namespace:
@@ -132,6 +133,8 @@ def main() -> None:
     scaler = torch.cuda.amp.GradScaler(enabled=amp_enabled)
     step, start_epoch, best_validation = 0, 0, float("inf")
     resume_path = args.resume or config.resume_from
+    if resume_path and config.initialize_from:
+        raise ValueError("Use either resume_from or initialize_from, not both")
     if resume_path:
         saved = load_checkpoint(Path(resume_path), device)
         if saved["model_config"] != model.config_dict():
@@ -143,6 +146,12 @@ def main() -> None:
         step, start_epoch = int(saved["step"]), int(saved["epoch"])
         best_validation = float(saved.get("best_validation_loss", best_validation))
         print(f"Resumed {resume_path} at step {step}, epoch {start_epoch}")
+    elif config.initialize_from:
+        saved = load_checkpoint(Path(config.initialize_from), device)
+        if saved["model_config"] != model.config_dict():
+            raise ValueError("Initialization checkpoint model configuration does not match")
+        model.load_state_dict(saved["model"])
+        print(f"Initialized model weights from {config.initialize_from}; optimizer and schedule start fresh")
 
     if config.compile and hasattr(torch, "compile"):
         model = torch.compile(model)  # type: ignore[assignment]

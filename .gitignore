@@ -10,6 +10,11 @@ release-smoke/
 reports/*.json
 reports/*.log
 reports/*.pid
+data/raw_v*/
+data/processed_v*/
+data/public_v15_conversations.jsonl
+data/public_v16_sft.jsonl
+data/public_v17_conversations.jsonl
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 !checkpoints/.gitkeep

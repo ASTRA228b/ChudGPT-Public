@@ -6,6 +6,7 @@ from pathlib import Path
 
 from chudlm.prompts import DEFAULT_SYSTEM_PROMPT, build_context_token_ids, format_conversation
 from public_api_server import PublicModelService
+from public_meme_facts import find_meme_fact
 from short_prompt_benchmark import CASES
 
 
@@ -99,6 +100,45 @@ def test_identity_assistance_does_not_route_normal_topics() -> None:
     assert PublicModelService._identity_subject("What are you?") == "public"
     assert PublicModelService._identity_subject("What is ChudGPT Pro?") == "pro"
     assert PublicModelService._identity_subject("What other ChudGPTs exist?") == "family"
+    assert PublicModelService._identity_subject("What is ChudGPT-Waffle, and is it better?") == "unknown:waffle"
+
+
+def test_unknown_family_profile_is_honest_and_identity_is_not_always_injected() -> None:
+    service = object.__new__(PublicModelService)
+    service.assistance_enabled = True
+    unchanged, reason = service._assist_identity("Tell me about Saturn", "Saturn has prominent rings.")
+    assert unchanged == "Saturn has prominent rings."
+    assert reason is None
+    repaired, reason = service._assist_identity(
+        "What is ChudGPT-Waffle, and is it better?", "I am ChudGPT-Public."
+    )
+    assert "do not have a verified" in repaired.lower()
+    assert "chudgpt-waffle" in repaired.lower()
+    assert "waffle" not in repaired.lower().split("known family", 1)[-1]
+    assert reason == "stable-family-metadata"
+
+
+def test_reviewed_meme_help_is_narrow_and_unknown_text_stays_neural() -> None:
+    assert "absurdist" in (find_meme_fact("Tung tung tung tung tung sahur") or "")
+    assert "number" in (find_meme_fact("what does the 67 meme mean?") or "")
+    assert find_meme_fact("florble snax 992") is None
+    service = object.__new__(PublicModelService)
+    service.assistance_enabled = True
+    reply, reason = service._assist_meme("tell me about the Ohio meme", "Distance is 44 miles.")
+    assert "Ohio" in reply
+    assert reason == "reviewed-meme-context"
+    unchanged, reason = service._assist_meme("hello mate", "Hey!",)
+    assert unchanged == "Hey!"
+    assert reason is None
+
+
+def test_family_comparison_answers_the_comparison() -> None:
+    service = object.__new__(PublicModelService)
+    service.assistance_enabled = True
+    reply, reason = service._assist_identity("Which ChudGPT is better?", "Saturn has rings.")
+    assert "no single best" in reply.lower()
+    assert "code" in reply.lower() and "public" in reply.lower()
+    assert reason == "stable-family-metadata"
 
 
 def test_candidate_ranking_rejects_cross_topic_code_and_math() -> None:

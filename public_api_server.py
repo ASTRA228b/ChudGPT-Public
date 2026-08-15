@@ -22,6 +22,7 @@ from chudlm.generation import generate
 from chudlm.model import ModelConfig, TransformerLM
 from chudlm.prompts import DEFAULT_SYSTEM_PROMPT, build_context_token_ids
 from project_facts import FAMILY_FACTS, FAMILY_SUMMARY, PUBLIC_IDENTITY
+from public_meme_facts import find_meme_fact
 
 ROOT = Path(__file__).resolve().parent
 MAX_SESSIONS = 1_000
@@ -99,6 +100,13 @@ class PublicModelService:
         for subject, names in aliases.items():
             if any(name in normalized for name in names):
                 return subject
+        # Keep project metadata exact without pretending that an arbitrary
+        # made-up suffix is a real released profile.
+        unknown_profile = re.search(r"\bchudgpt[ -]([a-z][a-z0-9_-]{1,30})\b", normalized)
+        if unknown_profile:
+            candidate = unknown_profile.group(1)
+            if candidate not in {"is", "family", "model", "project"}:
+                return f"unknown:{candidate}"
         if re.search(r"\bwhat is chudgpt\b|\bexplain chudgpt\b|\btell me about chudgpt\b", normalized):
             return "family"
         return None
@@ -112,6 +120,8 @@ class PublicModelService:
             return "chudgpt" in lowered and "public" in lowered and not re.search(r"\bi am (?:chudgpt )?(?:pro|plus|chatgpt)\b", lowered)
         if subject == "family":
             return "chudgpt" in lowered and any(term in lowered for term in ("family", "project", "public", "plus", "pro"))
+        if subject.startswith("unknown:"):
+            return False
         expected = {"archived": "checkpoint", "mega": "mega", "buggy": "buggy"}.get(subject, subject)
         return expected in lowered and "chudgpt" in lowered
 
@@ -122,8 +132,29 @@ class PublicModelService:
         if subject == "public":
             return PUBLIC_IDENTITY, "stable-public-identity"
         if subject == "family":
-            return FAMILY_SUMMARY, "stable-family-metadata"
-        return FAMILY_FACTS[subject], "stable-family-metadata"
+            reply = FAMILY_SUMMARY
+            if re.search(r"\b(?:better|best|stronger|worse|compare)\b", message, re.I):
+                reply += " There is no single best variant: Public is the general public model, Code is best suited to programming, Pro favors longer conversations, and Buggy or MEGA CHUD are intentionally unreliable."
+            return reply, "stable-family-metadata"
+        if subject.startswith("unknown:"):
+            display_name = subject.split(":", 1)[1].replace("_", "-").title()
+            return (
+                f"I do not have a verified ChudGPT profile named ChudGPT-{display_name}. "
+                "The known family includes Public, Plus, Pro, Code, Ultimate, Buggy, and MEGA CHUD."
+            ), "stable-family-metadata"
+        reply = FAMILY_FACTS[subject]
+        if re.search(r"\b(?:better|best|stronger|worse|compare)\b", message, re.I):
+            reply += " Whether it is better depends on the job: Public is the public general model, Code focuses on programming, and Pro favors longer general conversations."
+        return reply, "stable-family-metadata"
+
+    def _assist_meme(self, message: str, raw_reply: str) -> tuple[str, str | None]:
+        """Repair only explicitly named, reviewed memes; leave all other text neural."""
+        if not self.assistance_enabled:
+            return raw_reply, None
+        fact = find_meme_fact(message)
+        if fact is None:
+            return raw_reply, None
+        return fact, "reviewed-meme-context"
 
     def _generate_raw(
         self,
@@ -232,6 +263,8 @@ class PublicModelService:
             generation_history = history[-8:]
             raw_reply = self._generate_raw(generation_history, max_new_tokens, temperature)
             reply, self.last_assistance_reason = self._assist_identity(clean_message, raw_reply)
+            if self.last_assistance_reason is None:
+                reply, self.last_assistance_reason = self._assist_meme(clean_message, reply)
             history.append({"role": "assistant", "content": reply})
             self.sessions[active_session] = history
             self.sessions.move_to_end(active_session)
@@ -272,7 +305,7 @@ def create_app(checkpoint: Path, device: str, assistance_enabled: bool = True,
             "checkpoint": str(service.checkpoint_path.relative_to(ROOT)),
             "raw_model_generation": True,
             "identity_assistance": service.assistance_enabled,
-            "assistance_scope": "stable ChudGPT identity and family metadata only",
+            "assistance_scope": "stable ChudGPT identity/family metadata and explicitly named reviewed memes only",
         }
 
     @app.get("/api")

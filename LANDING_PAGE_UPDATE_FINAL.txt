@@ -1,0 +1,19 @@
+Update the ChudGPT landing page's Public card with this final, accurate status:
+
+ChudGPT-Public remains the strongest intended general-purpose public ChudGPT
+release at 20,999,184 parameters. The final quality pass adds stronger neural
+candidate selection, better resistance to unrelated code/math/topic leakage,
+stable ChudGPT-family identity answers, honest handling of unknown profile
+names, recent-conversation context, and concise explanations for explicitly
+recognized memes. A much larger clean-language training experiment was tested,
+but it was rejected because its real generated answers were worse; the proven
+Public checkpoint remains deployed. Public is still small, local, experimental,
+and capable of mistakes—do not describe it as equivalent to a frontier model.
+
+Add links to:
+- Web/API: https://chudgpt-public.vercel.app/
+- Source: https://github.com/ASTRA228b/ChudGPT-Public
+
+Suggested badge: FINAL PUBLIC QUALITY PASS
+Suggested short line: Better topic filtering, verified identity, meme context,
+and no hidden generic fallback.

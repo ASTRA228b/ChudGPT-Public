@@ -1,0 +1,10 @@
+input_path: data/raw_v18
+output_dir: data/processed_v18
+tokenizer_path: artifacts/tokenizer.json
+vocab_size: 8192
+validation_fraction: 0.05
+seed: 1818
+text_field: text
+dialogue_field: messages
+min_characters: 8
+max_characters: 12000
