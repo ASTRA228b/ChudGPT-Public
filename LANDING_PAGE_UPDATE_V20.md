@@ -13,3 +13,5 @@ Add a short **Discord reliability update** note: the official bot now understand
 Update the bot-test number to **6/6** and mention that the official Discord bot automatically falls back to its same-host CUDA API when the public Vercel/Cloudflare route is temporarily unavailable, keeping Discord chat operational during tunnel outages.
 
 Update the Discord bot-test number again to **7/7**. Add that first-person and third-person developer identity are now distinct: the bot identifies the current speaker from Discord metadata and answers who Astra/the developer is using verified application-owner metadata instead of neural guessing.
+
+Update the test counts to **68/68 Public** and **8/8 Discord bot**. Mention improved short social questions: subjective prompts such as `Do you like X?` and `What do you think about X?` now stay on topic, avoid pretending the model personally knows someone, and ask for useful context instead of producing an unrelated neural paragraph.

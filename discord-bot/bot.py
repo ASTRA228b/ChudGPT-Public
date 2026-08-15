@@ -219,6 +219,21 @@ def discord_developer_reply(prompt: str, developer_user_id: int | None) -> str |
     return f"Astra{mention} is ChudGPT's developer and the owner of this Discord bot."
 
 
+def discord_social_reply(prompt: str) -> str | None:
+    """Handle simple subjective social questions without neural topic drift."""
+    normalized = re.sub(r"\s+", " ", prompt.strip().lower())
+    match = re.fullmatch(
+        r"(?:do you like|what do you think (?:of|about)|how do you feel about)\s+(.+?)[?.!]*",
+        normalized,
+    )
+    if not match:
+        return None
+    subject = match.group(1).strip(" ?.!")
+    if subject in {"me", "us"}:
+        return "I don't have personal feelings, but I enjoy talking with you and learning what matters to you."
+    return f"I don't have personal likes or dislikes, and I don't know {subject} personally. Tell me a little about {subject} and I'll give you an honest take."
+
+
 _CONVERSATION_LOG_LOCK = threading.Lock()
 
 
@@ -348,7 +363,7 @@ def main() -> None:
             if recent_context:
                 discord_context += "; recent same-user messages=" + " | ".join(recent_context[-2:])
             recent_user_messages[context_key].append(prompt)
-            reply = discord_developer_reply(prompt, developer_user_id)
+            reply = discord_developer_reply(prompt, developer_user_id) or discord_social_reply(prompt)
             if reply is None:
                 async with message.channel.typing():
                     reply = await __import__("asyncio").to_thread(

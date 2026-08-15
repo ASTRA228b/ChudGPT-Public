@@ -80,6 +80,15 @@ class PublicReliableResponder:
         )
         if identity_statement:
             return "Got it—thanks for telling me."
+        preference = re.fullmatch(
+            r"(?:do you like|what do you think (?:of|about)|how do you feel about)\s+(.+?)[?.!]*",
+            normalized,
+        )
+        if preference:
+            subject = preference.group(1).strip(" ?.!")
+            if subject in {"me", "us"}:
+                return "I don't have personal feelings, but I enjoy talking with you and learning what matters to you."
+            return f"I don't have personal likes or dislikes, and I don't know {subject} personally. Tell me a little about {subject} and I'll give you an honest take."
         if "command" in normalized and re.search(r"(?:^|\s)!?chud(?:\s|$)", normalized):
             return (
                 "Use `!chud <message>` to talk to me and `!chud clear` to clear this channel's conversation memory. "

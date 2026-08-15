@@ -1,4 +1,4 @@
-from bot import ChudGPTClient, DISCORD_SYSTEM_PROMPT, add_recent_context, clean_prompt, discord_developer_reply, make_session_id, split_discord_message
+from bot import ChudGPTClient, DISCORD_SYSTEM_PROMPT, add_recent_context, clean_prompt, discord_developer_reply, discord_social_reply, make_session_id, split_discord_message
 
 
 def test_clean_prompt_removes_mentions_and_prefixes() -> None:
@@ -96,3 +96,12 @@ def test_discord_developer_identity_is_stable() -> None:
     assert discord_developer_reply("Who is Astra?", 12345) == expected
     assert discord_developer_reply("Who made ChudGPT?", 12345) == expected
     assert discord_developer_reply("tell me about music", 12345) is None
+
+
+def test_discord_subjective_social_question_stays_relevant() -> None:
+    reply = discord_social_reply("do you like Bob?") or ""
+    assert "don't know bob personally" in reply.lower()
+    assert "tell me a little" in reply.lower()
+    assert discord_social_reply("do you like me?") == (
+        "I don't have personal feelings, but I enjoy talking with you and learning what matters to you."
+    )

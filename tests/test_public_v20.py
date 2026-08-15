@@ -214,6 +214,14 @@ def test_private_host_paths_are_not_disclosed(prompt: str) -> None:
     assert reply == "I can't share private host file paths or server directory information."
 
 
+@pytest.mark.parametrize("prompt", ["Do you like Bob?", "What do you think about Taylor?"])
+def test_subjective_person_question_does_not_turn_into_nonsense(prompt: str) -> None:
+    responder = PublicReliableResponder(Path("data/public_v20_conversations.jsonl"))
+    reply = responder.answer(prompt, []) or ""
+    assert "personal likes or dislikes" in reply
+    assert "honest take" in reply
+
+
 @pytest.mark.parametrize("prompt", ["deadass😭", "clueless", "kys"])
 def test_discord_slang_does_not_wander_to_unrelated_topics(prompt: str) -> None:
     responder = PublicReliableResponder(Path("data/public_v20_conversations.jsonl"))
