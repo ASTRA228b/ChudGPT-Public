@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import logging
+import json
 import os
 import re
 import threading
 import time
 from collections import defaultdict, deque
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 import discord
@@ -17,13 +20,21 @@ from dotenv import load_dotenv
 from flask import Flask, jsonify
 from waitress import serve
 
-load_dotenv()
-
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO").upper(),
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
 LOGGER = logging.getLogger("chudgpt-discord")
+
+DISCORD_SYSTEM_PROMPT = (
+    "You are ChudGPT, running through the official ChudGPT Discord bot and powered by "
+    "ChudGPT-Public V20. You are talking to users on Discord. Respond naturally to DMs, "
+    "mentions, and bot commands. Understand Discord servers, channels, threads, roles, "
+    "permissions, moderation, embeds, webhooks, discord.py, discord.js, memes, games, "
+    "technology, coding, and general questions. Keep replies suitable for Discord and usually "
+    "concise unless detail is requested. Never claim you performed an action the bot cannot "
+    "perform. This Discord context applies only while this instruction is active."
+)
 
 
 @dataclass(frozen=True)
@@ -34,6 +45,7 @@ class Settings:
     port: int
     request_timeout: float
     max_requests_per_minute: int
+    conversation_log_dir: Path
 
     @classmethod
     def from_environment(cls) -> "Settings":
@@ -48,6 +60,7 @@ class Settings:
             port=int(os.getenv("PORT", "8080")),
             request_timeout=float(os.getenv("REQUEST_TIMEOUT_SECONDS", "90")),
             max_requests_per_minute=max(1, int(os.getenv("MAX_REQUESTS_PER_MINUTE", "8"))),
+            conversation_log_dir=Path(os.getenv("CHUDGPT_DISCORD_LOG_DIR", r"D:\ChudGPT-Discord-Logs")),
         )
 
 
@@ -57,10 +70,18 @@ class ChudGPTClient:
         self.timeout = timeout
         self.http = requests.Session()
 
-    def chat(self, message: str, session_id: str) -> str:
+    def chat(self, message: str, session_id: str, discord_context: str | None = None) -> str:
         response = self.http.post(
             self.chat_url,
-            json={"message": message, "session_id": session_id, "max_new_tokens": 220, "temperature": 0.6},
+            json={
+                "message": message,
+                "session_id": session_id,
+                "max_new_tokens": 220,
+                "temperature": 0.6,
+                "context_mode": "discord",
+                "system_instruction": DISCORD_SYSTEM_PROMPT,
+                "discord_context": discord_context,
+            },
             timeout=self.timeout,
         )
         response.raise_for_status()
@@ -132,6 +153,49 @@ def split_discord_message(text: str, limit: int = 1_900) -> list[str]:
     return chunks
 
 
+def add_recent_context(prompt: str, recent_messages: list[str]) -> str:
+    """Clarify a very short Discord follow-up using only same-user/channel text."""
+    if len(prompt.split()) > 3 or not recent_messages:
+        return prompt
+    relevant = [message for message in recent_messages[-2:] if message.strip() and message.strip() != prompt]
+    if not relevant:
+        return prompt
+    return f"Recent Discord context: {' | '.join(relevant)}\nCurrent message: {prompt}"
+
+
+def discord_identity_context(message: discord.Message, developer_user_id: int | None) -> str:
+    """Give the model scoped Discord metadata without merging user sessions."""
+    display_name = getattr(message.author, "display_name", None) or message.author.name
+    guild_name = message.guild.name if message.guild is not None else "Direct Messages"
+    channel_name = getattr(message.channel, "name", None) or "direct-message"
+    is_developer = developer_user_id is not None and message.author.id == developer_user_id
+    role = "ChudGPT developer Astra" if is_developer else "Discord user"
+    return f"server={guild_name}; channel={channel_name}; speaker={display_name}; relationship={role}"
+
+
+_CONVERSATION_LOG_LOCK = threading.Lock()
+
+
+def log_discord_exchange(log_dir: Path, message: discord.Message, prompt: str, reply: str) -> None:
+    """Append one Discord-only exchange as UTF-8 JSONL for later review."""
+    log_dir.mkdir(parents=True, exist_ok=True)
+    record = {
+        "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+        "guild_id": message.guild.id if message.guild else None,
+        "guild_name": message.guild.name if message.guild else "Direct Messages",
+        "channel_id": message.channel.id,
+        "channel_name": getattr(message.channel, "name", None),
+        "user_id": message.author.id,
+        "user_name": str(message.author),
+        "display_name": getattr(message.author, "display_name", message.author.name),
+        "prompt": prompt,
+        "reply": reply,
+    }
+    destination = log_dir / f"discord-{datetime.now(timezone.utc):%Y-%m}.jsonl"
+    with _CONVERSATION_LOG_LOCK, destination.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
 def create_health_app(state: dict[str, Any]) -> Flask:
     app = Flask(__name__)
 
@@ -160,6 +224,9 @@ def run_health_server(app: Flask, port: int) -> None:
 
 
 def main() -> None:
+    # Deployment secrets are loaded only when launching the process. Merely
+    # importing this module for tests or tooling never reads the local .env.
+    load_dotenv()
     settings = Settings.from_environment()
     state: dict[str, Any] = {"discord_ready": False, "api_status": "unknown", "started_at": int(time.time())}
     health_app = create_health_app(state)
@@ -170,6 +237,10 @@ def main() -> None:
     client = discord.Client(intents=intents)
     public_api = ChudGPTClient(settings.api_url, settings.request_timeout)
     limiter = SlidingWindowLimiter(settings.max_requests_per_minute)
+    safe_mentions = discord.AllowedMentions(users=True, roles=False, everyone=False, replied_user=True)
+    recent_user_messages: dict[tuple[int, int], deque[str]] = defaultdict(lambda: deque(maxlen=3))
+    developer_id_text = os.getenv("CHUDGPT_DEVELOPER_USER_ID", "").strip()
+    developer_user_id = int(developer_id_text) if developer_id_text.isdigit() else None
 
     @client.event
     async def on_ready() -> None:
@@ -190,7 +261,10 @@ def main() -> None:
         is_dm = message.guild is None
         is_mentioned = client.user in message.mentions
         uses_prefix = message.content.lower().startswith(settings.prefix.lower())
+        context_key = (message.channel.id, message.author.id)
         if not (is_dm or is_mentioned or uses_prefix):
+            if message.content.strip():
+                recent_user_messages[context_key].append(message.content.strip())
             return
         prompt = clean_prompt(message.content, client.user.id, settings.prefix)
         if not prompt:
@@ -215,14 +289,27 @@ def main() -> None:
             await message.reply("You are sending messages a little too quickly. Try again in about a minute.", mention_author=False)
             return
         try:
+            recent_context = list(recent_user_messages[context_key])
+            model_prompt = prompt
+            discord_context = discord_identity_context(message, developer_user_id)
+            if recent_context:
+                discord_context += "; recent same-user messages=" + " | ".join(recent_context[-2:])
+            recent_user_messages[context_key].append(prompt)
             async with message.channel.typing():
-                reply = await __import__("asyncio").to_thread(public_api.chat, prompt, make_session_id(message))
+                reply = await __import__("asyncio").to_thread(
+                    public_api.chat, model_prompt, make_session_id(message), discord_context
+                )
             state["api_status"] = "online"
+            await __import__("asyncio").to_thread(
+                log_discord_exchange, settings.conversation_log_dir, message, prompt, reply
+            )
             for index, chunk in enumerate(split_discord_message(reply)):
                 if index == 0:
-                    await message.reply(chunk, mention_author=False)
+                    # Native reply mentions resolve to the real Discord user;
+                    # the model never has to guess or reproduce an account ID.
+                    await message.reply(chunk, mention_author=True, allowed_mentions=safe_mentions)
                 else:
-                    await message.channel.send(chunk)
+                    await message.channel.send(chunk, allowed_mentions=safe_mentions)
         except requests.Timeout:
             state["api_status"] = "timeout"
             await message.reply("ChudGPT-Public took too long to answer. Please try again.", mention_author=False)

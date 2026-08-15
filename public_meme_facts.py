@@ -12,7 +12,7 @@ import re
 MEME_FACTS: tuple[tuple[tuple[str, ...], str], ...] = (
     (("tung tung tung sahur", "tung tung sahur"),
      "“Tung Tung Tung Sahur” is an absurdist 2025 Italian-brainrot meme built around a wooden character and a chant associated with waking people for sahur."),
-    (("67 meme", "six seven meme", "6 7 meme"),
+    (("67 meme", "six seven meme", "6 7 meme", "67"),
      "The “67” meme is intentionally context-light internet slang: people repeat the number as a joke, often because the lack of a clear meaning is the point."),
     (("skibidi toilet",),
      "Skibidi Toilet is a surreal YouTube animation meme series about singing toilet-headed characters fighting camera- and speaker-headed characters."),

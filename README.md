@@ -6,6 +6,12 @@ The native ChudGPT Desktop client now lives entirely in [`desktop/`](desktop/REA
 
 ChudGPT-Public is an independently trained, experimental conversational language model and public web API. It has **20,999,184 trainable parameters** and is designed for general conversation, basic facts, arithmetic, and simple Python, C#, JavaScript, and Unity questions.
 
+### Public V20
+
+V20 is the current strongest Public serving profile. It combines the independently trained 20,999,184-parameter checkpoint with a local reviewed-response layer, exact decimal and large-integer arithmetic, conservative slang normalization, protected identity/meme facts, multi-candidate neural selection, and a dedicated Discord context mode. It does not call Pro, ChatGPT, or any external model.
+
+The V20 corpus contains 8,914 unique cleaned conversations. Its final focused CUDA tune used 2,241 unique conversations: all 641 Public-authored conversations plus 1,600 reviewed conversations. A first broad V20 attempt was archived after it scored worse; the final candidate was selected only after held-out and stateful Discord tests.
+
 It is a small custom model—not ChatGPT and not a frontier model. It can be inaccurate, has no live internet access, and should not be trusted for medical, legal, financial, or safety-critical decisions.
 
 ## Architecture
@@ -21,7 +27,7 @@ It is a small custom model—not ChatGPT and not a frontier model. It can be ina
 | Feed-forward width | 1,808 |
 | Positional encoding | RoPE |
 
-The model is a decoder-only causal transformer implemented in Python and PyTorch. Its quality-audited project-authored corpus contains **21,900 unique, denser conversations**, plus a balanced **6,000-conversation response-alignment set**. Public uses response-only fine-tuning, four-candidate generation, response-type/relevance scoring, conservative intent detection, and strict retrieval from its own cleaned examples.
+The model is a decoder-only causal transformer implemented in Python and PyTorch. Public uses response-only fine-tuning, multi-candidate generation, response-type/relevance scoring, conservative intent detection, and strict local use of reviewed examples.
 
 Public now has explicit self-knowledge: it can explain artificial intelligence, its own 20,999,184-parameter transformer architecture and limitations, the film/slang/project meanings of “chud,” and the roles of Buggy, Ultimate, Plus, Pro, Code, Mega, and the archived numbered checkpoints. Those descriptions come from audited project metadata; Public does not call the sibling models to answer.
 
@@ -74,7 +80,9 @@ cd /d C:\Users\admin\OneDrive\Documents\ChudGPT\ChudGPT-Public
 start_training.cmd
 ```
 
-That runs data preparation, base pretraining, response-only fine-tuning, and evaluation. Timestamped logs are stored in `reports`. The Public API checkpoint is selected in `serving_config.json`; it currently uses `checkpoints/public_v10_balanced/best.pt` for stronger everyday Discord and API conversations. V8 and the other checkpoints remain archived in their existing directories and are listed in the same configuration file for easy switching. Runtime identity, meme, and exact-arithmetic handling remain unchanged.
+That runs data preparation, base pretraining, response-only fine-tuning, and evaluation. Timestamped logs are stored in `reports`. The Public API checkpoint is selected in `serving_config.json`; V20 currently uses `checkpoints/public_v20_final/best.pt`. V8 through V18 and the rejected broad V20 candidate remain archived and selectable.
+
+The official Discord bot sends a protected Discord-only system instruction plus scoped server, channel, and speaker metadata. Set `CHUDGPT_DEVELOPER_USER_ID` to Astra's numeric Discord user ID to identify the real developer account securely. Its conversations are logged as monthly JSONL files under `D:\ChudGPT-Discord-Logs` by default; set `CHUDGPT_DISCORD_LOG_DIR` to change that location. Tell server members if their bot messages are being logged.
 
 To switch versions, stop the Public server, edit only `selected_checkpoint` in `serving_config.json`, and restart it. You can also perform a one-run override without editing the file:
 

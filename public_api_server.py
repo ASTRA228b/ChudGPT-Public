@@ -10,6 +10,7 @@ import threading
 import uuid
 from collections import OrderedDict
 from pathlib import Path
+from typing import Literal
 
 import torch
 import uvicorn
@@ -22,14 +23,29 @@ from chudlm.checkpoint import load_checkpoint
 from chudlm.generation import generate
 from chudlm.model import ModelConfig, TransformerLM
 from chudlm.prompts import DEFAULT_SYSTEM_PROMPT, build_context_token_ids
+from chudlm.response_quality import assess_generated_reply, score_generated_reply
+from chudlm.text_normalization import normalize_user_text
 from project_facts import FAMILY_FACTS, FAMILY_SUMMARY, PUBLIC_IDENTITY
 from public_meme_facts import find_meme_fact
-from public_math import exact_integer_arithmetic
+from public_math import exact_math_response
+from public_instructions import exact_instruction_response
+from public_reliable import PublicReliableResponder
 
 ROOT = Path(__file__).resolve().parent
 MAX_SESSIONS = 1_000
 MAX_MESSAGE_CHARS = 8_000
 SERVING_CONFIG_PATH = ROOT / "serving_config.json"
+PUBLIC_VERSION = "20.0"
+DISCORD_BOT_INSTRUCTION = (
+    "You are ChudGPT, running through the official ChudGPT Discord bot and powered by "
+    "ChudGPT-Public V20. You are talking to users on Discord. Respond naturally to DMs, "
+    "mentions, and bot commands. Understand Discord servers, channels, threads, roles, "
+    "permissions, moderation, embeds, webhooks, discord.py, discord.js, memes, games, "
+    "technology, coding, and general questions. Keep replies suitable for Discord and usually "
+    "concise unless detail is requested. Never claim you performed an action the bot cannot "
+    "perform. This Discord context applies only while this instruction is active."
+)
+DISCORD_SYSTEM_PROMPT = DEFAULT_SYSTEM_PROMPT + " " + DISCORD_BOT_INSTRUCTION
 
 
 def selected_checkpoint() -> str:
@@ -54,6 +70,9 @@ class ChatRequest(BaseModel):
     session_id: str | None = Field(default=None, max_length=128)
     max_new_tokens: int = Field(default=200, ge=1, le=400)
     temperature: float = Field(default=0.6, ge=0.0, le=1.5)
+    context_mode: Literal["default", "discord"] = "default"
+    system_instruction: str | None = Field(default=None, max_length=1_500)
+    discord_context: str | None = Field(default=None, max_length=1_000)
 
 
 class ClearRequest(BaseModel):
@@ -87,6 +106,7 @@ class PublicModelService:
         self.assistance_enabled = assistance_enabled
         self.last_assistance_reason: str | None = None
         self.system_prompt = system_prompt
+        self.reliable = PublicReliableResponder(ROOT / "data/public_v20_conversations.jsonl")
 
     @staticmethod
     def _identity_subject(message: str) -> str | None:
@@ -185,16 +205,30 @@ class PublicModelService:
             return raw_reply, None
         return fact, "reviewed-meme-context"
 
+    @staticmethod
+    def _discord_context_reply(message: str, discord_context: str | None) -> str | None:
+        if not discord_context:
+            return None
+        fields = dict(re.findall(r"(?:^|;\s*)(server|channel|speaker|relationship)=([^;]+)", discord_context))
+        normalized = message.lower()
+        if re.search(r"\b(?:what|which) server\b|\bwhere are we\b", normalized) and fields.get("server"):
+            return f"We're talking in the {fields['server']} Discord server."
+        if re.search(r"\bwho am i\b|\bdo you know me\b", normalized) and fields.get("speaker"):
+            relation = fields.get("relationship", "Discord user")
+            return f"You're {fields['speaker']}, identified here as {relation}."
+        return None
+
     def _generate_raw(
         self,
         history: list[dict[str, str]],
         max_new_tokens: int,
         temperature: float,
+        system_prompt: str,
     ) -> str:
         """Generate neural candidates and select the least broken relevant reply."""
         _, prompt_ids = build_context_token_ids(
             self.tokenizer, history, self.model.config.context_length,
-            system_prompt=self.system_prompt,
+            system_prompt=system_prompt,
         )
         prompt_tensor = torch.tensor([prompt_ids], device=self.device)
         # Draw several neural candidates, then rank generated text for relevance
@@ -204,6 +238,7 @@ class PublicModelService:
             (temperature, 60, 0.90),
             (max(0.72, temperature), 60, 0.90),
             (max(0.86, temperature), 60, 0.90),
+            (max(0.54, temperature - 0.04), 40, 0.84),
         )
         candidates: list[str] = []
         for attempt_temperature, top_k, top_p in sampling_profiles:
@@ -221,8 +256,12 @@ class PublicModelService:
             if reply:
                 candidates.append(reply)
         if candidates:
-            return max(candidates, key=lambda reply: self._candidate_score(history[-1]["content"], reply))
-        raise RuntimeError("Model produced empty output after three generation attempts")
+            prompt = history[-1]["content"]
+            previous_replies = [turn["content"] for turn in history if turn["role"] == "assistant"]
+            valid = [candidate for candidate in candidates if assess_generated_reply(prompt, candidate, previous_replies)[0]]
+            pool = valid or candidates
+            return max(pool, key=lambda reply: score_generated_reply(prompt, reply) + self._candidate_score(prompt, reply))
+        raise RuntimeError("Model produced empty output after generation attempts")
 
     @staticmethod
     def _candidate_score(message: str, reply: str) -> float:
@@ -278,6 +317,8 @@ class PublicModelService:
         session_id: str | None,
         max_new_tokens: int = 200,
         temperature: float = 0.6,
+        context_mode: Literal["default", "discord"] = "default",
+        discord_context: str | None = None,
     ) -> tuple[str, str]:
         clean_message = message.strip()
         if not clean_message:
@@ -285,17 +326,37 @@ class PublicModelService:
         active_session = session_id or uuid.uuid4().hex
         with self.lock:
             history = list(self.sessions.get(active_session, []))
-            history.append({"role": "user", "content": clean_message})
+            model_message = normalize_user_text(clean_message)
+            history.append({"role": "user", "content": model_message})
             # A 21M model becomes self-contaminating when dozens of its own bad
             # generations remain in view. Keep the four most recent exchanges;
             # this is context selection only and never changes model output.
             generation_history = history[-8:]
-            arithmetic_reply = exact_integer_arithmetic(clean_message)
-            if arithmetic_reply is not None:
+            instruction_reply = exact_instruction_response(model_message)
+            arithmetic_reply = exact_math_response(model_message)
+            reliable_reply = self.reliable.answer(model_message, generation_history[:-1])
+            discord_reply = self._discord_context_reply(model_message, discord_context)
+            meme_reply = find_meme_fact(model_message)
+            if instruction_reply is not None:
+                reply = instruction_reply
+                self.last_assistance_reason = "exact-user-instruction"
+            elif arithmetic_reply is not None:
                 reply = arithmetic_reply
-                self.last_assistance_reason = "exact-integer-arithmetic"
+                self.last_assistance_reason = "exact-math"
+            elif discord_reply is not None:
+                reply = discord_reply
+                self.last_assistance_reason = "discord-session-context"
+            elif meme_reply is not None and self._identity_subject(model_message) is None:
+                reply = meme_reply
+                self.last_assistance_reason = "reviewed-meme-context"
+            elif reliable_reply is not None:
+                reply = reliable_reply
+                self.last_assistance_reason = "reviewed-local-response"
             else:
-                raw_reply = self._generate_raw(generation_history, max_new_tokens, temperature)
+                active_prompt = DISCORD_SYSTEM_PROMPT if context_mode == "discord" else self.system_prompt
+                if context_mode == "discord" and discord_context:
+                    active_prompt += " Current Discord context: " + discord_context
+                raw_reply = self._generate_raw(generation_history, max_new_tokens, temperature, active_prompt)
                 reply, self.last_assistance_reason = self._assist_identity(clean_message, raw_reply)
                 if self.last_assistance_reason is None:
                     reply, self.last_assistance_reason = self._assist_meme(clean_message, reply)
@@ -315,7 +376,7 @@ def create_app(checkpoint: Path, device: str, assistance_enabled: bool = True,
                tokenizer_path: Path | None = None) -> FastAPI:
     service = PublicModelService(checkpoint, device, assistance_enabled=assistance_enabled,
                                  tokenizer_path=tokenizer_path)
-    app = FastAPI(title="ChudGPT-Public API", version="10.0")
+    app = FastAPI(title="ChudGPT-Public API", version=PUBLIC_VERSION)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -329,6 +390,7 @@ def create_app(checkpoint: Path, device: str, assistance_enabled: bool = True,
     def info() -> dict[str, object]:
         return {
             "name": "ChudGPT-Public",
+            "version": "V20",
             "model": "ChudGPT-Public",
             "status": "online",
             "ready": True,
@@ -339,7 +401,7 @@ def create_app(checkpoint: Path, device: str, assistance_enabled: bool = True,
             "checkpoint": str(service.checkpoint_path.relative_to(ROOT)),
             "raw_model_generation": True,
             "identity_assistance": service.assistance_enabled,
-            "assistance_scope": "stable ChudGPT identity/family metadata and explicitly named reviewed memes only",
+            "assistance_scope": "exact operations, stable project facts, reviewed local responses, and neural candidate quality checks",
         }
 
     @app.get("/api")
@@ -348,9 +410,15 @@ def create_app(checkpoint: Path, device: str, assistance_enabled: bool = True,
 
     def run_chat(request: ChatRequest, keep_session: bool) -> dict[str, object]:
         try:
+            if request.context_mode == "discord":
+                # Only the official bot instruction is accepted. Public API
+                # callers cannot replace the protected base system prompt.
+                if request.system_instruction != DISCORD_BOT_INSTRUCTION:
+                    raise ValueError("Discord context requires the official bot system instruction")
             requested_session = request.session_id if keep_session else uuid.uuid4().hex
             session_id, reply = service.chat(
-                request.message, requested_session, request.max_new_tokens, request.temperature
+                request.message, requested_session, request.max_new_tokens, request.temperature,
+                request.context_mode, request.discord_context,
             )
         except (ValueError, RuntimeError) as error:
             raise HTTPException(status_code=503, detail=str(error)) from error

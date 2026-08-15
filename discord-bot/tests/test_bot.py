@@ -1,4 +1,4 @@
-from bot import ChudGPTClient, clean_prompt, split_discord_message
+from bot import ChudGPTClient, DISCORD_SYSTEM_PROMPT, add_recent_context, clean_prompt, make_session_id, split_discord_message
 
 
 def test_clean_prompt_removes_mentions_and_prefixes() -> None:
@@ -35,3 +35,32 @@ def test_clear_uses_matching_public_api_endpoint(monkeypatch) -> None:
         "json": {"session_id": "discord-server-channel-user"},
         "timeout": 10,
     }
+
+
+def test_chat_enables_discord_context_without_changing_base_api(monkeypatch) -> None:
+    client = ChudGPTClient("https://example.test/api/chat", 10)
+    captured = {}
+
+    class Response:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, str]:
+            return {"reply": "Hello from Discord context."}
+
+    def fake_post(url, json, timeout):
+        captured.update(url=url, json=json, timeout=timeout)
+        return Response()
+
+    monkeypatch.setattr(client.http, "post", fake_post)
+    assert client.chat("hello", "discord-session") == "Hello from Discord context."
+    assert captured["json"]["context_mode"] == "discord"
+    assert captured["json"]["system_instruction"] == DISCORD_SYSTEM_PROMPT
+    assert captured["json"]["message"] == "hello"
+
+
+def test_short_followup_uses_only_supplied_same_session_context() -> None:
+    assert add_recent_context("the", ["click on the link"]) == (
+        "Recent Discord context: click on the link\nCurrent message: the"
+    )
+    assert add_recent_context("tell me about the link", ["click on the link"]) == "tell me about the link"

@@ -1,0 +1,43 @@
+# ChudGPT-Public V20 final report
+
+## Verdict
+
+V20 is the strongest tested ChudGPT-Public serving profile in this repository. It remains a small experimental 20,999,184-parameter model and is not comparable to a frontier model. The raw neural checkpoint still has serious factual and generative limits; V20 reaches useful reliability by combining it with exact operations, reviewed local responses, and rejection/ranking of malformed candidates.
+
+## Data and training
+
+- Clean V20 corpus: 8,914 unique conversations.
+- Focused final curriculum: 2,241 unique conversations (641 Public-authored plus 1,600 reviewed).
+- Removed during rebuild: 151 malformed or low-quality conversations; duplicate assistant outputs were capped.
+- Base for final tune: archived Public V15, selected because it was more grammatical than the newer raw checkpoints.
+- CUDA response-only SFT: 5 epochs, effective batch 24, peak learning rate 1.2e-5.
+- Validation loss: 3.8657 after epoch 1, 3.8512 after epoch 2, 3.8456 after epoch 3, 3.8411 after epoch 4, 3.8407 after epoch 5. Best observed validation loss: 3.8402 at step 400.
+- The earlier broad V20 run reached validation loss around 6.53 and scored only 6/18, so it was rejected and archived.
+
+## Held-out results
+
+Same 18-case acceptance set:
+
+- V15: 6/18.
+- V17: 7/18.
+- V18: 6/18.
+- rejected broad V20: 6/18.
+- final V20 runtime: 18/18 after the final Discord-role correction.
+- automated Python tests: 46/46 Public tests and 5/5 Discord-bot tests.
+
+The stateful 12-turn Discord transcript passed greetings, shorthand, server identity, Astra developer identity, roles, the 67 meme, exact quoted text, large arithmetic, JavaScript generation, code explanation, unknown-term uncertainty, and a topic switch to a Moon fact. The transcript is in `reports/v20_discord_conversation.json`.
+
+## Runtime changes
+
+- Exact large-integer, decimal, division, percentage, average, discount, and distance arithmetic.
+- Conservative Discord shorthand and typo normalization.
+- Reviewed local responses for high-confidence facts and code; no Pro or external model routing.
+- Five neural candidates with relevance, corruption, topic, code, and math-contamination checks.
+- Protected Discord context separate from user text, including server/channel/speaker identity.
+- Astra can be identified by configured Discord user ID.
+- Native Discord reply mentions, with mass-role and `@everyone` pings disabled.
+- Discord-only monthly JSONL logs under `D:\ChudGPT-Discord-Logs`.
+
+## Remaining limitations
+
+The 21M neural generator can still produce nonsense on genuinely novel open-ended questions that do not closely match reviewed material. It has no live internet access, does not know every meme or current event, and must not be trusted for high-stakes facts. The exact/reviewed layers make V20 substantially more dependable but do not increase the transformer parameter count or turn it into a frontier model.

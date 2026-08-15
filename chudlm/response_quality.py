@@ -156,6 +156,8 @@ def assess_generated_reply(
     lowered = stripped.lower()
     if len(stripped) < 4 or len(words) < 2:
         reasons.append("too-short")
+    if "�" in stripped or "ï¿½" in stripped:
+        reasons.append("replacement-character")
     if len(stripped) > 1_800:
         reasons.append("too-long")
     if stripped in previous_replies:
@@ -180,6 +182,10 @@ def assess_generated_reply(
         reasons.append("meme-template-leak")
     if stripped.count("```") % 2:
         reasons.append("broken-code-fence")
+    if re.search(r"[{}]\s*(?:do|once|reads?)\b|\bexactal\b", lowered):
+        reasons.append("corrupt-fragment")
+    if re.search(r"\bcaption and conversation\b|\bone useful way into\b", lowered):
+        reasons.append("known-template-leak")
     requested_code = any(
         marker in " ".join(_words(prompt))
         for marker in ("code", "python", "c#", "csharp", "javascript", "unity", "script", "program")
@@ -207,6 +213,12 @@ def assess_generated_reply(
         re.I,
     ):
         reasons.append("unrequested-math")
+    if not has_strong_math_intent(prompt) and re.search(
+        r"\b\d+(?:\.\d+)?\s*[^a-z0-9\s.,]{1,3}\s*-?\d+(?:\.\d+)?\b",
+        stripped,
+        re.I,
+    ):
+        reasons.append("unrequested-numeric-expression")
     trigrams = [tuple(words[index:index + 3]) for index in range(max(0, len(words) - 2))]
     if trigrams and max(Counter(trigrams).values()) >= 3:
         reasons.append("repetition-loop")

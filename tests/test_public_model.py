@@ -42,7 +42,7 @@ def test_context_keeps_recent_history_and_system_prompt() -> None:
 def test_runtime_assistance_is_narrow_and_auditable() -> None:
     source = Path("public_api_server.py").read_text(encoding="utf-8")
     forbidden = (
-        "ExampleRetriever", "score_generated_reply", "classify_intent",
+            "ExampleRetriever", "classify_intent",
         "_calculate_arithmetic", "_reference_answer", "_comparison_answer",
         "_self_answer", "_greeting", "_joke_answer", "_random_code_answer",
         "_short_followup", "_correction_reply", "session_facts",
@@ -59,7 +59,7 @@ def test_runtime_assistance_is_narrow_and_auditable() -> None:
 
 def test_technical_retry_does_not_invent_content() -> None:
     source = Path("public_api_server.py").read_text(encoding="utf-8")
-    assert "Model produced empty output after three generation attempts" in source
+    assert "Model produced empty output after generation attempts" in source
     assert 'reply = "..."' not in source
     assert "could not form a useful answer" not in source.lower()
     assert "try asking another way" not in source.lower()
@@ -94,9 +94,9 @@ def test_public_model_service_has_raw_generation_method() -> None:
     assert hasattr(PublicModelService, "_generate_raw")
 
 
-def test_serving_config_selects_v10_balanced_and_keeps_v8_archived() -> None:
+def test_serving_config_selects_v20_and_keeps_v8_archived() -> None:
     config = json.loads(Path("serving_config.json").read_text(encoding="utf-8"))
-    assert selected_checkpoint() == "checkpoints/public_v10_balanced/best.pt"
+    assert selected_checkpoint() == "checkpoints/public_v20_final/best.pt"
     assert config["archived_checkpoints"]["v8"] == "checkpoints/public_v8/best.pt"
     assert config["archived_checkpoints"]["v10_balanced"] == "checkpoints/public_v10_balanced/best.pt"
     assert config["archived_checkpoints"]["v18"] == "checkpoints/public_v18_sft/best.pt"

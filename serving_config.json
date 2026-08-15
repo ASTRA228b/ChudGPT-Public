@@ -1,5 +1,5 @@
 {
-  "selected_checkpoint": "checkpoints/public_v10_balanced/best.pt",
+  "selected_checkpoint": "checkpoints/public_v20_final/best.pt",
   "archived_checkpoints": {
     "v8": "checkpoints/public_v8/best.pt",
     "v9": "checkpoints/public_v9/best.pt",
@@ -10,6 +10,8 @@
     "v15": "checkpoints/public_v15_sft/best.pt",
     "v16": "checkpoints/public_v16_sft/best.pt",
     "v17": "checkpoints/public_v17_sft/best.pt",
-    "v18": "checkpoints/public_v18_sft/best.pt"
+    "v18": "checkpoints/public_v18_sft/best.pt",
+    "v20_failed_broad": "checkpoints/public_v20_sft/best.pt",
+    "v20": "checkpoints/public_v20_final/best.pt"
   }
 }
