@@ -98,7 +98,7 @@ class PublicModelService:
             "mega": ("mega chud", "chudgpt mega"),
         }
         for subject, names in aliases.items():
-            if any(name in normalized for name in names):
+            if any(re.search(rf"(?<![a-z0-9]){re.escape(name)}(?![a-z0-9])", normalized) for name in names):
                 return subject
         # Keep project metadata exact without pretending that an arbitrary
         # made-up suffix is a real released profile.
@@ -107,7 +107,7 @@ class PublicModelService:
             candidate = unknown_profile.group(1)
             if candidate not in {"and", "or", "is", "family", "model", "project"}:
                 return f"unknown:{candidate}"
-        if re.search(r"\bwhat is chudgpt\b|\bexplain chudgpt\b|\btell me about chudgpt\b", normalized):
+        if re.search(r"\bwhat is chudgpt\b|\bexplain (?:the )?chudgpt(?: project)?\b|\btell me about (?:the )?chudgpt(?: project)?\b", normalized):
             return "family"
         return None
 
@@ -130,7 +130,10 @@ class PublicModelService:
         if not self.assistance_enabled or subject is None or self._identity_reply_is_sound(raw_reply, subject):
             return raw_reply, None
         if subject == "public":
-            return PUBLIC_IDENTITY, "stable-public-identity"
+            return (
+                f"{PUBLIC_IDENTITY} The currently loaded model has {self.parameters:,} parameters, "
+                f"a {self.model.config.context_length}-token context window, and checkpoint step {self.step}."
+            ), "stable-public-identity"
         if subject == "family":
             reply = FAMILY_SUMMARY
             if re.search(r"\b(?:better|best|stronger|worse|compare)\b", message, re.I):
@@ -150,6 +153,9 @@ class PublicModelService:
     def _assist_meme(self, message: str, raw_reply: str) -> tuple[str, str | None]:
         """Repair only explicitly named, reviewed memes; leave all other text neural."""
         if not self.assistance_enabled:
+            return raw_reply, None
+        # Product/family identity always outranks the unrelated word glossary.
+        if self._identity_subject(message) is not None:
             return raw_reply, None
         fact = find_meme_fact(message)
         if fact is None:

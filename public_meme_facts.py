@@ -7,6 +7,8 @@ model produces an unrelated answer.
 
 from __future__ import annotations
 
+import re
+
 MEME_FACTS: tuple[tuple[tuple[str, ...], str], ...] = (
     (("tung tung tung sahur", "tung tung sahur"),
      "“Tung Tung Tung Sahur” is an absurdist 2025 Italian-brainrot meme built around a wooden character and a chant associated with waking people for sahur."),
@@ -43,6 +45,8 @@ def find_meme_fact(message: str) -> str | None:
     """Return a reviewed explanation only for an explicitly named meme."""
     normalized = " ".join(message.lower().replace("’", "'").split())
     for aliases, explanation in MEME_FACTS:
-        if any(alias in normalized for alias in aliases):
+        # Whole-phrase boundaries prevent the `chud` glossary entry from
+        # matching inside the product name `ChudGPT`.
+        if any(re.search(rf"(?<![a-z0-9]){re.escape(alias)}(?![a-z0-9])", normalized) for alias in aliases):
             return explanation
     return None

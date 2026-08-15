@@ -99,6 +99,9 @@ def test_identity_assistance_does_not_route_normal_topics() -> None:
         assert PublicModelService._identity_subject(prompt) is None
     assert PublicModelService._identity_subject("What are you?") == "public"
     assert PublicModelService._identity_subject("What is ChudGPT Pro?") == "pro"
+    assert PublicModelService._identity_subject("What is ChudGPT?") == "family"
+    assert PublicModelService._identity_subject("What is ChudGPT-Public?") == "public"
+    assert PublicModelService._identity_subject("Explain the ChudGPT project") == "family"
     assert PublicModelService._identity_subject("What other ChudGPTs exist?") == "family"
     assert PublicModelService._identity_subject("What is ChudGPT, and which version is better?") == "family"
     assert PublicModelService._identity_subject("What is ChudGPT-Waffle, and is it better?") == "unknown:waffle"
@@ -123,6 +126,9 @@ def test_reviewed_meme_help_is_narrow_and_unknown_text_stays_neural() -> None:
     assert "absurdist" in (find_meme_fact("Tung tung tung tung tung sahur") or "")
     assert "number" in (find_meme_fact("what does the 67 meme mean?") or "")
     assert find_meme_fact("florble snax 992") is None
+    assert find_meme_fact("What is ChudGPT?") is None
+    assert find_meme_fact("What is ChudGPT-Public?") is None
+    assert "insult" in (find_meme_fact("What does chud mean?") or "")
     service = object.__new__(PublicModelService)
     service.assistance_enabled = True
     reply, reason = service._assist_meme("tell me about the Ohio meme", "Distance is 44 miles.")
@@ -130,6 +136,27 @@ def test_reviewed_meme_help_is_narrow_and_unknown_text_stays_neural() -> None:
     assert reason == "reviewed-meme-context"
     unchanged, reason = service._assist_meme("hello mate", "Hey!",)
     assert unchanged == "Hey!"
+    assert reason is None
+
+
+def test_family_and_public_identity_questions_are_distinct() -> None:
+    service = object.__new__(PublicModelService)
+    service.assistance_enabled = True
+    service.parameters = 20_999_184
+    service.step = 800
+    service.model = type("Model", (), {"config": type("Config", (), {"context_length": 1024})()})()
+    family, family_reason = service._assist_identity("Explain the ChudGPT project", "unrelated")
+    public, public_reason = service._assist_identity("Tell me about ChudGPT-Public", "unrelated")
+    assert "overall project and model family" in family.lower()
+    assert "public-facing model" in public.lower()
+    assert "public chat and api" in public.lower()
+    assert "20,999,184 parameters" in public
+    assert "1024-token context" in public
+    assert family != public
+    assert family_reason == "stable-family-metadata"
+    assert public_reason == "stable-public-identity"
+    unchanged, reason = service._assist_meme("What exactly is ChudGPT Public?", public)
+    assert unchanged == public
     assert reason is None
 
 

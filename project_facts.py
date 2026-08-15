@@ -19,8 +19,8 @@ FAMILY_FACTS: dict[str, str] = {
 }
 
 PUBLIC_IDENTITY = (
-    "I am ChudGPT-Public, the public experimental model in the ChudGPT family. "
-    "I am a small decoder-only transformer language model, not ChatGPT, Pro, or Plus."
+    "ChudGPT-Public is the public-facing model and serving profile in the ChudGPT family. "
+    "It powers the public chat and API using a small custom decoder-only transformer."
 )
 
 FAMILY_SUMMARY = (
