@@ -204,7 +204,13 @@ def main() -> None:
             LOGGER.exception("Public API request failed: %s", error)
             await message.reply("ChudGPT-Public is temporarily unavailable. Please try again shortly.", mention_author=False)
 
-    client.run(settings.discord_token, log_handler=None)
+    try:
+        client.run(settings.discord_token, log_handler=None)
+    except discord.LoginFailure as error:
+        raise SystemExit(
+            "Discord rejected DISCORD_TOKEN (401 Unauthorized). Open the Discord Developer Portal, "
+            "select ChudGPT, choose Bot > Reset Token, and place the new token only in discord-bot\\.env."
+        ) from error
 
 
 if __name__ == "__main__":
