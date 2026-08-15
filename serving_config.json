@@ -1,5 +1,5 @@
 {
-  "selected_checkpoint": "checkpoints/public_v8/best.pt",
+  "selected_checkpoint": "checkpoints/public_v10_balanced/best.pt",
   "archived_checkpoints": {
     "v8": "checkpoints/public_v8/best.pt",
     "v9": "checkpoints/public_v9/best.pt",

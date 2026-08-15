@@ -94,9 +94,10 @@ def test_public_model_service_has_raw_generation_method() -> None:
     assert hasattr(PublicModelService, "_generate_raw")
 
 
-def test_serving_config_selects_v8_and_keeps_newer_archives() -> None:
+def test_serving_config_selects_v10_balanced_and_keeps_v8_archived() -> None:
     config = json.loads(Path("serving_config.json").read_text(encoding="utf-8"))
-    assert selected_checkpoint() == "checkpoints/public_v8/best.pt"
+    assert selected_checkpoint() == "checkpoints/public_v10_balanced/best.pt"
+    assert config["archived_checkpoints"]["v8"] == "checkpoints/public_v8/best.pt"
     assert config["archived_checkpoints"]["v10_balanced"] == "checkpoints/public_v10_balanced/best.pt"
     assert config["archived_checkpoints"]["v18"] == "checkpoints/public_v18_sft/best.pt"
 
