@@ -200,8 +200,23 @@ def discord_identity_context(message: discord.Message, developer_user_id: int | 
     return (
         f"server={guild_name}; channel={channel_name}; speaker={display_name}; "
         f"speaker_id={message.author.id}; speaker_mention=<@{message.author.id}>; "
-        f"mentioned_users={mentioned}; member_roles={', '.join(member_roles) or 'none'}; relationship={role}"
+        f"mentioned_users={mentioned}; member_roles={', '.join(member_roles) or 'none'}; "
+        f"developer_name=Astra; developer_mention={'<@' + str(developer_user_id) + '>' if developer_user_id else 'unavailable'}; "
+        f"relationship={role}"
     )
+
+
+def discord_developer_reply(prompt: str, developer_user_id: int | None) -> str | None:
+    """Answer stable bot-owner questions without relying on neural generation."""
+    normalized = re.sub(r"\s+", " ", prompt.strip().lower())
+    if not (
+        re.search(r"\b(?:who|what) is astra\b|\btell me about astra\b", normalized)
+        or re.search(r"\bwho (?:made|created|developed) (?:you|chudgpt)\b", normalized)
+        or re.search(r"\bwho is (?:your|the) developer\b", normalized)
+    ):
+        return None
+    mention = f" (<@{developer_user_id}>)" if developer_user_id is not None else ""
+    return f"Astra{mention} is ChudGPT's developer and the owner of this Discord bot."
 
 
 _CONVERSATION_LOG_LOCK = threading.Lock()
@@ -333,10 +348,12 @@ def main() -> None:
             if recent_context:
                 discord_context += "; recent same-user messages=" + " | ".join(recent_context[-2:])
             recent_user_messages[context_key].append(prompt)
-            async with message.channel.typing():
-                reply = await __import__("asyncio").to_thread(
-                    public_api.chat, model_prompt, make_session_id(message), discord_context
-                )
+            reply = discord_developer_reply(prompt, developer_user_id)
+            if reply is None:
+                async with message.channel.typing():
+                    reply = await __import__("asyncio").to_thread(
+                        public_api.chat, model_prompt, make_session_id(message), discord_context
+                    )
             state["api_status"] = "online"
             await __import__("asyncio").to_thread(
                 log_discord_exchange, settings.conversation_log_dir, message, prompt, reply

@@ -109,6 +109,16 @@ def test_discord_context_identifies_server_and_developer() -> None:
     assert PublicModelService._discord_context_reply("what is my server tag?", role_context) == (
         "Your Discord server roles are Moderator, Monke."
     )
+    developer_context = (
+        "server=Astra Lab; channel=ai; speaker=River; member_roles=Member; "
+        "developer_name=Astra; developer_mention=<@12345>; relationship=Discord user"
+    )
+    assert PublicModelService._discord_context_reply("Who is Astra?", developer_context) == (
+        "Astra (<@12345>) is ChudGPT's developer and the owner of this Discord bot."
+    )
+    assert PublicModelService._discord_context_reply("Who made ChudGPT?", developer_context) == (
+        "Astra (<@12345>) is ChudGPT's developer and the owner of this Discord bot."
+    )
 
 
 def test_reliable_short_discord_and_general_prompts() -> None:

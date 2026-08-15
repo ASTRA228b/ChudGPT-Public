@@ -209,7 +209,10 @@ class PublicModelService:
     def _discord_context_reply(message: str, discord_context: str | None) -> str | None:
         if not discord_context:
             return None
-        fields = dict(re.findall(r"(?:^|;\s*)(server|channel|speaker|relationship|member_roles)=([^;]+)", discord_context))
+        fields = dict(re.findall(
+            r"(?:^|;\s*)(server|channel|speaker|relationship|member_roles|developer_name|developer_mention)=([^;]+)",
+            discord_context,
+        ))
         normalized = message.lower()
         if re.search(r"\b(?:what|which) server\b|\bwhere are we\b", normalized) and fields.get("server"):
             return f"We're talking in the {fields['server']} Discord server."
@@ -219,6 +222,15 @@ class PublicModelService:
         if re.search(r"\b(?:what|which) (?:is |are )?my (?:server )?(?:tag|role|roles)\b", normalized):
             roles = fields.get("member_roles", "none")
             return f"Your Discord server role{'s are' if ',' in roles else ' is'} {roles}."
+        if (
+            re.search(r"\b(?:who|what) is astra\b|\btell me about astra\b", normalized)
+            or re.search(r"\bwho (?:made|created|developed) (?:you|chudgpt)\b", normalized)
+            or re.search(r"\bwho is (?:your|the) developer\b", normalized)
+        ):
+            developer = fields.get("developer_name", "Astra")
+            mention = fields.get("developer_mention", "")
+            visible_mention = f" ({mention})" if mention and mention != "unavailable" else ""
+            return f"{developer}{visible_mention} is ChudGPT's developer and the owner of this Discord bot."
         return None
 
     def _generate_raw(

@@ -1,4 +1,4 @@
-from bot import ChudGPTClient, DISCORD_SYSTEM_PROMPT, add_recent_context, clean_prompt, make_session_id, split_discord_message
+from bot import ChudGPTClient, DISCORD_SYSTEM_PROMPT, add_recent_context, clean_prompt, discord_developer_reply, make_session_id, split_discord_message
 
 
 def test_clean_prompt_removes_mentions_and_prefixes() -> None:
@@ -89,3 +89,10 @@ def test_chat_falls_back_to_local_cuda_api(monkeypatch) -> None:
     monkeypatch.setattr(client.http, "post", fake_post)
     assert client.chat("hello", "session") == "Local CUDA reply"
     assert called == ["https://public.example/api/chat", "http://127.0.0.1:8010/api/chat"]
+
+
+def test_discord_developer_identity_is_stable() -> None:
+    expected = "Astra (<@12345>) is ChudGPT's developer and the owner of this Discord bot."
+    assert discord_developer_reply("Who is Astra?", 12345) == expected
+    assert discord_developer_reply("Who made ChudGPT?", 12345) == expected
+    assert discord_developer_reply("tell me about music", 12345) is None
