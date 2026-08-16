@@ -10,6 +10,8 @@ release-smoke/
 reports/*.json
 reports/*.log
 reports/*.pid
+*_background.out.log
+*_background.err.log
 data/raw_v*/
 data/processed_v*/
 data/public_v15_conversations.jsonl
