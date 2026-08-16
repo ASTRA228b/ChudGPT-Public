@@ -1,5 +1,19 @@
 # ChudGPT-Public V20 final report
 
+## Discord conversational-recovery update (144-record audit)
+
+The current private monthly Discord JSONL was reread completely before this update and then checked repeatedly by timestamp: **147/147 records parsed successfully**, with no malformed rows. The latest timestamp reviewed was `2026-08-16T04:17:59.657664+00:00`. Repeated failures included casual remarks and insults turning into unsolicited numbered tutorials, vague reactions switching to unrelated topics, `what` failing to repair a confusing prior answer, overly formal monologues for ordinary chat, repeated/broken model-identity prose, ignored phrase-repetition constraints, and failure to evaluate those constraints in a follow-up.
+
+The primary serving defect was in neural candidate selection. Public generated five candidates and ran quality checks, but when every candidate failed it selected from the rejected candidates anyway. That exposed the least-bad rejected output, including the logged cube/cow/bicycle/jewelry list. V20 now displays only a candidate that passes the quality gate. If every neural attempt is invalid, it gives a short conversational clarification; a confused follow-up explicitly acknowledges and resets from the preceding reply.
+
+The quality checker now rejects multi-item numbered/bulleted tutorials unless the user requested steps, instructions, a list, examples, a walkthrough, or similar structure. Explicit requests such as `give me 5 steps to make a Unity player controller` still permit structured answers. Short casual prompts receive a smaller generation budget and an explicit concise-conversation instruction. Candidate ranking also heavily penalizes unrequested lists and excessive length. Repeated identity phrases and broken double-negative identity prose are rejected.
+
+The reviewed conversational layer now handles broad insult forms and short reactions (`bro`, `nah`, `lol`, `deadass`) with concise replies. `what`, `huh`, `bro what`, and `what are you talking about` use recent assistant history to repair a confusing exchange instead of inventing a new task. Physical-body hypotheticals and model comparisons receive direct, relevant answers. Explicit quoted-phrase limits are enforced during candidate validation, and a follow-up can inspect the prior user constraint plus prior assistant reply to report whether it complied.
+
+No private Discord messages, user IDs, or usernames were copied into the public repository. This update changes serving, quality checks, and regression coverage; it does not claim new transformer training or a larger dataset.
+
+Final verification after the timestamp regressions were added: **112/112 Public tests passed** and **12/12 Discord-bot tests passed**. The only bot-suite warning is the upstream Python `audioop` deprecation warning from `discord.py`.
+
 ## Final private-log review
 
 The last review found weak handling of joke follow-ups, laughter, model and religion questions, memory-reset sentences, smart-quoted text, mass-ping requests, prompt-injection walls, dismissive replies, and a Gorilla Tag FPS-code request. Narrow intent checks now handle those cases before neural generation while ordinary unknown prompts still use the Public model. Clearing memory also removes the bot's short local context. Sensitive identity claims about another person are not repeated, and `@everyone` remains inert because mass notifications are disabled. The Gorilla Tag request receives a legitimate Unity C# FPS overlay for projects the user controls rather than broken Python or online-game injection instructions.

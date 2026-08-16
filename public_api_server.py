@@ -23,7 +23,12 @@ from chudlm.checkpoint import load_checkpoint
 from chudlm.generation import generate
 from chudlm.model import ModelConfig, TransformerLM
 from chudlm.prompts import DEFAULT_SYSTEM_PROMPT, build_context_token_ids
-from chudlm.response_quality import assess_generated_reply, score_generated_reply
+from chudlm.response_quality import (
+    assess_generated_reply,
+    has_structured_list,
+    requests_structured_response,
+    score_generated_reply,
+)
 from chudlm.text_normalization import normalize_user_text
 from project_facts import FAMILY_FACTS, FAMILY_SUMMARY, PUBLIC_IDENTITY
 from public_meme_facts import find_meme_fact
@@ -245,6 +250,15 @@ class PublicModelService:
         system_prompt: str,
     ) -> str:
         """Generate neural candidates and select the least broken relevant reply."""
+        current_message = history[-1]["content"]
+        structured_request = requests_structured_response(current_message)
+        conversational = len(re.findall(r"[a-z0-9']+", current_message.lower())) <= 8 and not structured_request
+        if conversational:
+            system_prompt += (
+                " This is casual conversation. Reply naturally and directly in one to three short sentences. "
+                "Do not use numbered steps, bullets, a tutorial, or an unrelated example unless the user asks for one."
+            )
+            max_new_tokens = min(max_new_tokens, 80)
         _, prompt_ids = build_context_token_ids(
             self.tokenizer, history, self.model.config.context_length,
             system_prompt=system_prompt,
@@ -275,11 +289,19 @@ class PublicModelService:
             if reply:
                 candidates.append(reply)
         if candidates:
-            prompt = history[-1]["content"]
+            prompt = current_message
             previous_replies = [turn["content"] for turn in history if turn["role"] == "assistant"]
             valid = [candidate for candidate in candidates if assess_generated_reply(prompt, candidate, previous_replies)[0]]
-            pool = valid or candidates
-            return max(pool, key=lambda reply: score_generated_reply(prompt, reply) + self._candidate_score(prompt, reply))
+            if valid:
+                return max(valid, key=lambda reply: score_generated_reply(prompt, reply) + self._candidate_score(prompt, reply))
+            previous_assistant = previous_replies[-1] if previous_replies else ""
+            if previous_assistant and re.fullmatch(
+                r"\s*(?:what|what\?|huh|bro(?: what)?|why|what are you talking about)[?!.]*\s*",
+                prompt,
+                re.I,
+            ):
+                return "Yeah, my last reply did not make sense there. Let me reset - what did you want me to clarify?"
+            return "I may have misunderstood you. What did you mean?"
         raise RuntimeError("Model produced empty output after generation attempts")
 
     @staticmethod
@@ -301,6 +323,9 @@ class PublicModelService:
         math_output = bool(re.search(r"(?:^|\s)-?\d+(?:\.\d+)?\s*(?:[+*/%=]|-(?=\s*\d))", reply_lower))
         score -= 4.5 if code_output and not code_request else 0.0
         score -= 3.5 if math_output and not math_request else 0.0
+        score -= 12.0 if has_structured_list(reply) and not requests_structured_response(message) else 0.0
+        if len(re.findall(r"[a-z0-9']+", message_lower)) <= 8 and not requests_structured_response(message):
+            score -= max(0, len(reply_words) - 45) * 0.08
         score += 1.5 if code_request and code_output else 0.0
         score += 1.5 if math_request and re.search(r"\d", reply) else 0.0
         greeting = bool(re.fullmatch(r"\s*(?:hi|hello|hey|yo)(?:\s+(?:there|mate|chudgpt))?[!.?]*\s*", message_lower))

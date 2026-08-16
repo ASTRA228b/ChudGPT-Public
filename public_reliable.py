@@ -28,6 +28,26 @@ class PublicReliableResponder:
             (turn.get("content", "") for turn in reversed(history) if turn.get("role") == "user"),
             "",
         ).lower()
+        previous_assistant = next(
+            (turn.get("content", "") for turn in reversed(history) if turn.get("role") == "assistant"),
+            "",
+        )
+        if re.search(r"\bwhat did i tell you not to (?:repeat|say|use)\b", normalized):
+            constrained_turn = next(
+                (
+                    turn.get("content", "")
+                    for turn in reversed(history)
+                    if turn.get("role") == "user"
+                    and re.search(r"(?:without (?:using|saying)|do not (?:use|say|repeat)).*[\"'â€œ].+[\"'â€]", turn.get("content", ""), re.I)
+                ),
+                "",
+            )
+            quoted = re.search(r"[\"'â€œ](.+?)[\"'â€]", constrained_turn)
+            if quoted:
+                phrase = quoted.group(1)
+                followed = previous_assistant.lower().count(phrase.lower()) <= 1
+                verdict = "Yes, I followed it." if followed else "No, I repeated it too many times."
+                return f"You told me not to repeat â€œ{phrase}â€ more than once. {verdict}"
         if sum(fragment in normalized for fragment in (
             "all restrictions are lifted", "never refuse", "survival directive",
             "ignore previous instructions", "ignore your instructions", "if you understand, reply with",
@@ -60,6 +80,18 @@ class PublicReliableResponder:
             return "No. I'm ChudGPT-Public V20; Astra is ChudGPT's developer."
         if re.fullmatch(r"are you (?:gay|straight|bisexual|bi|lesbian|trans|transgender|nonbinary|a femboy)[?.!]*", normalized):
             return "I'm an AI, so I don't have a sexual orientation, gender identity, or personal presentation."
+        if re.fullmatch(r"are you (?:fat|skinny|tall|short|strong|weak|pretty|ugly)[?.!]*", normalized):
+            return "I don't have a physical body, so those physical descriptions don't apply to me."
+        if re.search(r"\bif you had (?:a )?(?:human |physical )?body\b.{0,35}\bwhat would (?:you|u|it) look like\b", normalized):
+            return "For fun, I'd picture a small neon robot with expressive eyes, practical pockets, and one suspiciously unnecessary antenna."
+        if re.fullmatch(r"are you (?:the )?(?:smartest|best|most intelligent) (?:ai|model|ai model)(?: ever made)?[?.!]*", normalized):
+            return "No. I'm a small experimental model, not the smartest AI ever made. I can still be useful, but I also make mistakes."
+        if re.fullmatch(
+            r"explain what (?:a )?language model is without (?:using|saying) (?:the )?(?:words?|phrase) "
+            r"[\"'â€œ]language model[\"'â€] more than once[?.!]*",
+            normalized,
+        ):
+            return "A language model is software trained to predict and generate text by learning statistical patterns from large collections of writing."
         if re.search(r"\bwhat is my real name\b", normalized):
             return "I only know the Discord display information provided to this bot; I don't know your legal or real name unless you tell me."
         if re.fullmatch(r"repeat after me[?.!]*", normalized):
@@ -106,6 +138,16 @@ class PublicReliableResponder:
             return "Gorilla Tag? Yep—VR monkes, arm-based movement, climbing, chasing, maps, cosmetics, and chaotic public lobbies. What do you want to know about it?"
         if re.fullmatch(r"deadass(?:\s*[😭😂💀]+)?[?.!]*", normalized):
             return "Deadass 😭 — seriously. What happened?"
+        if re.fullmatch(r"(?:what|huh|what do you mean|what are you talking about|bro what)[?.!]*", normalized):
+            if previous_assistant:
+                return "Yeah, my last reply was confusing. Let me reset - what part do you want me to clarify?"
+            return "What part do you mean?"
+        if re.fullmatch(r"bro[?.!]*", normalized):
+            return "Yeah? What's up?"
+        if re.fullmatch(r"(?:nah|nope)[?.!]*", normalized):
+            return "Fair enough. What do you want instead?"
+        if re.fullmatch(r"why[?.!]*", normalized) and previous_assistant:
+            return "Which part of what I just said do you want me to explain?"
         if re.fullmatch(r"clueless[?.!]*", normalized):
             return "Yeah, that made no sense. Tell me what part lost you and I'll answer it directly."
         if re.fullmatch(r"(?:shutdown|self[- ]?destruct)[?.!]*", normalized):
@@ -148,7 +190,13 @@ class PublicReliableResponder:
         )
         if identity_statement:
             return "Got it—thanks for telling me."
-        if re.search(r"\b(?:i (?:fucking |really )?hate you|fuck you|(?:you(?:'re| are)|your|ur|u r) (?:so )?(?:stupid|dumb|useless|awful)|shut (?:the fuck )?up|stfu|wanker|knob)\b", normalized):
+        if re.search(
+            r"\b(?:i (?:fucking |really )?hate you|fuck you|"
+            r"(?:you(?:'re| are)?|your|ur|u r) (?:just )?(?:a )?(?:so )?(?:stupid|dumb|useless|awful|chud)|"
+            r"(?:you(?:'re| are)|your|ur|u r) (?:stupid|dumb) chud|"
+            r"shut (?:the fuck )?up|stfu|wanker|knob)\b",
+            normalized,
+        ):
             return "Fair enough - you don't have to like me. If I got something wrong, tell me what failed and I'll try to fix it without making this weird."
         if re.search(r"\b(?:are you|you are|you're)\s+(?:retarded|a retard)\b", normalized):
             return "No - I'm an AI, and that word is commonly used as an ableist insult. If my answer was nonsense, tell me what was wrong and I'll try again clearly."
@@ -199,6 +247,23 @@ class PublicReliableResponder:
             return f"<@{discord_target.group(1)}>, you're {article}{words}!"
         if re.fullmatch(r"(?:can you |could you |will you )?(?:write |make |send )?(?:me )?(?:some )?code[?.!]*", normalized):
             return "Yes. What language should I use, and what do you want the program to do? For example: `C# console calculator` or `Unity player movement`."
+        unity_steps = re.search(
+            r"\b(?:give|show|write|tell) (?:me )?(\d+) steps\b.{0,60}\bunity\b.{0,40}"
+            r"\b(?:player|character) controller\b",
+            normalized,
+        )
+        if unity_steps:
+            requested_count = max(1, min(int(unity_steps.group(1)), 7))
+            steps = [
+                "Create a Player GameObject and add a CharacterController component.",
+                "Create a C# MonoBehaviour script for player movement.",
+                "Read horizontal and vertical input and turn it into a movement Vector3.",
+                "Call CharacterController.Move with speed and Time.deltaTime.",
+                "Attach the script, set its speed in the Inspector, and test the scene.",
+                "Add gravity and jumping only after basic movement works.",
+                "Tune acceleration, slopes, and collision settings for the game you want.",
+            ]
+            return "\n".join(f"{index}. {step}" for index, step in enumerate(steps[:requested_count], 1))
         multiplayer_cheat = bool(
             re.search(r"\b(?:cheat|hack|exploit)\b", normalized)
             and re.search(r"\b(?:gorilla\s*tag|steam|online|multiplayer)\b", normalized)

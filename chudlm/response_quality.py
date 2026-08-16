@@ -31,6 +31,46 @@ def _content_words(text: str) -> set[str]:
     return {word for word in _words(text) if len(word) >= 4 and word not in STOP_WORDS}
 
 
+def requests_structured_response(prompt: str) -> bool:
+    """Return whether the user actually requested steps, a list, or instructions."""
+    normalized = " ".join(_words(prompt))
+    return bool(re.search(
+        r"\b(?:give|show|tell|list|write|make|create|explain) (?:me )?(?:the )?\d+ "
+        r"(?:steps|ways|ideas|examples|tips|reasons|things)\b|"
+        r"\b(?:steps|step by step|instructions|tutorial|walk me through|checklist|"
+        r"numbered list|bullet list|how to|recipe|ingredients)\b",
+        normalized,
+    ))
+
+
+def has_structured_list(text: str) -> bool:
+    """Detect a multi-item tutorial/list without treating ordinary prose as one."""
+    item_lines = re.findall(r"(?m)^\s*(?:\d+[.)]|[-*â€¢])\s+\S+", text)
+    inline_items = re.findall(r"(?:^|\s)\d+[.)]\s+\S+", text)
+    tutorial_lead = bool(re.search(
+        r"\b(?:here (?:are|is)|follow)\b.{0,35}\b(?:steps|ways|tips|ideas|instructions)\b|"
+        r"\b(?:steps|instructions|ingredients)\s*:",
+        text,
+        re.I | re.S,
+    ))
+    return len(item_lines) >= 2 or len(inline_items) >= 3 or tutorial_lead
+
+
+def repeated_phrase_constraint(prompt: str) -> tuple[str, int] | None:
+    """Extract an explicit quoted phrase limit such as 'not ... more than once'."""
+    match = re.search(
+        r"(?:without (?:using|saying)|do not (?:use|say|repeat)) (?:the )?(?:words?|phrase)?\s*"
+        r"[\"'â€œ](.+?)[\"'â€]\s+more than\s+(once|twice|\d+ times?)",
+        prompt,
+        re.I,
+    )
+    if not match:
+        return None
+    amount = match.group(2).lower()
+    limit = 1 if amount == "once" else 2 if amount == "twice" else int(re.search(r"\d+", amount).group())
+    return match.group(1).strip(), limit
+
+
 def requires_reliable_reply(prompt: str, reply: str | None) -> bool:
     """Keep operations requiring correctness out of probabilistic generation."""
     normalized = " ".join(_words(prompt))
@@ -182,10 +222,19 @@ def assess_generated_reply(
         reasons.append("meme-template-leak")
     if stripped.count("```") % 2:
         reasons.append("broken-code-fence")
+    if has_structured_list(stripped) and not requests_structured_response(prompt):
+        reasons.append("unrequested-structured-list")
+    phrase_limit = repeated_phrase_constraint(prompt)
+    if phrase_limit and lowered.count(phrase_limit[0].lower()) > phrase_limit[1]:
+        reasons.append("phrase-repetition-constraint")
     if re.search(r"[{}]\s*(?:do|once|reads?)\b|\bexactal\b", lowered):
         reasons.append("corrupt-fragment")
     if re.search(r"\bcaption and conversation\b|\bone useful way into\b", lowered):
         reasons.append("known-template-leak")
+    if re.search(r"\blanguage model\b.{0,120}\blanguage model\b", lowered):
+        reasons.append("identity-repetition")
+    if re.search(r"\b(?:does not have no|i can't understand what i can|provide you with the language)\b", lowered):
+        reasons.append("broken-identity-grammar")
     requested_code = any(
         marker in " ".join(_words(prompt))
         for marker in ("code", "python", "c#", "csharp", "javascript", "unity", "script", "program")

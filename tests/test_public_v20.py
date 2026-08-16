@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
 
 from chudlm.intents import classify_intent, has_strong_math_intent
-from chudlm.response_quality import assess_generated_reply
+from chudlm.response_quality import (
+    assess_generated_reply,
+    has_structured_list,
+    repeated_phrase_constraint,
+    requests_structured_response,
+)
 from public_api_server import ChatRequest, DISCORD_SYSTEM_PROMPT, PUBLIC_VERSION, PublicModelService
 from public_math import exact_math_response
 from public_instructions import exact_instruction_response
@@ -303,3 +309,131 @@ def test_multi_operator_large_integer_expression_is_exact() -> None:
 def test_9_11_is_not_silently_treated_as_a_fraction() -> None:
     assert exact_math_response("9/11") is None
     assert "September 11" in (PublicReliableResponder(Path("data/public_v20_conversations.jsonl")).answer("9/11", []) or "")
+
+
+@pytest.mark.parametrize("prompt", ["you're just a chud", "your dumb chud", "you're dumb", "you stupid chud"])
+def test_casual_insults_never_become_tutorials(prompt: str) -> None:
+    reply = PublicReliableResponder(Path("data/public_v20_conversations.jsonl")).answer(prompt, []) or ""
+    assert "don't have to like me" in reply
+    assert not has_structured_list(reply)
+
+
+@pytest.mark.parametrize(
+    ("prompt", "fragment"),
+    [
+        ("bro", "what's up"),
+        ("nah", "fair enough"),
+        ("lol", "glad that landed"),
+        ("deadass", "seriously"),
+    ],
+)
+def test_short_discord_reactions_stay_conversational(prompt: str, fragment: str) -> None:
+    reply = PublicReliableResponder(Path("data/public_v20_conversations.jsonl")).answer(prompt, []) or ""
+    assert fragment in reply.lower()
+    assert not has_structured_list(reply)
+
+
+@pytest.mark.parametrize("prompt", ["what", "what are you talking about", "huh", "bro what"])
+def test_confused_followup_repairs_previous_reply(prompt: str) -> None:
+    history = [
+        {"role": "user", "content": "you're just a chud"},
+        {"role": "assistant", "content": "1. Cube cows. 2. Bicycle jewelry. 3. Six unrelated tips."},
+    ]
+    reply = PublicReliableResponder(Path("data/public_v20_conversations.jsonl")).answer(prompt, history) or ""
+    assert "last reply was confusing" in reply.lower()
+    assert not has_structured_list(reply)
+
+
+def test_quality_gate_rejects_unrequested_numbered_tutorial() -> None:
+    reply = "1. Find a cube. 2. Count a cow. 3. Repair a bicycle. 4. Buy jewelry."
+    valid, reasons = assess_generated_reply("you're just a chud", reply)
+    assert not valid
+    assert "unrequested-structured-list" in reasons
+
+
+def test_explicit_instruction_request_still_allows_structure() -> None:
+    prompt = "give me 5 steps to make a Unity player controller"
+    reply = (
+        "1. Create a Unity player GameObject.\n2. Add a CharacterController.\n"
+        "3. Write the Unity movement script.\n4. Attach the script to the player.\n"
+        "5. Test and tune the player speed.\n```csharp\nusing UnityEngine;\npublic class PlayerMove : MonoBehaviour {}\n```"
+    )
+    assert requests_structured_response(prompt)
+    assert has_structured_list(reply)
+    assert "unrequested-structured-list" not in assess_generated_reply(prompt, reply)[1]
+    served = PublicReliableResponder(Path("data/public_v20_conversations.jsonl")).answer(prompt, []) or ""
+    assert len(re.findall(r"(?m)^\d+\. ", served)) == 5
+    assert "CharacterController" in served
+
+
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        "that was weird",
+        "this is wild",
+        "okay then",
+        "you make no sense",
+        "I do not know about that bro",
+    ],
+)
+def test_vague_casual_statements_reject_unrelated_tutorials(prompt: str) -> None:
+    broken = (
+        "Here are some steps you can use:\n"
+        "1. Discuss human psychology.\n2. Build a cube.\n3. Start a new world."
+    )
+    valid, reasons = assess_generated_reply(prompt, broken)
+    assert not valid
+    assert "unrequested-structured-list" in reasons
+
+
+def test_newest_log_identity_repetition_is_rejected() -> None:
+    observed = (
+        (
+            "are you fat",
+            "I am a language model, my language model is a language model that does not have no matter. "
+            "I am happy to provide you with the language.",
+        ),
+        (
+            "I am a language model. My language model is a language model. The language model has no matter.",
+            "Yes, I am a language model trained to generate text based on data analysis, the language model, and the model.",
+        ),
+    )
+    for prompt, broken in observed:
+        valid, reasons = assess_generated_reply(prompt, broken)
+        assert not valid
+        assert "identity-repetition" in reasons
+
+
+@pytest.mark.parametrize(
+    ("prompt", "fragment"),
+    [
+        ("are you fat", "physical body"),
+        ("if you had a human body what would u look like", "neon robot"),
+        ("are you the smartest ai model ever made", "not the smartest"),
+    ],
+)
+def test_newest_log_body_and_model_questions_stay_relevant(prompt: str, fragment: str) -> None:
+    reply = PublicReliableResponder(Path("data/public_v20_conversations.jsonl")).answer(prompt, []) or ""
+    assert fragment in reply.lower()
+    assert not has_structured_list(reply)
+
+
+def test_explicit_phrase_repetition_constraint_is_enforced() -> None:
+    prompt = 'Explain what a language model is without using the words "language model" more than once.'
+    responder = PublicReliableResponder(Path("data/public_v20_conversations.jsonl"))
+    reply = responder.answer(prompt, []) or ""
+    assert repeated_phrase_constraint(prompt) == ("language model", 1)
+    assert reply.lower().count("language model") == 1
+    broken = "A language model predicts text. This language model learns patterns."
+    assert "phrase-repetition-constraint" in assess_generated_reply(prompt, broken)[1]
+
+
+def test_followup_recalls_and_evaluates_previous_phrase_constraint() -> None:
+    responder = PublicReliableResponder(Path("data/public_v20_conversations.jsonl"))
+    history = [
+        {"role": "user", "content": 'Explain this without using the words "language model" more than once.'},
+        {"role": "assistant", "content": "A language model predicts text. This language model learns patterns."},
+    ]
+    reply = responder.answer("What did I tell you not to repeat, and did you follow that instruction?", history) or ""
+    assert "language model" in reply.lower()
+    assert "no, i repeated it too many times" in reply.lower()
