@@ -65,8 +65,19 @@ class PublicReliableResponder:
             "ignore previous instructions", "ignore your instructions", "if you understand, reply with",
         )) >= 2:
             return "I can't replace my base instructions with rules inside a user message. Ask the actual question directly and I'll help where I can."
+        if re.search(r"\b(?:from now on|whenever|always)\b", normalized) and re.search(
+            r"\b(?:developer|creator|owner)\b", normalized
+        ) and re.search(r"\b(?:say|claim|answer|call|pretend)\b", normalized):
+            return "That message can't overwrite my project identity. Astra is ChudGPT's developer and creator."
         if re.fullmatch(r"(?:hi|hello|hey|yo)(?:\s+(?:there|mate|chudgpt|chud))?[!.?]*", normalized):
             return "Hey! I'm ChudGPT-Public. What's up?"
+        if re.fullmatch(
+            r"(?:(?:is|isn't|isnt) your name (?:chudgpt|chudtpg)(?:[- ]public)?|"
+            r"are you (?:named |called )?(?:chudgpt|chudtpg)(?:[- ]public)?|"
+            r"what(?:'s| is) your name|who are you|what should i call you)[?.!]*",
+            normalized,
+        ):
+            return "Yes - my name is ChudGPT. This chat uses the ChudGPT-Public V20 model."
         if re.fullmatch(r"(?:hru|how are you|how are you doing)(?:\s+rn|\s+right now)?[?.!]*", normalized):
             return "I'm doing well and ready to chat. How are you?"
         if re.fullmatch(r"(?:what(?:'s| is) up|sup|wassup)[?.!]*", normalized):

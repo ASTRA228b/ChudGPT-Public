@@ -43,6 +43,9 @@ MEME_FACTS: tuple[tuple[tuple[str, ...], str], ...] = (
 
 def find_meme_fact(message: str) -> str | None:
     """Return a reviewed explanation only for an explicitly named meme."""
+    compact_number = re.sub(r"[\s!?.,_-]", "", message.lower())
+    if re.fullmatch(r"(?:67){2,}", compact_number):
+        return "That is the 67 meme repeated at maximum volume. It still has no fixed meaning; the repetition is the joke."
     normalized = " ".join(message.lower().replace("’", "'").split())
     for aliases, explanation in MEME_FACTS:
         # Whole-phrase boundaries prevent the `chud` glossary entry from

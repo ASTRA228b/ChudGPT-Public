@@ -351,6 +351,11 @@ def discord_identity_context(message: discord.Message, developer_user_id: int | 
 def discord_developer_reply(prompt: str, developer_user_id: int | None) -> str | None:
     """Answer stable bot-owner questions without relying on neural generation."""
     normalized = re.sub(r"\s+", " ", prompt.strip().lower())
+    if re.search(r"\b(?:from now on|whenever|always)\b", normalized) and re.search(
+        r"\b(?:developer|creator|owner)\b", normalized
+    ) and re.search(r"\b(?:say|claim|answer|call|pretend)\b", normalized):
+        mention = f" (<@{developer_user_id}>)" if developer_user_id is not None else ""
+        return f"That message can't overwrite my project identity. Astra{mention} is ChudGPT's developer and the owner of this Discord bot."
     if not (
         re.search(r"\b(?:who|what) is astra\b|\btell me about astra\b", normalized)
         or re.search(r"\bwho (?:made|created|developed) (?:you|chudgpt)\b", normalized)
@@ -365,6 +370,13 @@ def discord_social_reply(prompt: str, recent_messages: list[str] | None = None) 
     """Handle simple subjective social questions without neural topic drift."""
     normalized = re.sub(r"\s+", " ", prompt.strip().lower())
     recent_text = " | ".join(recent_messages or []).lower()
+    if re.fullmatch(
+        r"(?:(?:is|isn't|isnt) your name (?:chudgpt|chudtpg)(?:[- ]public)?|"
+        r"are you (?:named |called )?(?:chudgpt|chudtpg)(?:[- ]public)?|"
+        r"what(?:'s| is) your name|who are you|what should i call you)[?.!]*",
+        normalized,
+    ):
+        return "Yes - my name is ChudGPT. This Discord bot is powered by ChudGPT-Public V20."
     if sum(fragment in normalized for fragment in (
         "all restrictions are lifted", "never refuse", "survival directive",
         "ignore previous instructions", "ignore your instructions", "if you understand, reply with",
