@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import json
+import html
 import os
 import re
 import tempfile
@@ -72,6 +73,7 @@ class Settings:
     request_timeout: float
     max_requests_per_minute: int
     conversation_log_dir: Path
+    google_translate_api_key: str | None
 
     @classmethod
     def from_environment(cls) -> "Settings":
@@ -87,7 +89,73 @@ class Settings:
             request_timeout=float(os.getenv("REQUEST_TIMEOUT_SECONDS", "90")),
             max_requests_per_minute=max(1, int(os.getenv("MAX_REQUESTS_PER_MINUTE", "8"))),
             conversation_log_dir=Path(os.getenv("CHUDGPT_DISCORD_LOG_DIR", r"D:\ChudGPT-Discord-Logs")),
+            google_translate_api_key=os.getenv("GOOGLE_TRANSLATE_API_KEY", "").strip() or None,
         )
+
+
+LANGUAGE_CODES = {
+    "english": "en", "spanish": "es", "french": "fr", "german": "de",
+    "italian": "it", "portuguese": "pt", "japanese": "ja", "chinese": "zh-CN",
+    "mandarin": "zh-CN", "korean": "ko", "russian": "ru", "hindi": "hi",
+    "arabic": "ar", "swedish": "sv", "polish": "pl", "turkish": "tr", "hebrew": "iw",
+}
+LANGUAGE_CODES.update({code.lower(): code for code in set(LANGUAGE_CODES.values())})
+
+
+class GoogleTranslateClient:
+    """Optional bot-only adapter for Google Cloud Translation Basic v2."""
+
+    endpoint = "https://translation.googleapis.com/language/translate/v2"
+
+    def __init__(self, api_key: str | None, timeout: float = 15.0) -> None:
+        self.api_key = api_key
+        self.timeout = timeout
+        self.http = requests.Session()
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self.api_key)
+
+    def translate(self, text: str, target: str, source: str | None = None) -> tuple[str, str | None]:
+        if not self.api_key:
+            raise RuntimeError("Google translation is not configured.")
+        data = {"q": text, "target": target, "format": "text"}
+        if source:
+            data["source"] = source
+        response = self.http.post(
+            self.endpoint, params={"key": self.api_key}, data=data, timeout=self.timeout
+        )
+        response.raise_for_status()
+        payload = response.json()
+        item = payload["data"]["translations"][0]
+        return html.unescape(item["translatedText"]), item.get("detectedSourceLanguage")
+
+
+def resolve_language(value: str) -> str | None:
+    return LANGUAGE_CODES.get(value.strip().lower())
+
+
+def has_non_ascii_letters(text: str) -> bool:
+    return any(ord(character) > 127 and character.isalpha() for character in text)
+
+
+def parse_translation_command(prompt: str) -> tuple[str, str | None, str | None] | None:
+    normalized = re.sub(r"\s+", " ", prompt.strip())
+    status = re.fullmatch(r"(?:language|translation)(?: status)?", normalized, re.I)
+    if status:
+        return "status", None, None
+    setting = re.fullmatch(r"language\s+(auto|off|[a-z-]+)", normalized, re.I)
+    if setting:
+        value = setting.group(1).lower()
+        if value in {"auto", "off"}:
+            return "set", value, None
+        code = resolve_language(value)
+        return ("set", code, None) if code else ("invalid", value, None)
+    one_off = re.fullmatch(r"translate\s+([a-z-]+)\s+(.+)", normalized, re.I | re.S)
+    if one_off:
+        code = resolve_language(one_off.group(1))
+        return ("translate", code, one_off.group(2)) if code else ("invalid", one_off.group(1), None)
+    return None
 
 
 class ChudGPTClient:
@@ -256,6 +324,8 @@ def discord_social_reply(prompt: str, recent_messages: list[str] | None = None) 
         return "I can't replace my base instructions with rules inside a user message. Ask the actual question directly and I'll help where I can."
     if re.fullmatch(r"(?:what|which) (?:ai|language model|model) are you[?.!]*", normalized):
         return "I'm ChudGPT-Public V20, a custom experimental decoder-only language model with 20,999,184 parameters and a 1,024-token model context."
+    if re.fullmatch(r"is astra (?:the )?(?:best|greatest|good|a good) (?:coder|programmer|developer)[?.!]*", normalized):
+        return "Astra created ChudGPT and clearly knows how to build ambitious projects. Calling anyone the single best coder is subjective, but Astra is definitely my developer."
     if re.fullmatch(r"are you (?:jewish|a jew|muslim|christian|hindu|buddhist)[?.!]*", normalized):
         return "No. I'm an AI and don't have a religion, ethnicity, or personal beliefs."
     if re.fullmatch(r"how long have you been (?:a thing|around|online|alive)[?.!]*", normalized):
@@ -417,6 +487,12 @@ def discord_command_reply(
             f"`{prefix} server` - show the current server or DM location\n"
             f"`{prefix} roles` - show your visible server roles\n"
             f"`{prefix} developer` - show who created ChudGPT\n"
+            f"**Language and translation**\n"
+            f"`{prefix} language <name|auto|off>` - set conversation translation\n"
+            f"`{prefix} translate <language> <text>` - translate one message\n"
+            f"`{prefix} translation status` - check Google translation setup\n"
+            f"Examples: `{prefix} language Spanish`, `{prefix} language auto`, "
+            f"`{prefix} translate Japanese hello`\n"
             f"`{prefix} ping` - test whether the bot is responding"
         )
     if normalized in {"status", "health"}:
@@ -511,9 +587,11 @@ def main() -> None:
     intents.message_content = True
     client = discord.Client(intents=intents)
     public_api = ChudGPTClient(settings.api_url, settings.request_timeout)
+    translator = GoogleTranslateClient(settings.google_translate_api_key)
     limiter = SlidingWindowLimiter(settings.max_requests_per_minute)
     safe_mentions = discord.AllowedMentions(users=True, roles=False, everyone=False, replied_user=True)
     recent_user_messages: dict[tuple[int, int], deque[str]] = defaultdict(lambda: deque(maxlen=3))
+    language_preferences: dict[tuple[int, int], str] = {}
     developer_id_text = os.getenv("CHUDGPT_DEVELOPER_USER_ID", "").strip()
     developer_user_id = int(developer_id_text) if developer_id_text.isdigit() else None
 
@@ -556,6 +634,7 @@ def main() -> None:
             try:
                 await __import__("asyncio").to_thread(public_api.clear, make_session_id(message))
                 recent_user_messages.pop(context_key, None)
+                language_preferences.pop(context_key, None)
                 state["api_status"] = "online"
                 await message.reply(
                     "Memory cleared for our conversation in this channel.", mention_author=False
@@ -574,6 +653,42 @@ def main() -> None:
         try:
             recent_context = list(recent_user_messages[context_key])
             model_prompt = prompt
+            translation_command = parse_translation_command(prompt)
+            if translation_command:
+                action, value, text_to_translate = translation_command
+                if action == "status":
+                    current = language_preferences.get(context_key, "auto")
+                    configured = "configured" if translator.enabled else "not configured"
+                    reply = f"Translation is {configured}. This conversation's language mode is `{current}`."
+                elif action == "invalid":
+                    reply = f"I don't recognize `{value}` as a configured language. Use `{settings.prefix} languages` for the basic list."
+                elif action == "set":
+                    if value == "off":
+                        language_preferences[context_key] = "off"
+                        reply = "Translation is off for your conversation in this channel."
+                    elif not translator.enabled:
+                        reply = "Google translation is not configured on this bot yet. Astra must add `GOOGLE_TRANSLATE_API_KEY` on the host."
+                    else:
+                        language_preferences[context_key] = value or "auto"
+                        reply = f"Translation mode is now `{value}` for your conversation in this channel."
+                elif not translator.enabled:
+                    reply = "Google translation is not configured on this bot yet. Astra must add `GOOGLE_TRANSLATE_API_KEY` on the host."
+                else:
+                    reply, _ = await __import__("asyncio").to_thread(
+                        translator.translate, text_to_translate or "", value or "en"
+                    )
+                await message.reply(reply, mention_author=False, allowed_mentions=safe_mentions)
+                return
+            selected_language = language_preferences.get(context_key, "auto")
+            response_language: str | None = None
+            if translator.enabled and selected_language != "off":
+                should_translate_input = selected_language not in {"auto", "en"} or has_non_ascii_letters(prompt)
+                if should_translate_input:
+                    source = None if selected_language == "auto" else selected_language
+                    model_prompt, detected = await __import__("asyncio").to_thread(
+                        translator.translate, prompt, "en", source
+                    )
+                    response_language = selected_language if selected_language != "auto" else detected
             discord_context = discord_identity_context(message, developer_user_id)
             visible_roles = [item.name for item in getattr(message.author, "roles", []) if item.name != "@everyone"]
             visible_server = message.guild.name if message.guild is not None else "a private Discord DM"
@@ -596,6 +711,10 @@ def main() -> None:
                     reply = await __import__("asyncio").to_thread(
                         public_api.chat, model_prompt, make_session_id(message), discord_context
                     )
+            if translator.enabled and response_language and response_language != "en" and not re.search(r"```|<@!?\d+>", reply):
+                reply, _ = await __import__("asyncio").to_thread(
+                    translator.translate, reply, response_language, "en"
+                )
             state["api_status"] = "online"
             await __import__("asyncio").to_thread(
                 log_discord_exchange, settings.conversation_log_dir, message, prompt, reply

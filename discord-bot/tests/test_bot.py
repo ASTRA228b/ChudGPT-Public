@@ -1,9 +1,9 @@
 from bot import (
-    ChudGPTClient, DISCORD_SYSTEM_PROMPT, add_recent_context, clean_prompt,
+    ChudGPTClient, DISCORD_SYSTEM_PROMPT, GoogleTranslateClient, add_recent_context, clean_prompt,
     acquire_instance_lock,
     discord_code_reply, discord_command_reply, discord_developer_reply, discord_quoted_reply,
     discord_social_reply, is_memory_clear_request, make_session_id,
-    place_author_mention, split_discord_message,
+    parse_translation_command, place_author_mention, resolve_language, split_discord_message,
 )
 
 
@@ -49,6 +49,10 @@ def test_additional_discord_commands() -> None:
     assert "Astra" in (discord_command_reply("developer", *common) or "")
     help_reply = discord_command_reply("help", *common) or ""
     assert "!chud languages" in help_reply and "!chud developer" in help_reply
+    assert "!chud language <name|auto|off>" in help_reply
+    assert "!chud translate <language> <text>" in help_reply
+    assert "!chud translation status" in help_reply
+    assert "!chud translate Japanese hello" in help_reply
 
 
 def test_author_mentions_are_selective_and_naturally_placed() -> None:
@@ -61,6 +65,38 @@ def test_author_mentions_are_selective_and_naturally_placed() -> None:
 def test_targeted_violence_and_talk_requests() -> None:
     assert "won't encourage harming" in (discord_social_reply("kill <@456>") or "")
     assert discord_social_reply("talk to <@456>") == "Hey <@456>—what's up?"
+
+
+def test_translation_commands_and_language_resolution() -> None:
+    assert resolve_language("Spanish") == "es"
+    assert resolve_language("ru") == "ru"
+    assert parse_translation_command("language Spanish") == ("set", "es", None)
+    assert parse_translation_command("language auto") == ("set", "auto", None)
+    assert parse_translation_command("translate German hello there") == ("translate", "de", "hello there")
+    assert parse_translation_command("translation status") == ("status", None, None)
+    assert parse_translation_command("language klingon") == ("invalid", "klingon", None)
+
+
+def test_google_translate_client_uses_official_v2_shape(monkeypatch) -> None:
+    class Response:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"data": {"translations": [{"translatedText": "Hola &amp; adiós", "detectedSourceLanguage": "en"}]}}
+
+    captured = {}
+    client = GoogleTranslateClient("test-key")
+
+    def fake_post(url, params, data, timeout):
+        captured.update(url=url, params=params, data=data, timeout=timeout)
+        return Response()
+
+    monkeypatch.setattr(client.http, "post", fake_post)
+    translated, detected = client.translate("Hello and goodbye", "es")
+    assert translated == "Hola & adiós" and detected == "en"
+    assert captured["params"] == {"key": "test-key"}
+    assert captured["data"]["format"] == "text"
 
 
 def test_message_split_respects_discord_limit() -> None:

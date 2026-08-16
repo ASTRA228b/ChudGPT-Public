@@ -53,6 +53,7 @@ def test_discord_context_understands_what_am_i() -> None:
     [
         ("Who made you?", "Astra is ChudGPT's developer"),
         ("Who is Astra?", "Astra is ChudGPT's developer"),
+        ("IS ASTRA THE BEST CODER", "single best coder is subjective"),
         ("who is astr", "If you mean Astra"),
         ("Wich langues can you speack", "work best in English"),
         ("Can you speak German or some other language?", "work best in English"),

@@ -104,6 +104,8 @@ class PublicReliableResponder:
             return language_topics[language_key]
         if re.fullmatch(r"(?:who (?:made|created|developed|built) (?:you|chudgpt)|who is (?:your|the) (?:developer|creator)|who is astra|tell me about astra)[?.!]*", normalized):
             return "Astra is ChudGPT's developer and created this custom model project, including ChudGPT-Public."
+        if re.fullmatch(r"is astra (?:the )?(?:best|greatest|good|a good) (?:coder|programmer|developer)[?.!]*", normalized):
+            return "Astra created ChudGPT and clearly knows how to build ambitious projects. Calling anyone the single best coder is subjective, but Astra is definitely my developer."
         if re.fullmatch(r"who is astr[?.!]*", normalized):
             return "If you mean Astra: Astra is ChudGPT's developer and the creator of this custom model project."
         if re.fullmatch(r"(?:what|which|wich) (?:languages?|langues|langueges) can (?:you|u) (?:speak|speack|use|understand)[?.!]*", normalized) or re.fullmatch(r"can (?:you|u) speak (?:german|spanish|french|italian|japanese|english)(?: or .+)?[?.!]*", normalized):
