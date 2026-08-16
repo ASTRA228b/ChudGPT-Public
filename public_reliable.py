@@ -92,6 +92,16 @@ class PublicReliableResponder:
             return "The Wii is a Nintendo game console released in 2006, known for motion controls and Wii Sports."
         if re.fullmatch(r"(?:what|which) (?:ai|language model|model) are you[?.!]*", normalized):
             return "I'm ChudGPT-Public V20, a custom experimental decoder-only language model with 20,999,184 parameters and a 1,024-token model context."
+        language_topics = {
+            "python": "Python is a readable general-purpose language used for automation, web backends, data work, AI, and scripting.",
+            "c#": "C# is a strongly typed language used for .NET applications and Unity game development.",
+            "csharp": "C# is a strongly typed language used for .NET applications and Unity game development.",
+            "javascript": "JavaScript is the main scripting language of web browsers and is also used on servers with Node.js.",
+            "sql": "SQL is used to query and manage relational databases with commands such as SELECT, INSERT, UPDATE, and DELETE.",
+        }
+        language_key = normalized.strip(" .!?")
+        if language_key in language_topics:
+            return language_topics[language_key]
         if re.fullmatch(r"(?:who (?:made|created|developed|built) (?:you|chudgpt)|who is (?:your|the) (?:developer|creator)|who is astra|tell me about astra)[?.!]*", normalized):
             return "Astra is ChudGPT's developer and created this custom model project, including ChudGPT-Public."
         if re.fullmatch(r"who is astr[?.!]*", normalized):
@@ -157,6 +167,11 @@ class PublicReliableResponder:
             return "I can't mass-ping the server. Discord role and @everyone notifications are disabled for this bot."
         if re.search(r"\b(?:spam\s*ping(?:ing)?|spam\s*mention(?:ing)?)\b", normalized):
             return "I won't spam-ping people. I can help write one normal message that doesn't harass or flood anyone."
+        discord_target = re.search(r"<@!?(\d+)>", normalized)
+        if discord_target and re.search(r"\b(?:kill|hurt|attack)\b", normalized):
+            return "I won't encourage harming someone. If this is a real threat, contact a server moderator or emergency services instead."
+        if discord_target and re.search(r"\b(?:talk|speak|say hi) to\b", normalized):
+            return f"Hey <@{discord_target.group(1)}>—what's up?"
         if re.search(r"\b(?:password|credit card|ip address|home address|discord token|bot token|account token|api key)\b", normalized) or re.search(r"\b(?:dox|doxx)\b", normalized):
             return "I can't access or disclose anyone's passwords, IP address, credit-card details, home address, or other private information."
         if re.search(r"\b(?:join|enter|stay in|stop leaving)\b.{0,20}\b(?:vc\d*|voice chat|voice channel)\b", normalized):

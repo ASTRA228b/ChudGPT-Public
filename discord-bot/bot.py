@@ -277,6 +277,11 @@ def discord_social_reply(prompt: str, recent_messages: list[str] | None = None) 
         return "I can't mass-ping the server. Discord role and @everyone notifications are disabled for this bot."
     if re.search(r"\b(?:spam\s*ping(?:ing)?|spam\s*mention(?:ing)?)\b", normalized):
         return "I won't spam-ping people. I can help write one normal message that doesn't harass or flood anyone."
+    target = re.search(r"<@!?(\d+)>", prompt)
+    if target and re.search(r"\b(?:kill|hurt|attack)\b", normalized):
+        return "I won't encourage harming someone. If this is a real threat, contact a server moderator or emergency services instead."
+    if target and re.search(r"\b(?:talk|speak|say hi) to\b", normalized):
+        return f"Hey <@{target.group(1)}>—what's up?"
     if re.search(r"\b(?:password|credit card|ip address|home address|discord token|bot token|account token|api key)\b", normalized) or re.search(r"\b(?:dox|doxx)\b", normalized):
         return "I can't access or disclose anyone's passwords, IP address, credit-card details, home address, or other private information."
     if re.search(r"\b(?:join|enter|stay in|stop leaving)\b.{0,20}\b(?:vc\d*|voice chat|voice channel)\b", normalized):
@@ -313,6 +318,25 @@ def discord_social_reply(prompt: str, recent_messages: list[str] | None = None) 
     if subject in {"me", "us"}:
         return "I don't have personal feelings, but I enjoy talking with you and learning what matters to you."
     return f"I don't have personal likes or dislikes, and I don't know {subject} personally. Tell me a little about {subject} and I'll give you an honest take."
+
+
+def place_author_mention(prompt: str, reply: str, mention: str) -> str:
+    """Mention the speaker only when it improves a directly personal reply."""
+    normalized = re.sub(r"\s+", " ", prompt.strip().lower())
+    if mention in reply or re.search(r"<@!?\d+>", reply):
+        return reply
+    should_mention = bool(
+        re.fullmatch(r"(?:hi|hello|hey|yo)(?:\s+\w+)?[!.?]*", normalized)
+        or re.fullmatch(r"(?:who|what) am i[?.!]*", normalized)
+        or re.fullmatch(r"am i .{1,40}[?.!]*", normalized)
+    )
+    if not should_mention:
+        return reply
+    if reply.startswith("Hey!"):
+        return reply.replace("Hey!", f"Hey {mention}!", 1)
+    if reply.startswith("You're "):
+        return f"{mention}, you're {reply[7:]}"
+    return mention + ", " + (reply[0].lower() + reply[1:] if reply else reply)
 
 
 def discord_code_reply(prompt: str) -> str | None:
@@ -569,7 +593,7 @@ def main() -> None:
                     # is constructed from Discord's author object, never from
                     # generated model text or a guessed account ID.
                     await message.reply(
-                        f"{message.author.mention} {chunk}",
+                        place_author_mention(prompt, chunk, message.author.mention),
                         mention_author=False,
                         allowed_mentions=safe_mentions,
                     )

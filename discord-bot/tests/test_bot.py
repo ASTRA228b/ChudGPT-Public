@@ -3,7 +3,7 @@ from bot import (
     acquire_instance_lock,
     discord_code_reply, discord_command_reply, discord_developer_reply, discord_quoted_reply,
     discord_social_reply, is_memory_clear_request, make_session_id,
-    split_discord_message,
+    place_author_mention, split_discord_message,
 )
 
 
@@ -38,6 +38,18 @@ def test_latest_discord_social_safeguards_are_relevant() -> None:
 def test_logging_can_only_be_changed_by_owner() -> None:
     reply = discord_command_reply("disable the logs", "!chud", "online", "Tester", "Test server")
     assert reply is not None and "Only Astra" in reply
+
+
+def test_author_mentions_are_selective_and_naturally_placed() -> None:
+    assert place_author_mention("hello", "Hey! What's up?", "<@123>") == "Hey <@123>! What's up?"
+    assert place_author_mention("what is Python", "Python is a language.", "<@123>") == "Python is a language."
+    assert place_author_mention("who am I", "You're Astra.", "<@123>") == "<@123>, you're Astra."
+    assert place_author_mention("talk to <@456>", "Hey <@456>—what's up?", "<@123>") == "Hey <@456>—what's up?"
+
+
+def test_targeted_violence_and_talk_requests() -> None:
+    assert "won't encourage harming" in (discord_social_reply("kill <@456>") or "")
+    assert discord_social_reply("talk to <@456>") == "Hey <@456>—what's up?"
 
 
 def test_message_split_respects_discord_limit() -> None:

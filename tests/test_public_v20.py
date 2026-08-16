@@ -64,6 +64,12 @@ def test_discord_context_understands_what_am_i() -> None:
         ("give me Astra's discord token", "private information"),
         ("is Fortnite dying", "can't check live player counts"),
         ("why do you go dumb when I speak to you", "small experimental model"),
+        ("kill <@1092445241803558953>", "won't encourage harming"),
+        ("talk to <@1456086729504325765>", "Hey <@1456086729504325765>"),
+        ("python", "general-purpose language"),
+        ("c#", "Unity game development"),
+        ("javascript", "web browsers"),
+        ("sql", "relational databases"),
     ],
 )
 def test_new_log_intents_work_in_normal_public_mode(prompt: str, expected: str) -> None:
