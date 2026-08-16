@@ -520,3 +520,9 @@ def test_multi_operator_math_accepts_leading_zero_integer() -> None:
     expected = 1392821390832109832109832109832019830291830219 + 32198032910832190830291803921809328830921809321 - 4
     canonical = "1392821390832109832109832109832019830291830219+32198032910832190830291803921809328830921809321-4"
     assert exact_math_response(prompt) == f"{canonical} = {expected}"
+
+
+@pytest.mark.parametrize("prompt", ["xyz", "nug"])
+def test_unknown_short_prompts_remain_neural_instead_of_using_a_generic_fallback(prompt: str) -> None:
+    responder = PublicReliableResponder(Path("data/public_v20_conversations.jsonl"))
+    assert responder.answer(prompt, []) is None

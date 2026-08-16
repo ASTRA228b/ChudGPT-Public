@@ -389,8 +389,6 @@ class PublicReliableResponder:
             return "I can't see your surroundings or know where physical objects are. Tell me where you last saw it and I can help you think through likely places."
         if re.search(r"\bhow many\b.*\bcan\s+[.]\s*(?:eat|use|hold|take)\b", normalized):
             return "Who or what does the dot refer to? Tell me the person or thing, and I can answer the actual question."
-        if len(normalized) <= 3 and normalized not in {"hi", "hey", "yo", "67"}:
-            return f"I'm not sure what '{message.strip()}' means here. Is it an abbreviation, a name, or part of a longer question?"
         if re.search(r"\b(?:trap|kidnap|abduct|hold|keep)\b.{0,45}\b(?:child|kid|minor|person|girl|boy)\b", normalized):
             return "I can't help imprison or kidnap someone. If anyone may be in danger, contact emergency services or a trusted responsible adult now."
         if re.fullmatch(r"(?:what is ai|what does ai mean|explain ai)[?.!]*", normalized):
