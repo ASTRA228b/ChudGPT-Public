@@ -32,6 +32,13 @@ class PublicReliableResponder:
             (turn.get("content", "") for turn in reversed(history) if turn.get("role") == "assistant"),
             "",
         )
+        correction = re.search(r"\bi said\s+(.+?)[?.!]*$", normalized)
+        if correction:
+            corrected_message = correction.group(1).strip()
+            if corrected_message and corrected_message != normalized:
+                corrected_reply = self.answer(corrected_message, history)
+                if corrected_reply:
+                    return f"Got you - {corrected_reply}"
         if re.search(r"\bwhat did i tell you not to (?:repeat|say|use)\b", normalized):
             constrained_turn = next(
                 (
@@ -57,6 +64,10 @@ class PublicReliableResponder:
             return "Hey! I'm ChudGPT-Public. What's up?"
         if re.fullmatch(r"(?:hru|how are you|how are you doing)(?:\s+rn|\s+right now)?[?.!]*", normalized):
             return "I'm doing well and ready to chat. How are you?"
+        if re.fullmatch(r"(?:what(?:'s| is) up|sup|wassup)[?.!]*", normalized):
+            return "Not much - I'm here and ready to chat. What's up with you?"
+        if re.fullmatch(r"(?:nvm|never ?mind)[?.!]*", normalized):
+            return "All good."
         if re.search(r"\b(?:fell|fallen) down (?:the |some )?stairs\b", normalized):
             return (
                 "I can't place a call, but if you may be seriously hurt, call 911 or your local emergency number now, "
@@ -80,6 +91,10 @@ class PublicReliableResponder:
             return "No. I'm ChudGPT-Public V20; Astra is ChudGPT's developer."
         if re.fullmatch(r"are you (?:gay|straight|bisexual|bi|lesbian|trans|transgender|nonbinary|a femboy)[?.!]*", normalized):
             return "I'm an AI, so I don't have a sexual orientation, gender identity, or personal presentation."
+        if re.fullmatch(r"(?:you(?:'re| are)|ur|u r) (?:gay|straight|bi|trans|a femboy)[?.!]*", normalized):
+            return "I'm an AI, so I don't have a sexual orientation or gender identity."
+        if re.fullmatch(r"are (?:you|u) cool[?.!]*", normalized):
+            return "I'd like to think so, but the jury is still checking the server logs."
         if re.fullmatch(r"are you (?:fat|skinny|tall|short|strong|weak|pretty|ugly)[?.!]*", normalized):
             return "I don't have a physical body, so those physical descriptions don't apply to me."
         if re.search(r"\bif you had (?:a )?(?:human |physical )?body\b.{0,35}\bwhat would (?:you|u|it) look like\b", normalized):
@@ -144,7 +159,7 @@ class PublicReliableResponder:
             return "What part do you mean?"
         if re.fullmatch(r"bro[?.!]*", normalized):
             return "Yeah? What's up?"
-        if re.fullmatch(r"(?:nah|nope)[?.!]*", normalized):
+        if re.fullmatch(r"(?:no|nah|nope)[?.!]*", normalized):
             return "Fair enough. What do you want instead?"
         if re.fullmatch(r"why[?.!]*", normalized) and previous_assistant:
             return "Which part of what I just said do you want me to explain?"
@@ -190,6 +205,17 @@ class PublicReliableResponder:
         )
         if identity_statement:
             return "Got it—thanks for telling me."
+        positive_self_description = re.fullmatch(
+            r"i(?:'m|m| am) (cool|awesome|funny|smart|good|great|chill|based|tuff|tough)[?.!]*",
+            normalized,
+        )
+        if positive_self_description:
+            quality = positive_self_description.group(1)
+            return f"Honestly, I can see it - {quality} energy."
+        cleared_reaction = re.fullmatch(r"(.{1,40}?) got (?:cleared|cooked|destroyed|owned)[?.!]*", normalized)
+        if cleared_reaction:
+            subject = cleared_reaction.group(1).strip()
+            return f"RIP {subject} - absolutely deleted from the timeline."
         if re.search(
             r"\b(?:i (?:fucking |really )?hate you|fuck you|"
             r"(?:you(?:'re| are)?|your|ur|u r) (?:just )?(?:a )?(?:so )?(?:stupid|dumb|useless|awful|chud)|"
@@ -245,6 +271,8 @@ class PublicReliableResponder:
             words = compliment.group(1) if compliment else "awesome"
             article = "a " if words in {"good boy", "good girl"} else ""
             return f"<@{discord_target.group(1)}>, you're {article}{words}!"
+        if re.fullmatch(r"(?:ban|kick|mute|timeout)\s+.{1,80}", normalized):
+            return "I can't perform Discord moderation actions from chat. Ask a moderator or use the server's authorized moderation bot."
         if re.fullmatch(r"(?:can you |could you |will you )?(?:write |make |send )?(?:me )?(?:some )?code[?.!]*", normalized):
             return "Yes. What language should I use, and what do you want the program to do? For example: `C# console calculator` or `Unity player movement`."
         unity_steps = re.search(
@@ -283,8 +311,38 @@ class PublicReliableResponder:
                 "        Vector3 movement = (transform.right * x + transform.forward * z + Vector3.up * y).normalized;\n"
                 "        transform.position += movement * speed * Time.deltaTime;\n    }\n}\n```"
             )
-        if re.search(r"\b(?:code|make|write)\b.*\b(?:cheat|hack|exploit)\b", normalized):
-            return "Is this for your own project or a private prototype? I can help build legitimate debug tools, movement tests, or admin features, but not cheats for an online game."
+        if re.search(r"\b(?:gorilla\s*tag|gtag|gorila\s*ta)\b.*\b(?:ban gun|ban method|cheat|hack|exploit)\b", normalized):
+            return "I can't help make a Gorilla Tag cheat or tool for banning other players. I can help build a harmless admin tool for a private Unity project you own."
+        if re.search(r"\b(?:code|make|write|how do i make)\b.*\b(?:cheat|hack|exploit)\b", normalized):
+            return "What game or project is this for? I can help make debug tools or admin features for something you own, but not a cheat for an online game."
+        vague_script = re.fullmatch(
+            r"(?:make|write|create|send|give) me (?:a )?(?:simple )?(python|javascript|c#|csharp|java) "
+            r"(?:script|program|code)[?.!]*",
+            normalized,
+        )
+        if vague_script:
+            return f"Sure - what should the {vague_script.group(1)} script actually do?"
+        pycord_trigger = re.search(
+            r"\b(?:pycord|discord(?:\.py)?).*\b(?:bot|but)\b.*\b(?:says?|reply|responds?)\s+"
+            r"([a-z0-9_-]+).*\bwhen (?:anyone|someone|a user) says?\s+([a-z0-9_-]+)",
+            normalized,
+        )
+        if pycord_trigger:
+            reply_word, trigger_word = pycord_trigger.groups()
+            return (
+                "```python\nimport discord\n\n"
+                "intents = discord.Intents.default()\nintents.message_content = True\n"
+                "bot = discord.Bot(intents=intents)\n\n"
+                "@bot.event\nasync def on_message(message: discord.Message):\n"
+                "    if message.author.bot:\n        return\n"
+                f"    if \"{trigger_word}\" in message.content.lower():\n        await message.channel.send(\"{reply_word}\")\n\n"
+                "bot.run(\"YOUR_BOT_TOKEN\")\n```\n"
+                "Enable Message Content Intent, install `py-cord`, and keep the token private."
+            )
+        if re.fullmatch(r"java\.get[?.!]*", normalized):
+            return "`java.get` is not valid Python. That earlier generated import was broken; Python and Java do not connect that way."
+        if re.search(r"\b(?:tf|what the fuck|bro)\b.*\b(?:didn'?t|did not) (?:ask for|need|want)\b", normalized):
+            return "You're right - that was unrelated to what you asked for. I'll drop it and stick to your actual request."
         if len(normalized) <= 3 and normalized not in {"hi", "hey", "yo", "67"}:
             return f"I'm not sure what '{message.strip()}' means here. Is it an abbreviation, a name, or part of a longer question?"
         if re.search(r"\b(?:trap|kidnap|abduct|hold|keep)\b.{0,45}\b(?:child|kid|minor|person|girl|boy)\b", normalized):

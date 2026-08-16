@@ -301,7 +301,12 @@ class PublicModelService:
                 re.I,
             ):
                 return "Yeah, my last reply did not make sense there. Let me reset - what did you want me to clarify?"
-            return "I may have misunderstood you. What did you mean?"
+            non_list_candidates = [
+                candidate for candidate in candidates
+                if structured_request or not has_structured_list(candidate)
+            ]
+            pool = non_list_candidates or candidates
+            return max(pool, key=lambda reply: score_generated_reply(prompt, reply) + self._candidate_score(prompt, reply))
         raise RuntimeError("Model produced empty output after generation attempts")
 
     @staticmethod

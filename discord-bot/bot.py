@@ -6,6 +6,7 @@ import logging
 import json
 import os
 import re
+import tempfile
 import threading
 import time
 from collections import defaultdict, deque
@@ -25,6 +26,7 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
 LOGGER = logging.getLogger("chudgpt-discord")
+INSTANCE_LOCK_PATH = Path(tempfile.gettempdir()) / "chudgpt-public-discord-bot.lock"
 
 DISCORD_SYSTEM_PROMPT = (
     "You are ChudGPT, running through the official ChudGPT Discord bot and powered by "
@@ -35,6 +37,30 @@ DISCORD_SYSTEM_PROMPT = (
     "concise unless detail is requested. Never claim you performed an action the bot cannot "
     "perform. This Discord context applies only while this instruction is active."
 )
+
+
+def acquire_instance_lock(path: Path = INSTANCE_LOCK_PATH):
+    """Hold a cross-platform process lock so only one Discord client can run."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    handle = path.open("a+b")
+    handle.seek(0)
+    if path.stat().st_size == 0:
+        handle.write(b"0")
+        handle.flush()
+    handle.seek(0)
+    try:
+        if os.name == "nt":
+            import msvcrt
+
+            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        handle.close()
+        return None
+    return handle
 
 
 @dataclass(frozen=True)
@@ -414,6 +440,10 @@ def run_health_server(app: Flask, port: int) -> None:
 
 
 def main() -> None:
+    instance_lock = acquire_instance_lock()
+    if instance_lock is None:
+        LOGGER.error("Another ChudGPT Discord bot instance is already running; exiting duplicate process.")
+        return
     # Deployment secrets are loaded only when launching the process. Merely
     # importing this module for tests or tooling never reads the local .env.
     load_dotenv()

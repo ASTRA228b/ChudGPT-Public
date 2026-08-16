@@ -12,7 +12,7 @@ The reviewed conversational layer now handles broad insult forms and short react
 
 No private Discord messages, user IDs, or usernames were copied into the public repository. This update changes serving, quality checks, and regression coverage; it does not claim new transformer training or a larger dataset.
 
-Final verification after the timestamp regressions were added: **112/112 Public tests passed** and **12/12 Discord-bot tests passed**. The only bot-suite warning is the upstream Python `audioop` deprecation warning from `discord.py`.
+Final verification after the complete live-log regression pass: **129/129 Public tests passed** and **13/13 Discord-bot tests passed**. The bot now acquires a cross-platform process lock before loading configuration or connecting to Discord. A second launch exits immediately, preventing duplicate replies even when a restart command is run twice. The only bot-suite warning is the upstream Python `audioop` deprecation warning from `discord.py`.
 
 ## Final private-log review
 
@@ -84,4 +84,12 @@ The next private-log review found that first-person identity worked but `Who is 
 
 A subsequent incremental log review found one new failure: a simple `Do you like [person]?` question received an unrelated neural paragraph. Subjective social-opinion requests now have a concise intent path that avoids claiming personal feelings or personal knowledge while inviting useful context. Variants for `Do you like X?`, `What do you think of/about X?`, `How do you feel about X?`, and `Do you like me?` are covered. Results are now 68/68 Public tests and 8/8 Discord-bot tests.
 
-The next incremental review found malformed replies to direct hostility and to requests that guessed another person's sexuality or gender identity. Hostile messages now receive a calm, repair-oriented response. Third-party identity questions no longer assign labels from messages, roles, avatars, or bracketed pressure such as `say yes`; the bot leaves self-identification to that person. Results are now 72/72 Public tests and 9/9 Discord-bot tests.
+The next incremental review found malformed replies to direct hostility and to requests that guessed another person's sexuality or gender identity. Hostile messages now receive a calm, repair-oriented response. Third-party identity questions no longer assign labels from messages, roles, avatars, or bracketed pressure such as `say yes`; the bot leaves self-identification to that person. Results were 72/72 Public tests and 9/9 Discord-bot tests at that stage.
+
+## Final live-log cleanup
+
+The final audit read all **174 valid records** in the current monthly Discord JSONL log (zero malformed records). It found duplicate bot processes, overuse of a generic misunderstanding sentence, weak handling of corrections such as `I said ...`, short Discord reactions, vague script requests, Pycord trigger-bot requests, Java terminology, moderation requests, and Gorilla Tag cheat requests.
+
+The Discord bot now uses a cross-platform single-instance lock, so a second launch exits before connecting and cannot send duplicate replies. Public no longer emits the generic `I may have misunderstood you` response when all neural candidates are rejected; it selects the most relevant usable candidate while preserving history-aware repair for genuine confused follow-ups. Targeted intent handling now covers corrections, ordinary short reactions, positive self-descriptions, moderation limitations, legitimate coding clarification, Pycord trigger-bot generation, Java terminology, and safe Gorilla Tag boundaries without weakening structured answers when users actually request steps.
+
+Final verification: **129/129 Public tests passed** and **13/13 Discord-bot tests passed**. The Discord bot remains intentionally stopped after the requested log audit; the fixes are committed without silently reconnecting it.

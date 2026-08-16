@@ -437,3 +437,56 @@ def test_followup_recalls_and_evaluates_previous_phrase_constraint() -> None:
     reply = responder.answer("What did I tell you not to repeat, and did you follow that instruction?", history) or ""
     assert "language model" in reply.lower()
     assert "no, i repeated it too many times" in reply.lower()
+
+
+@pytest.mark.parametrize("prompt", ["im cool", "I'm awesome", "I am funny", "im tuff"])
+def test_positive_self_descriptions_get_casual_acknowledgment(prompt: str) -> None:
+    reply = PublicReliableResponder(Path("data/public_v20_conversations.jsonl")).answer(prompt, []) or ""
+    assert "energy" in reply.lower()
+    assert "misunderstood" not in reply.lower()
+
+
+def test_i_said_repair_uses_the_corrected_clause() -> None:
+    reply = PublicReliableResponder(Path("data/public_v20_conversations.jsonl")).answer(
+        "u retard i said im cool", []
+    ) or ""
+    assert "got you" in reply.lower()
+    assert "cool energy" in reply.lower()
+
+
+@pytest.mark.parametrize(
+    ("prompt", "fragment"),
+    [
+        ("no", "fair enough"),
+        ("noob got cleared", "deleted"),
+        ("are u cool", "jury"),
+        ("nvm", "all good"),
+        ("what's up", "not much"),
+        ("ur gay", "don't have a sexual orientation"),
+        ("ban liam", "can't perform discord moderation"),
+        ("java.get", "not valid python"),
+        ("tf i didnt need images", "unrelated"),
+        ("how do i make working gorila ta ban gun method", "can't help make a gorilla tag cheat"),
+    ],
+)
+def test_live_discord_casual_and_capability_regressions(prompt: str, fragment: str) -> None:
+    reply = PublicReliableResponder(Path("data/public_v20_conversations.jsonl")).answer(prompt, []) or ""
+    assert fragment in reply.lower()
+
+
+def test_vague_script_request_asks_for_the_missing_behavior() -> None:
+    reply = PublicReliableResponder(Path("data/public_v20_conversations.jsonl")).answer(
+        "make me a simple python script", []
+    ) or ""
+    assert "what should" in reply.lower()
+    assert "python" in reply.lower()
+
+
+def test_pycord_trigger_bot_returns_real_matching_code() -> None:
+    prompt = "make me a simple python discord bot using pycord that says lizard when anyone says lizard"
+    reply = PublicReliableResponder(Path("data/public_v20_conversations.jsonl")).answer(prompt, []) or ""
+    assert "```python" in reply
+    assert "import discord" in reply
+    assert 'if "lizard" in message.content.lower()' in reply
+    assert 'send("lizard")' in reply
+    assert "import torch" not in reply

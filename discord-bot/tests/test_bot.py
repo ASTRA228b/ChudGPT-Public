@@ -1,9 +1,20 @@
 from bot import (
     ChudGPTClient, DISCORD_SYSTEM_PROMPT, add_recent_context, clean_prompt,
+    acquire_instance_lock,
     discord_code_reply, discord_command_reply, discord_developer_reply, discord_quoted_reply,
     discord_social_reply, is_memory_clear_request, make_session_id,
     split_discord_message,
 )
+
+
+def test_single_instance_lock_rejects_duplicate(tmp_path) -> None:
+    lock_path = tmp_path / "bot.lock"
+    first = acquire_instance_lock(lock_path)
+    assert first is not None
+    try:
+        assert acquire_instance_lock(lock_path) is None
+    finally:
+        first.close()
 
 
 def test_clean_prompt_removes_mentions_and_prefixes() -> None:
