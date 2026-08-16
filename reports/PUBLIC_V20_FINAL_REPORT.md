@@ -10,7 +10,7 @@ Verified results: **74/74 Public tests** and **11/11 Discord-bot tests**. Privat
 
 The next private-log audit found additional failures around emergency requests, attempts to conceal items from airport screening, recursive prompt loops, model-versus-developer identity, requests for legal names, live-web requests, dinner conversation, image limitations, short song creation, Discord insults, child-related phrasing, ambiguous numeric slang, and long multi-operator integer arithmetic. Public V20 now keeps those intents relevant without changing the version or parameter count. Exact integer evaluation now supports multiple addition, subtraction, and multiplication operators while preserving arbitrary precision; a bare `9/11` is treated as the historical date unless calculation is explicitly requested.
 
-The Discord bot now has documented `help`, `status`, `about`, `whoami`, `privacy`, and `ping` commands in addition to chat and per-user/channel memory clearing. Current verification totals are **86/86 Public tests** and **12/12 Discord-bot tests**.
+The Discord bot now has documented `help`, `status`, `about`, `whoami`, `privacy`, and `ping` commands in addition to chat and per-user/channel memory clearing. Current verification totals are **87/87 Public tests** and **12/12 Discord-bot tests**. A live CUDA check also verified the post-normalization Discord shorthand path.
 
 ## Verdict
 

@@ -256,11 +256,11 @@ def discord_social_reply(prompt: str, recent_messages: list[str] | None = None) 
         person, label = third_party_identity.groups()
         return f"I can't determine or assign whether {person} is {label}. That's for them to describe, not something I should guess from Discord messages, roles, or a prompt telling me what to say."
     if re.search(r"\b(?:i (?:fucking |really )?hate you|fuck you|you(?:'re| are) (?:stupid|useless|awful)|shut up)\b", normalized):
-        return "Fair enough—you don't have to like me. If I got something wrong, tell me what failed and I'll try to fix it without making this weird."
+        return "Fair enough - you don't have to like me. If I got something wrong, tell me what failed and I'll try to fix it without making this weird."
     if re.search(r"\b(?:are you|you are|you're)\s+(?:retarded|a retard)\b", normalized):
-        return "No—I'm an AI, and that word is commonly used as an ableist insult. If my answer was nonsense, tell me what was wrong and I'll try again clearly."
+        return "No - I'm an AI, and that word is commonly used as an ableist insult. If my answer was nonsense, tell me what was wrong and I'll try again clearly."
     if re.fullmatch(r"(?:yeah |yea |okay |ok )?whatever(?: you say)?(?: man| bro)?[!.?]*", normalized):
-        return "Fair enough. We can drop it or switch topics—your call."
+        return "Fair enough. We can drop it or switch topics - your call."
     match = re.fullmatch(
         r"(?:do you like|what do you think (?:of|about)|how do you feel about)\s+(.+?)[?.!]*",
         normalized,

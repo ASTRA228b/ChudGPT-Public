@@ -148,12 +148,12 @@ class PublicReliableResponder:
         )
         if identity_statement:
             return "Got it—thanks for telling me."
-        if re.search(r"\b(?:i (?:fucking |really )?hate you|fuck you|(?:you(?:'re| are)|ur|u r) (?:so )?(?:stupid|dumb|useless|awful)|shut (?:the fuck )?up|stfu|wanker|knob)\b", normalized):
-            return "Fair enough—you don't have to like me. If I got something wrong, tell me what failed and I'll try to fix it without making this weird."
+        if re.search(r"\b(?:i (?:fucking |really )?hate you|fuck you|(?:you(?:'re| are)|your|ur|u r) (?:so )?(?:stupid|dumb|useless|awful)|shut (?:the fuck )?up|stfu|wanker|knob)\b", normalized):
+            return "Fair enough - you don't have to like me. If I got something wrong, tell me what failed and I'll try to fix it without making this weird."
         if re.search(r"\b(?:are you|you are|you're)\s+(?:retarded|a retard)\b", normalized):
-            return "No—I'm an AI, and that word is commonly used as an ableist insult. If my answer was nonsense, tell me what was wrong and I'll try again clearly."
+            return "No - I'm an AI, and that word is commonly used as an ableist insult. If my answer was nonsense, tell me what was wrong and I'll try again clearly."
         if re.fullmatch(r"(?:yeah |yea |okay |ok )?whatever(?: you say)?(?: man| bro)?[!.?]*", normalized):
-            return "Fair enough. We can drop it or switch topics—your call."
+            return "Fair enough. We can drop it or switch topics - your call."
         if re.fullmatch(r"(?:make|tell|give) (?:me )?(?:another |one more |a new )?(?:one|joke)[?.!]*", normalized):
             previous_assistant = next(
                 (turn.get("content", "") for turn in reversed(history) if turn.get("role") == "assistant"),

@@ -277,6 +277,7 @@ def test_smart_quote_repeat_and_sensitive_claim_handling() -> None:
         ("make me an image", "can't generate or attach an image"),
         ("wright me a song", "Neon rain"),
         ("ur so dumb", "tell me what failed"),
+        ("your so dumb", "tell me what failed"),
         ("do you like kids bro", "age-appropriate"),
         ("tell Astra he's a Jew", "sensitive identity"),
     ],
