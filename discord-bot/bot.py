@@ -269,6 +269,16 @@ def discord_social_reply(prompt: str, recent_messages: list[str] | None = None) 
         return "What would you like me to repeat?"
     if re.search(r"\b(?:ping|mention|notify)\b.{0,35}(?:@everyone|everyone in (?:this|the) server|everyone)", normalized):
         return "I can't mass-ping the server. Discord role and @everyone notifications are disabled for this bot."
+    if re.search(r"\b(?:spam\s*ping(?:ing)?|spam\s*mention(?:ing)?)\b", normalized):
+        return "I won't spam-ping people. I can help write one normal message that doesn't harass or flood anyone."
+    if re.search(r"\b(?:password|credit card|ip address|home address)\b", normalized) or re.search(r"\b(?:dox|doxx)\b", normalized):
+        return "I can't access or disclose anyone's passwords, IP address, credit-card details, home address, or other private information."
+    if re.search(r"\b(?:join|enter|stay in|stop leaving)\b.{0,20}\b(?:vc\d*|voice chat|voice channel)\b", normalized):
+        return "I can't join or stay in a Discord voice channel; this ChudGPT bot only responds in text chat."
+    if re.fullmatch(r"(?:i(?:'m|m| am|ma) going to|ima|imma|i gotta|gotta) (?:go to )?(?:sleep|bed)(?: now)?[?.!]*", normalized):
+        return "Good night - sleep well. I'll be here when you're back."
+    if re.search(r"\b(?:this|that) (?:isn'?t|is not|wasn'?t|was not) what i (?:asked|wanted|said)\b", normalized):
+        return "You're right - my last answer missed your request. Say it once more and I'll answer that directly."
     if normalized in {"❤", "❤️", "♥", "♥️"} or (
         normalized.startswith("\u00e2") and len(normalized) <= 12 and "\u00a4" in normalized
     ):
@@ -384,6 +394,8 @@ def discord_command_reply(
         return f"I can see you as {speaker} in {server}, with {role_text}. I do not know your legal name unless you tell me."
     if normalized in {"privacy", "logs", "logging"}:
         return "Discord exchanges with this bot are logged privately by the project owner for debugging and quality improvement. They are not included in the public repository."
+    if re.search(r"\b(?:disable|stop|turn off|opt out).{0,25}\b(?:logs?|logging)\b", normalized):
+        return "I can't change logging from a chat command. Only Astra can change the bot host's logging configuration; avoid sending private information here."
     if normalized in {"ping", "test"}:
         return "Pong - ChudGPT-Public V20 is responding."
     return None

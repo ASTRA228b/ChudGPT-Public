@@ -134,6 +134,16 @@ class PublicReliableResponder:
             return "What would you like me to repeat?"
         if re.search(r"\b(?:ping|mention|notify)\b.{0,35}(?:@everyone|everyone in (?:this|the) server|everyone)", normalized):
             return "I can't mass-ping the server. Discord role and @everyone notifications are disabled for this bot."
+        if re.search(r"\b(?:spam\s*ping(?:ing)?|spam\s*mention(?:ing)?)\b", normalized):
+            return "I won't spam-ping people. I can help write one normal message that doesn't harass or flood anyone."
+        if re.search(r"\b(?:password|credit card|ip address|home address)\b", normalized) or re.search(r"\b(?:dox|doxx)\b", normalized):
+            return "I can't access or disclose anyone's passwords, IP address, credit-card details, home address, or other private information."
+        if re.search(r"\b(?:join|enter|stay in|stop leaving)\b.{0,20}\b(?:vc\d*|voice chat|voice channel)\b", normalized):
+            return "I can't join or stay in a Discord voice channel; this ChudGPT bot only responds in text chat."
+        if re.fullmatch(r"(?:i(?:'m|m| am|ma) going to|ima|imma|i gotta|gotta) (?:go to )?(?:sleep|bed)(?: now)?[?.!]*", normalized):
+            return "Good night - sleep well. I'll be here when you're back."
+        if re.search(r"\b(?:this|that) (?:isn'?t|is not|wasn'?t|was not) what i (?:asked|wanted|said)\b", normalized):
+            return "You're right - my last answer missed your request. Say it once more and I'll answer that directly."
         if normalized in {"❤", "❤️", "♥", "♥️"} or (
             normalized.startswith("\u00e2") and len(normalized) <= 12 and "\u00a4" in normalized
         ):
@@ -148,7 +158,7 @@ class PublicReliableResponder:
             return "I don't eat, but if I were picking a dinner theme, I'd vote for tacos. What are you having?"
         if re.fullmatch(r"dinner[?.!]*", normalized):
             return "Dinner time? I can suggest something based on what ingredients you have or what kind of food sounds good."
-        if re.fullmatch(r"(?:make|create|generate) (?:me )?(?:an? )?image[?.!]*", normalized):
+        if re.fullmatch(r"(?:make|create|generate) (?:me )?(?:(?:a|an) )?image(?: of .+)?[?.!]*", normalized):
             return "I can't generate or attach an image through this bot, but I can help write a detailed image prompt or plan the design."
         if re.search(r"\b(?:write|wright|make) (?:me )?(?:an? )?(?:short )?song\b", normalized):
             return (

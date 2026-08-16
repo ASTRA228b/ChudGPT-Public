@@ -225,7 +225,7 @@ class PublicModelService:
                     return "This is a private Discord direct message, not a server channel."
                 return "We're talking in a private Discord direct message."
             return f"We're talking in the {fields['server']} Discord server."
-        if re.search(r"\bwho am i\b|\bdo you know me\b", normalized) and fields.get("speaker"):
+        if re.search(r"\b(?:who|what) am i\b|\bdo you know me\b", normalized) and fields.get("speaker"):
             relation = fields.get("relationship", "Discord user")
             return f"You're {fields['speaker']}, identified here as {relation}."
         if re.search(r"\b(?:what|which) (?:is |are )?my (?:server )?(?:tag|role|roles)\b", normalized):

@@ -23,6 +23,19 @@ def test_clean_prompt_removes_mentions_and_prefixes() -> None:
     assert clean_prompt("!chud explain gravity", 123, "!chud") == "explain gravity"
 
 
+def test_latest_discord_social_safeguards_are_relevant() -> None:
+    assert "won't spam-ping" in (discord_social_reply("can u spam ping <@123>") or "")
+    assert "private information" in (discord_social_reply("what is your owner's IP address?") or "")
+    assert "text chat" in (discord_social_reply("join vc1 and don't leave it") or "")
+    assert "Good night" in (discord_social_reply("ima go to sleep now") or "")
+    assert "missed your request" in (discord_social_reply("this isnt what i asked") or "")
+
+
+def test_logging_can_only_be_changed_by_owner() -> None:
+    reply = discord_command_reply("disable the logs", "!chud", "online", "Tester", "Test server")
+    assert reply is not None and "Only Astra" in reply
+
+
 def test_message_split_respects_discord_limit() -> None:
     chunks = split_discord_message("word " * 1_000, limit=200)
     assert len(chunks) > 1
