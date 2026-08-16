@@ -103,22 +103,50 @@ LANGUAGE_CODES.update({code.lower(): code for code in set(LANGUAGE_CODES.values(
 
 
 class GoogleTranslateClient:
-    """Optional bot-only adapter for Google Cloud Translation Basic v2."""
+    """Bot-only Google translator with official-key and keyless modes."""
 
     endpoint = "https://translation.googleapis.com/language/translate/v2"
+    keyless_endpoint = "https://translate.googleapis.com/translate_a/single"
 
     def __init__(self, api_key: str | None, timeout: float = 15.0) -> None:
         self.api_key = api_key
         self.timeout = timeout
         self.http = requests.Session()
+        self._cache: dict[tuple[str, str, str], tuple[str, str | None]] = {}
+        self._cache_lock = threading.Lock()
 
     @property
     def enabled(self) -> bool:
-        return bool(self.api_key)
+        return True
+
+    @property
+    def provider(self) -> str:
+        return "Google Cloud Translation v2" if self.api_key else "Google keyless translation"
 
     def translate(self, text: str, target: str, source: str | None = None) -> tuple[str, str | None]:
-        if not self.api_key:
-            raise RuntimeError("Google translation is not configured.")
+        clean_text = text.strip()[:4096]
+        if not clean_text:
+            return "", source
+        clean_target = re.sub(r"[^A-Za-z0-9-]", "", target)[:10]
+        clean_source = re.sub(r"[^A-Za-z0-9-]", "", source or "auto")[:10] or "auto"
+        if not clean_target:
+            raise ValueError("A target language is required.")
+        cache_key = (clean_source.lower(), clean_target.lower(), clean_text)
+        with self._cache_lock:
+            cached = self._cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        result = self._translate_official(clean_text, clean_target, source) if self.api_key else self._translate_keyless(
+            clean_text, clean_target, clean_source
+        )
+        with self._cache_lock:
+            if len(self._cache) >= 2_000:
+                self._cache.pop(next(iter(self._cache)))
+            self._cache[cache_key] = result
+        return result
+
+    def _translate_official(self, text: str, target: str, source: str | None) -> tuple[str, str | None]:
         data = {"q": text, "target": target, "format": "text"}
         if source:
             data["source"] = source
@@ -129,6 +157,26 @@ class GoogleTranslateClient:
         payload = response.json()
         item = payload["data"]["translations"][0]
         return html.unescape(item["translatedText"]), item.get("detectedSourceLanguage")
+
+    def _translate_keyless(self, text: str, target: str, source: str) -> tuple[str, str | None]:
+        response = self.http.get(
+            self.keyless_endpoint,
+            params={"client": "gtx", "sl": source, "tl": target, "dt": "t", "q": text},
+            timeout=self.timeout,
+        )
+        response.raise_for_status()
+        # The compatible endpoint can omit a charset header, which makes
+        # requests guess incorrectly on Windows and corrupt accented text.
+        response.encoding = "utf-8"
+        payload = response.json()
+        translated = "".join(
+            str(sentence[0]) for sentence in (payload[0] or [])
+            if isinstance(sentence, list) and sentence and sentence[0] is not None
+        )
+        if not translated:
+            raise ValueError("Google returned an empty translation.")
+        detected = payload[2] if len(payload) > 2 and isinstance(payload[2], str) else None
+        return html.unescape(translated), detected
 
 
 def resolve_language(value: str) -> str | None:
@@ -658,21 +706,16 @@ def main() -> None:
                 action, value, text_to_translate = translation_command
                 if action == "status":
                     current = language_preferences.get(context_key, "auto")
-                    configured = "configured" if translator.enabled else "not configured"
-                    reply = f"Translation is {configured}. This conversation's language mode is `{current}`."
+                    reply = f"Translation is available through {translator.provider}. This conversation's language mode is `{current}`."
                 elif action == "invalid":
                     reply = f"I don't recognize `{value}` as a configured language. Use `{settings.prefix} languages` for the basic list."
                 elif action == "set":
                     if value == "off":
                         language_preferences[context_key] = "off"
                         reply = "Translation is off for your conversation in this channel."
-                    elif not translator.enabled:
-                        reply = "Google translation is not configured on this bot yet. Astra must add `GOOGLE_TRANSLATE_API_KEY` on the host."
                     else:
                         language_preferences[context_key] = value or "auto"
                         reply = f"Translation mode is now `{value}` for your conversation in this channel."
-                elif not translator.enabled:
-                    reply = "Google translation is not configured on this bot yet. Astra must add `GOOGLE_TRANSLATE_API_KEY` on the host."
                 else:
                     reply, _ = await __import__("asyncio").to_thread(
                         translator.translate, text_to_translate or "", value or "en"

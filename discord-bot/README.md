@@ -12,7 +12,9 @@ with `!chud`. Each Discord user and channel gets an isolated ChudGPT session.
 - Includes per-user rate limiting, typing indicators, safe message splitting,
   clear API errors, and Flask health endpoints.
 - Flask endpoints: `/`, `/health`, and `/status`.
-- Optional Google Cloud Translation support is isolated to the Discord bot.
+- Google translation with automatic source detection and caching is isolated
+  to the Discord bot. It works in keyless compatible mode by default and uses
+  the official Cloud Translation v2 API when a key is configured.
 - Never stores the Discord token in source control.
 
 ## Local setup on Windows
@@ -97,7 +99,13 @@ Configure your host with:
 - Optional variable: `CHUDGPT_PUBLIC_API_URL=https://chudgpt-public.vercel.app/api`
 - Optional secret: `GOOGLE_TRANSLATE_API_KEY` for Discord-only conversation translation
 
-## Optional Google translation setup
+## Translation setup
+
+No key is required for the compatible keyless mode. Restart the updated bot,
+run `!chud translation status`, and then use `!chud language Spanish` or
+`!chud language auto`.
+
+For the supported Google Cloud API instead:
 
 1. In Google Cloud, enable **Cloud Translation API** for your project. Billing
    and service quotas may apply.

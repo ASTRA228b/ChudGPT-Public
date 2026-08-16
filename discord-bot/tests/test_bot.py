@@ -99,6 +99,31 @@ def test_google_translate_client_uses_official_v2_shape(monkeypatch) -> None:
     assert captured["data"]["format"] == "text"
 
 
+def test_google_translate_client_keyless_mode_and_cache(monkeypatch) -> None:
+    class Response:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return [[["Hola ", "Hello"], ["mundo", "world"]], None, "en"]
+
+    calls = []
+    client = GoogleTranslateClient(None)
+
+    def fake_get(url, params, timeout):
+        calls.append((url, params, timeout))
+        return Response()
+
+    monkeypatch.setattr(client.http, "get", fake_get)
+    assert client.provider == "Google keyless translation"
+    assert client.translate("Hello world", "es") == ("Hola mundo", "en")
+    assert client.translate("Hello world", "es") == ("Hola mundo", "en")
+    assert len(calls) == 1
+    assert calls[0][1] == {
+        "client": "gtx", "sl": "auto", "tl": "es", "dt": "t", "q": "Hello world"
+    }
+
+
 def test_message_split_respects_discord_limit() -> None:
     chunks = split_discord_message("word " * 1_000, limit=200)
     assert len(chunks) > 1
