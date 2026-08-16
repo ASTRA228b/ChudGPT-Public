@@ -526,3 +526,19 @@ def test_multi_operator_math_accepts_leading_zero_integer() -> None:
 def test_unknown_short_prompts_remain_neural_instead_of_using_a_generic_fallback(prompt: str) -> None:
     responder = PublicReliableResponder(Path("data/public_v20_conversations.jsonl"))
     assert responder.answer(prompt, []) is None
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        "I'm not sure what you mean.",
+        "I don't know what nugget means yet.",
+        "Could you say that another way?",
+        "Try asking it another way.",
+        "What did you mean?",
+    ],
+)
+def test_generic_uncertainty_fallbacks_are_rejected(reply: str) -> None:
+    valid, reasons = assess_generated_reply("nugget", reply)
+    assert not valid
+    assert "generic-uncertainty-fallback" in reasons

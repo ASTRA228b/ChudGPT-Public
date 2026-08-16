@@ -303,10 +303,36 @@ class PublicModelService:
                 return "Yeah, my last reply did not make sense there. Let me reset - what did you want me to clarify?"
             non_list_candidates = [
                 candidate for candidate in candidates
-                if structured_request or not has_structured_list(candidate)
+                if (structured_request or not has_structured_list(candidate))
+                and "generic-uncertainty-fallback" not in assess_generated_reply(
+                    prompt, candidate, previous_replies
+                )[1]
             ]
-            pool = non_list_candidates or candidates
-            return max(pool, key=lambda reply: score_generated_reply(prompt, reply) + self._candidate_score(prompt, reply))
+            if non_list_candidates:
+                return max(
+                    non_list_candidates,
+                    key=lambda reply: score_generated_reply(prompt, reply) + self._candidate_score(prompt, reply),
+                )
+            # Do not replace unknown input with canned uncertainty. Draw fresh,
+            # higher-entropy neural text and return the first non-fallback
+            # generation, even if its content is characteristically strange.
+            for retry in range(8):
+                output = generate(
+                    self.model,
+                    prompt_tensor,
+                    max_new_tokens=max(24, min(max_new_tokens, 80)),
+                    temperature=min(1.35, max(0.88, temperature) + retry * 0.05),
+                    top_k=80,
+                    top_p=0.95,
+                    repetition_penalty=1.08,
+                    eos_token_id=self.eos_id,
+                )[0, len(prompt_ids):].tolist()
+                retry_reply = self.tokenizer.decode(output, skip_special_tokens=True).strip()
+                if retry_reply and "generic-uncertainty-fallback" not in assess_generated_reply(
+                    prompt, retry_reply, previous_replies
+                )[1]:
+                    return retry_reply
+            raise RuntimeError("Model repeatedly generated only rejected uncertainty templates")
         raise RuntimeError("Model produced empty output after generation attempts")
 
     @staticmethod

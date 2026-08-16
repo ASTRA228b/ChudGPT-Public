@@ -231,6 +231,14 @@ def assess_generated_reply(
         reasons.append("corrupt-fragment")
     if re.search(r"\bcaption and conversation\b|\bone useful way into\b", lowered):
         reasons.append("known-template-leak")
+    if re.search(
+        r"\b(?:i(?:'m| am) not sure (?:what|how|why|whether)|"
+        r"i (?:do not|don't) know what .{0,80}? mean(?:s)?(?: yet| here)?|"
+        r"what did you mean|could you (?:clarify|rephrase|say that another way)|"
+        r"try (?:asking|saying|wording) (?:it|that) another way)\b",
+        lowered,
+    ):
+        reasons.append("generic-uncertainty-fallback")
     if re.search(r"\blanguage model\b.{0,120}\blanguage model\b", lowered):
         reasons.append("identity-repetition")
     if re.search(r"\b(?:does not have no|i can't understand what i can|provide you with the language)\b", lowered):

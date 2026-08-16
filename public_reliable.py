@@ -10,7 +10,12 @@ from chudlm.ultimate import UltimateResponder
 
 _UNHELPFUL = (
     "i'm not sure what you mean",
+    "i'm not sure what",
+    "i don't know what",
+    "i do not know what",
     "could you add a little more detail",
+    "what did you mean",
+    "try saying it another way",
     "one useful way into",
     "caption and conversation",
 )
