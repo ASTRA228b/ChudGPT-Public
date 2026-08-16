@@ -80,6 +80,25 @@ def test_new_log_intents_work_in_normal_public_mode(prompt: str, expected: str) 
 @pytest.mark.parametrize(
     ("prompt", "expected"),
     [
+        ("hola", "¡Hola!"),
+        ("bonjour", "Bonjour"),
+        ("hallo", "Wie geht's"),
+        ("konnichiwa", "こんにちは"),
+        ("ni hao", "你好"),
+        ("namaste", "नमस्ते"),
+        ("German", "German: Hallo"),
+        ("Japanese", "Japanese: こんにちは"),
+        ("list languages", "Spanish, French, German"),
+    ],
+)
+def test_basic_multilingual_greetings(prompt: str, expected: str) -> None:
+    reply = PublicReliableResponder(Path("data/public_v20_conversations.jsonl")).answer(prompt, [])
+    assert reply is not None and expected in reply
+
+
+@pytest.mark.parametrize(
+    ("prompt", "expected"),
+    [
         ("What is 25 * 8?", "25 * 8 = 200"),
         ("12.5 + 7.25", "12.5 + 7.25 = 19.75"),
         ("9843589485394583945834 + 948923492347932472394723947923742", "948923492357776061880118531869576"),

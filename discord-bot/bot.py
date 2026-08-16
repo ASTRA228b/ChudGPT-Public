@@ -413,6 +413,10 @@ def discord_command_reply(
             f"`{prefix} about` - show model information\n"
             f"`{prefix} whoami` - show the Discord identity I can see\n"
             f"`{prefix} privacy` - explain Discord conversation logs\n"
+            f"`{prefix} languages` - list supported basic greeting languages\n"
+            f"`{prefix} server` - show the current server or DM location\n"
+            f"`{prefix} roles` - show your visible server roles\n"
+            f"`{prefix} developer` - show who created ChudGPT\n"
             f"`{prefix} ping` - test whether the bot is responding"
         )
     if normalized in {"status", "health"}:
@@ -424,6 +428,15 @@ def discord_command_reply(
         return f"I can see you as {speaker} in {server}, with {role_text}. I do not know your legal name unless you tell me."
     if normalized in {"privacy", "logs", "logging"}:
         return "Discord exchanges with this bot are logged privately by the project owner for debugging and quality improvement. They are not included in the public repository."
+    if normalized in {"languages", "language", "langs"}:
+        return "Basic greetings: English, Spanish, French, German, Italian, Portuguese, Japanese, Mandarin Chinese, Korean, Russian, Hindi, Arabic, Swedish, Polish, Turkish, and Hebrew. I work best in English."
+    if normalized in {"server", "whereami", "location"}:
+        return f"We're talking in {server}."
+    if normalized in {"roles", "my roles", "role"}:
+        role_text = ", ".join(roles or []) or "no named roles"
+        return f"Your visible Discord roles are: {role_text}."
+    if normalized in {"developer", "creator", "owner"}:
+        return "Astra is ChudGPT's developer and the owner of this Discord bot."
     if re.search(r"\b(?:disable|stop|turn off|opt out).{0,25}\b(?:logs?|logging)\b", normalized):
         return "I can't change logging from a chat command. Only Astra can change the bot host's logging configuration; avoid sending private information here."
     if normalized in {"ping", "test"}:

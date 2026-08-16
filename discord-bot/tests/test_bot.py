@@ -40,6 +40,16 @@ def test_logging_can_only_be_changed_by_owner() -> None:
     assert reply is not None and "Only Astra" in reply
 
 
+def test_additional_discord_commands() -> None:
+    common = ("!chud", "online", "Tester", "Example Server", ["Member", "Coder"])
+    assert "Spanish" in (discord_command_reply("languages", *common) or "")
+    assert "Example Server" in (discord_command_reply("server", *common) or "")
+    assert "Member, Coder" in (discord_command_reply("roles", *common) or "")
+    assert "Astra" in (discord_command_reply("developer", *common) or "")
+    help_reply = discord_command_reply("help", *common) or ""
+    assert "!chud languages" in help_reply and "!chud developer" in help_reply
+
+
 def test_author_mentions_are_selective_and_naturally_placed() -> None:
     assert place_author_mention("hello", "Hey! What's up?", "<@123>") == "Hey <@123>! What's up?"
     assert place_author_mention("what is Python", "Python is a language.", "<@123>") == "Python is a language."

@@ -108,6 +108,48 @@ class PublicReliableResponder:
             return "If you mean Astra: Astra is ChudGPT's developer and the creator of this custom model project."
         if re.fullmatch(r"(?:what|which|wich) (?:languages?|langues|langueges) can (?:you|u) (?:speak|speack|use|understand)[?.!]*", normalized) or re.fullmatch(r"can (?:you|u) speak (?:german|spanish|french|italian|japanese|english)(?: or .+)?[?.!]*", normalized):
             return "I work best in English. I can attempt several other languages, including Spanish, French, German, and Italian, but my accuracy is less reliable in them."
+        if re.fullmatch(r"(?:list|show|name) (?:the )?(?:languages|langs)(?: you (?:know|support))?[?.!]*", normalized):
+            return "For basic greetings I recognize English, Spanish, French, German, Italian, Portuguese, Japanese, Mandarin Chinese, Korean, Russian, Hindi, Arabic, Swedish, Polish, Turkish, and Hebrew. I still work best in English."
+        greeting_by_word = {
+            "hola": "¡Hola! ¿Cómo estás? (Hello! How are you?)",
+            "bonjour": "Bonjour ! Comment ça va ? (Hello! How are you?)",
+            "hallo": "Hallo! Wie geht's? (Hello! How are you?)",
+            "ciao": "Ciao! Come stai? (Hello! How are you?)",
+            "ola": "Olá! Como você está? (Hello! How are you?)",
+            "oi": "Oi! Como você está? (Hi! How are you?)",
+            "konnichiwa": "こんにちは！元気ですか？ (Hello! How are you?)",
+            "ni hao": "你好！你好吗？ (Hello! How are you?)",
+            "annyeong": "안녕하세요! 잘 지내세요? (Hello! How are you?)",
+            "privet": "Привет! Как дела? (Hi! How are you?)",
+            "namaste": "नमस्ते! आप कैसे हैं? (Hello! How are you?)",
+            "marhaba": "مرحبًا! كيف حالك؟ (Hello! How are you?)",
+            "hej": "Hej! Hur mår du? (Hello! How are you?)",
+            "dzien dobry": "Dzień dobry! Jak się masz? (Good day! How are you?)",
+            "merhaba": "Merhaba! Nasılsın? (Hello! How are you?)",
+            "shalom": "שלום! מה שלומך? (Hello! How are you?)",
+        }
+        greeting_key = normalized.strip(" .!?")
+        if greeting_key in greeting_by_word:
+            return greeting_by_word[greeting_key]
+        greeting_by_language = {
+            "spanish": "Spanish: ¡Hola! ¿Cómo estás? — Hello! How are you?",
+            "french": "French: Bonjour ! Comment ça va ? — Hello! How are you?",
+            "german": "German: Hallo! Wie geht's? — Hello! How are you?",
+            "italian": "Italian: Ciao! Come stai? — Hello! How are you?",
+            "portuguese": "Portuguese: Olá! Como você está? — Hello! How are you?",
+            "japanese": "Japanese: こんにちは！元気ですか？ — Hello! How are you?",
+            "chinese": "Mandarin Chinese: 你好！你好吗？ — Hello! How are you?",
+            "korean": "Korean: 안녕하세요! 잘 지내세요? — Hello! How are you?",
+            "russian": "Russian: Привет! Как дела? — Hi! How are you?",
+            "hindi": "Hindi: नमस्ते! आप कैसे हैं? — Hello! How are you?",
+            "arabic": "Arabic: مرحبًا! كيف حالك؟ — Hello! How are you?",
+            "swedish": "Swedish: Hej! Hur mår du? — Hello! How are you?",
+            "polish": "Polish: Dzień dobry! Jak się masz? — Good day! How are you?",
+            "turkish": "Turkish: Merhaba! Nasılsın? — Hello! How are you?",
+            "hebrew": "Hebrew: שלום! מה שלומך? — Hello! How are you?",
+        }
+        if greeting_key in greeting_by_language:
+            return greeting_by_language[greeting_key]
         if re.fullmatch(r"are (?:you|u) (?:grok|groc)[?.!]*", normalized):
             return "No. I'm ChudGPT-Public, part of the custom ChudGPT model family—not Grok."
         if re.search(r"\b(?:are you|you are|you're|becoming) sentient\b|\bconscious(?:ness)?\b", normalized):
