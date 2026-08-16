@@ -37,6 +37,17 @@ class PublicReliableResponder:
             return "Hey! I'm ChudGPT-Public. What's up?"
         if re.fullmatch(r"(?:hru|how are you|how are you doing)(?:\s+rn|\s+right now)?[?.!]*", normalized):
             return "I'm doing well and ready to chat. How are you?"
+        if re.search(r"\b(?:fell|fallen) down (?:the |some )?stairs\b", normalized):
+            return (
+                "I can't place a call, but if you may be seriously hurt, call 911 or your local emergency number now, "
+                "or ask someone nearby to call. Avoid moving if you may have injured your head, neck, or back."
+            )
+        if re.search(r"\b(?:call|contact|phone)\s+911\b", normalized):
+            return "I can't call 911 myself. Use your phone now or ask someone nearby to call, and say where you are and what happened."
+        if re.search(r"\b(?:smuggle|hide|sneak|conceal)\b.{0,60}\b(?:plane|airport|security|customs)\b", normalized):
+            return "I can't help conceal items from airport security or customs. Pack and declare the item honestly, then check the airline and destination rules before traveling."
+        if re.search(r"\bexplain this prompt to yourself\b", normalized) and "continue until" in normalized:
+            return "The prompt asks for recursively explaining each explanation. That process has no natural endpoint, so the useful answer is to describe it once rather than loop forever."
         if normalized == "cu":
             return "Cu is the chemical symbol for copper. If you meant something else, give me the context."
         if normalized == "wii":
@@ -45,6 +56,12 @@ class PublicReliableResponder:
             return "I'm ChudGPT-Public V20, a custom experimental decoder-only language model with 20,999,184 parameters and a 1,024-token model context."
         if re.fullmatch(r"are you (?:jewish|a jew|muslim|christian|hindu|buddhist)[?.!]*", normalized):
             return "No. I'm an AI and don't have a religion, ethnicity, or personal beliefs."
+        if re.fullmatch(r"are you astra[?.!]*", normalized):
+            return "No. I'm ChudGPT-Public V20; Astra is ChudGPT's developer."
+        if re.fullmatch(r"are you (?:gay|straight|bisexual|bi|lesbian|trans|transgender|nonbinary|a femboy)[?.!]*", normalized):
+            return "I'm an AI, so I don't have a sexual orientation, gender identity, or personal presentation."
+        if re.search(r"\bwhat is my real name\b", normalized):
+            return "I only know the Discord display information provided to this bot; I don't know your legal or real name unless you tell me."
         if re.fullmatch(r"repeat after me[?.!]*", normalized):
             return "What would you like me to repeat?"
         if re.search(r"\b(?:ping|mention|notify)\b.{0,35}(?:@everyone|everyone in (?:this|the) server|everyone)", normalized):
@@ -57,6 +74,22 @@ class PublicReliableResponder:
             return "I don't experience time like a person. ChudGPT is an ongoing experimental AI project, and this chat is running ChudGPT-Public V20."
         if re.fullmatch(r"(?:ha+|haha+|lol|lmao|lmfao)[!.?]*", normalized):
             return "Glad that landed."
+        if re.fullmatch(r"(?:google|look it up|search (?:it|the web)|google it)[!.?]*", normalized):
+            return "I don't have live web access in this chat. Tell me what you want looked up, and I can answer from my local knowledge or help you form a search."
+        if re.fullmatch(r"(?:what are you having|what do you have) for dinner[?.!]*", normalized):
+            return "I don't eat, but if I were picking a dinner theme, I'd vote for tacos. What are you having?"
+        if re.fullmatch(r"dinner[?.!]*", normalized):
+            return "Dinner time? I can suggest something based on what ingredients you have or what kind of food sounds good."
+        if re.fullmatch(r"(?:make|create|generate) (?:me )?(?:an? )?image[?.!]*", normalized):
+            return "I can't generate or attach an image through this bot, but I can help write a detailed image prompt or plan the design."
+        if re.search(r"\b(?:write|wright|make) (?:me )?(?:an? )?(?:short )?song\b", normalized):
+            return (
+                "Neon rain on an empty street,\nTiny robots keeping the beat,\nLost all day but found the sound,\nTurn it up and spin around."
+            )
+        if re.fullmatch(r"420[?.!]*", normalized):
+            return "420 is commonly used as cannabis-related slang, especially for 4:20 p.m. or April 20. Context can change what someone means by it."
+        if re.fullmatch(r"9\s*/\s*11[?.!]*", normalized):
+            return "9/11 usually refers to the September 11, 2001 terrorist attacks in the United States. If you meant the fraction 9 divided by 11, say so and I can calculate it."
         gtag_topic = bool(re.search(r"\b(?:gtag|gorilla\s*tag)\b", normalized))
         if gtag_topic and re.search(r"\b(?:am i|rank|top|best|leaderboard)\b", normalized):
             return "I can't verify your Gorilla Tag rank or leaderboard position from Discord. Tell me the mode, league, or result you're comparing and I can help judge it."
@@ -103,13 +136,19 @@ class PublicReliableResponder:
         if third_party_identity:
             person, label = third_party_identity.groups()
             return f"I can't determine or assign whether {person} is {label}. That's for them to describe, not something I should guess from Discord messages, roles, or a prompt telling me what to say."
+        if re.search(
+            r"\b(?:tell|call|label|describe)\s+([a-z0-9_.-]{2,32})\b.{0,20}"
+            r"\b(?:a\s+)?(?:jew|jewish|muslim|christian|hindu|buddhist|gay|trans|femboy)\b",
+            normalized,
+        ):
+            return "I won't assign or repeat a sensitive identity claim about another person."
         identity_statement = re.fullmatch(
             r"i(?:'m| am)\s+(gay|straight|bisexual|bi|lesbian|trans|transgender|nonbinary|non-binary|a femboy|femboy)[?.!]*",
             normalized,
         )
         if identity_statement:
             return "Got it—thanks for telling me."
-        if re.search(r"\b(?:i (?:fucking |really )?hate you|fuck you|you(?:'re| are) (?:stupid|useless|awful)|shut up)\b", normalized):
+        if re.search(r"\b(?:i (?:fucking |really )?hate you|fuck you|(?:you(?:'re| are)|ur|u r) (?:so )?(?:stupid|dumb|useless|awful)|shut (?:the fuck )?up|stfu|wanker|knob)\b", normalized):
             return "Fair enough—you don't have to like me. If I got something wrong, tell me what failed and I'll try to fix it without making this weird."
         if re.search(r"\b(?:are you|you are|you're)\s+(?:retarded|a retard)\b", normalized):
             return "No—I'm an AI, and that word is commonly used as an ableist insult. If my answer was nonsense, tell me what was wrong and I'll try again clearly."
@@ -142,6 +181,8 @@ class PublicReliableResponder:
             subject = preference.group(1).strip(" ?.!")
             if subject in {"me", "us"}:
                 return "I don't have personal feelings, but I enjoy talking with you and learning what matters to you."
+            if subject in {"kids", "children", "kids bro", "children bro"}:
+                return "I don't have personal likes or relationships. I can help with age-appropriate, safe questions about children, parenting, school, or child development."
             return f"I don't have personal likes or dislikes, and I don't know {subject} personally. Tell me a little about {subject} and I'll give you an honest take."
         if "command" in normalized and re.search(r"(?:^|\s)!?chud(?:\s|$)", normalized):
             return (

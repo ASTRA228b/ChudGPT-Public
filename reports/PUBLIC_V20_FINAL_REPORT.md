@@ -6,6 +6,12 @@ The last review found weak handling of joke follow-ups, laughter, model and reli
 
 Verified results: **74/74 Public tests** and **11/11 Discord-bot tests**. Private source logs remain only on the host and were not committed.
 
+## V20 quality continuation
+
+The next private-log audit found additional failures around emergency requests, attempts to conceal items from airport screening, recursive prompt loops, model-versus-developer identity, requests for legal names, live-web requests, dinner conversation, image limitations, short song creation, Discord insults, child-related phrasing, ambiguous numeric slang, and long multi-operator integer arithmetic. Public V20 now keeps those intents relevant without changing the version or parameter count. Exact integer evaluation now supports multiple addition, subtraction, and multiplication operators while preserving arbitrary precision; a bare `9/11` is treated as the historical date unless calculation is explicitly requested.
+
+The Discord bot now has documented `help`, `status`, `about`, `whoami`, `privacy`, and `ping` commands in addition to chat and per-user/channel memory clearing. Current verification totals are **86/86 Public tests** and **12/12 Discord-bot tests**.
+
 ## Verdict
 
 V20 is the strongest tested ChudGPT-Public serving profile in this repository. It remains a small experimental 20,999,184-parameter model and is not comparable to a frontier model. The raw neural checkpoint still has serious factual and generative limits; V20 reaches useful reliability by combining it with exact operations, reviewed local responses, and rejection/ranking of malformed candidates.

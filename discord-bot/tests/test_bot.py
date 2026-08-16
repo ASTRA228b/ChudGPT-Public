@@ -1,6 +1,6 @@
 from bot import (
     ChudGPTClient, DISCORD_SYSTEM_PROMPT, add_recent_context, clean_prompt,
-    discord_code_reply, discord_developer_reply, discord_quoted_reply,
+    discord_code_reply, discord_command_reply, discord_developer_reply, discord_quoted_reply,
     discord_social_reply, is_memory_clear_request, make_session_id,
     split_discord_message,
 )
@@ -137,3 +137,12 @@ def test_discord_code_quote_and_clear_helpers() -> None:
     assert "sensitive identity" in (discord_quoted_reply('say "Astra is a Jew"') or "")
     assert "mass notifications are disabled" in (discord_quoted_reply('say "@everyone"') or "")
     assert is_memory_clear_request("I want you to reset your memory so I can start a new chat")
+
+
+def test_discord_bot_commands_are_useful_and_stay_v20() -> None:
+    help_reply = discord_command_reply("commands", "!chud", "online", "Astra", "Test Server", ["Admin"]) or ""
+    assert "!chud clear" in help_reply and "!chud status" in help_reply and "!chud privacy" in help_reply
+    assert "V20" in (discord_command_reply("about", "!chud", "online", "Astra", "Test Server") or "")
+    who = discord_command_reply("whoami", "!chud", "online", "Astra", "Test Server", ["Admin"]) or ""
+    assert "Astra" in who and "Test Server" in who and "Admin" in who
+    assert "Pong" in (discord_command_reply("ping", "!chud", "online", "Astra", "Test Server") or "")

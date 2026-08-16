@@ -51,6 +51,17 @@ Clear your private conversation session in the current channel with:
 !chud clear
 ```
 
+Other built-in commands:
+
+```text
+!chud help       Show all bot commands
+!chud status     Show bot, API, and server status
+!chud about      Show the fixed Public V20 model profile
+!chud whoami     Show the Discord name and roles visible to the bot
+!chud privacy    Explain the private quality-improvement logs
+!chud ping       Test whether the bot is responding
+```
+
 The clear command affects only that Discord user in that channel; it does not
 erase another user's session or switch the model checkpoint.
 

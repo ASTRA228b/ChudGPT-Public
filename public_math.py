@@ -7,6 +7,7 @@ math can never hijack a greeting, meme, or unrelated question.
 
 from __future__ import annotations
 
+import ast
 import re
 from decimal import Decimal, InvalidOperation, localcontext
 from fractions import Fraction
@@ -53,6 +54,38 @@ def _render(value: Decimal) -> str:
 def exact_math_response(message: str) -> str | None:
     """Return an exact answer for a clearly recognized arithmetic request."""
     text = " ".join(message.strip().split())
+    if re.fullmatch(r"9\s*/\s*11[?.!]*", text):
+        # In ordinary chat this overwhelmingly names the historical date. A
+        # user can still request the calculation with "calculate 9 / 11".
+        return None
+    expression_text = re.sub(
+        r"^(?:what(?:\s+is|'s)|calculate|compute|solve|evaluate)\s+", "", text,
+        flags=re.IGNORECASE,
+    ).rstrip(" ?")
+    compact_expression = expression_text.replace(",", "")
+    if re.fullmatch(r"[+-]?\d+(?:\s*[+*-]\s*[+-]?\d+){2,}", compact_expression):
+        def evaluate_integer(node: ast.AST) -> int:
+            if isinstance(node, ast.Expression):
+                return evaluate_integer(node.body)
+            if isinstance(node, ast.Constant) and isinstance(node.value, int):
+                return node.value
+            if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
+                value = evaluate_integer(node.operand)
+                return value if isinstance(node.op, ast.UAdd) else -value
+            if isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Add, ast.Sub, ast.Mult)):
+                left, right = evaluate_integer(node.left), evaluate_integer(node.right)
+                if isinstance(node.op, ast.Add):
+                    return left + right
+                if isinstance(node.op, ast.Sub):
+                    return left - right
+                return left * right
+            raise ValueError("unsupported arithmetic expression")
+
+        try:
+            value = evaluate_integer(ast.parse(compact_expression, mode="eval"))
+        except (SyntaxError, ValueError):
+            return None
+        return f"{compact_expression} = {value}"
     if re.search(
         rf"(?:{NUMBER})\s*(?:\+|-|\*|\u00d7|\u00c3\u0097|x|/|\u00f7|\u00c3\u00b7|plus|minus|times|multiplied\s+by|divided\s+by)\s*[?.!]*$",
         text,

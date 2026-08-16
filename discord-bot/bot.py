@@ -326,6 +326,43 @@ def is_memory_clear_request(prompt: str) -> bool:
     )
 
 
+def discord_command_reply(
+    prompt: str,
+    prefix: str,
+    api_status: str,
+    speaker: str,
+    server: str,
+    roles: list[str] | None = None,
+) -> str | None:
+    """Return deterministic help for the bot's own small command surface."""
+    normalized = re.sub(r"\s+", " ", prompt.strip().lower()).strip(" .!?")
+    if normalized in {"help", "commands", "command", "what can you do"} or (
+        "command" in normalized and "chud" in normalized
+    ):
+        return (
+            f"**ChudGPT commands**\n"
+            f"`{prefix} <message>` — chat with Public V20\n"
+            f"`{prefix} clear` — clear your memory in this channel\n"
+            f"`{prefix} status` — check bot/API status\n"
+            f"`{prefix} about` — show model information\n"
+            f"`{prefix} whoami` — show the Discord identity I can see\n"
+            f"`{prefix} privacy` — explain Discord conversation logs\n"
+            f"`{prefix} ping` — test whether the bot is responding"
+        )
+    if normalized in {"status", "health"}:
+        return f"ChudGPT-Public V20 bot is online. API status: {api_status}. Server: {server}."
+    if normalized in {"about", "model", "version", "model info"}:
+        return "This bot uses ChudGPT-Public V20, a custom 20,999,184-parameter decoder-only language model with a 1,024-token model context."
+    if normalized in {"whoami", "who am i"}:
+        role_text = ", ".join(roles or []) or "no named roles"
+        return f"I can see you as {speaker} in {server}, with {role_text}. I do not know your legal name unless you tell me."
+    if normalized in {"privacy", "logs", "logging"}:
+        return "Discord exchanges with this bot are logged privately by the project owner for debugging and quality improvement. They are not included in the public repository."
+    if normalized in {"ping", "test"}:
+        return "Pong — ChudGPT-Public V20 is responding."
+    return None
+
+
 _CONVERSATION_LOG_LOCK = threading.Lock()
 
 
@@ -453,11 +490,18 @@ def main() -> None:
             recent_context = list(recent_user_messages[context_key])
             model_prompt = prompt
             discord_context = discord_identity_context(message, developer_user_id)
+            visible_roles = [item.name for item in getattr(message.author, "roles", []) if item.name != "@everyone"]
+            visible_server = message.guild.name if message.guild is not None else "Direct Messages"
+            visible_speaker = getattr(message.author, "display_name", None) or message.author.name
             if recent_context:
                 discord_context += "; recent same-user messages=" + " | ".join(recent_context[-2:])
             recent_user_messages[context_key].append(prompt)
             reply = (
-                discord_quoted_reply(prompt)
+                discord_command_reply(
+                    prompt, settings.prefix, str(state.get("api_status", "unknown")),
+                    visible_speaker, visible_server, visible_roles,
+                )
+                or discord_quoted_reply(prompt)
                 or discord_developer_reply(prompt, developer_user_id)
                 or discord_code_reply(prompt)
                 or discord_social_reply(prompt, recent_context)
