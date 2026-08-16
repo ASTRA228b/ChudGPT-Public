@@ -104,6 +104,13 @@ def test_discord_context_identifies_server_and_developer() -> None:
     assert PublicModelService._discord_context_reply("what server are we in?", context) == (
         "We're talking in the Astra Lab Discord server."
     )
+    dm_context = "server=Direct Messages; channel=direct-message; speaker=Astra; relationship=ChudGPT developer Astra"
+    assert PublicModelService._discord_context_reply("Where are we talking?", dm_context) == (
+        "We're talking in a private Discord direct message."
+    )
+    assert PublicModelService._discord_context_reply("What server are we in?", dm_context) == (
+        "This is a private Discord direct message, not a server channel."
+    )
     assert "developer Astra" in (PublicModelService._discord_context_reply("who am I?", context) or "")
     role_context = "server=Astra Lab; channel=ai; speaker=River; member_roles=Moderator, Monke; relationship=Discord user"
     assert PublicModelService._discord_context_reply("what is my server tag?", role_context) == (

@@ -214,7 +214,11 @@ class PublicModelService:
             discord_context,
         ))
         normalized = message.lower()
-        if re.search(r"\b(?:what|which) server\b|\bwhere are we\b", normalized) and fields.get("server"):
+        if re.search(r"\b(?:what|which) server\b|\bwhere are we(?: talking)?\b", normalized) and fields.get("server"):
+            if fields["server"].strip().lower() == "direct messages":
+                if re.search(r"\b(?:what|which) server\b", normalized):
+                    return "This is a private Discord direct message, not a server channel."
+                return "We're talking in a private Discord direct message."
             return f"We're talking in the {fields['server']} Discord server."
         if re.search(r"\bwho am i\b|\bdo you know me\b", normalized) and fields.get("speaker"):
             relation = fields.get("relationship", "Discord user")

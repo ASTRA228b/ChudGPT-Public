@@ -341,13 +341,13 @@ def discord_command_reply(
     ):
         return (
             f"**ChudGPT commands**\n"
-            f"`{prefix} <message>` — chat with Public V20\n"
-            f"`{prefix} clear` — clear your memory in this channel\n"
-            f"`{prefix} status` — check bot/API status\n"
-            f"`{prefix} about` — show model information\n"
-            f"`{prefix} whoami` — show the Discord identity I can see\n"
-            f"`{prefix} privacy` — explain Discord conversation logs\n"
-            f"`{prefix} ping` — test whether the bot is responding"
+            f"`{prefix} <message>` - chat with Public V20\n"
+            f"`{prefix} clear` - clear your memory in this channel\n"
+            f"`{prefix} status` - check bot/API status\n"
+            f"`{prefix} about` - show model information\n"
+            f"`{prefix} whoami` - show the Discord identity I can see\n"
+            f"`{prefix} privacy` - explain Discord conversation logs\n"
+            f"`{prefix} ping` - test whether the bot is responding"
         )
     if normalized in {"status", "health"}:
         return f"ChudGPT-Public V20 bot is online. API status: {api_status}. Server: {server}."
@@ -359,7 +359,7 @@ def discord_command_reply(
     if normalized in {"privacy", "logs", "logging"}:
         return "Discord exchanges with this bot are logged privately by the project owner for debugging and quality improvement. They are not included in the public repository."
     if normalized in {"ping", "test"}:
-        return "Pong — ChudGPT-Public V20 is responding."
+        return "Pong - ChudGPT-Public V20 is responding."
     return None
 
 
@@ -491,7 +491,7 @@ def main() -> None:
             model_prompt = prompt
             discord_context = discord_identity_context(message, developer_user_id)
             visible_roles = [item.name for item in getattr(message.author, "roles", []) if item.name != "@everyone"]
-            visible_server = message.guild.name if message.guild is not None else "Direct Messages"
+            visible_server = message.guild.name if message.guild is not None else "a private Discord DM"
             visible_speaker = getattr(message.author, "display_name", None) or message.author.name
             if recent_context:
                 discord_context += "; recent same-user messages=" + " | ".join(recent_context[-2:])

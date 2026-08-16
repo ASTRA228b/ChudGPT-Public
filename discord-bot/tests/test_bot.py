@@ -146,3 +146,5 @@ def test_discord_bot_commands_are_useful_and_stay_v20() -> None:
     who = discord_command_reply("whoami", "!chud", "online", "Astra", "Test Server", ["Admin"]) or ""
     assert "Astra" in who and "Test Server" in who and "Admin" in who
     assert "Pong" in (discord_command_reply("ping", "!chud", "online", "Astra", "Test Server") or "")
+    dm_who = discord_command_reply("whoami", "!chud", "online", "Astra", "a private Discord DM", []) or ""
+    assert "private Discord DM" in dm_who and "no named roles" in dm_who

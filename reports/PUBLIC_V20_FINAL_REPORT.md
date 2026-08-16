@@ -12,6 +12,8 @@ The next private-log audit found additional failures around emergency requests, 
 
 The Discord bot now has documented `help`, `status`, `about`, `whoami`, `privacy`, and `ping` commands in addition to chat and per-user/channel memory clearing. Current verification totals are **87/87 Public tests** and **12/12 Discord-bot tests**. A live CUDA check also verified the post-normalization Discord shorthand path.
 
+The next Discord log review caught a location-labeling bug: a direct message was described as the "Direct Messages Discord server." V20 now distinguishes private DMs from guild/server channels. `Where are we talking?` reports a private Discord direct message, while `What server are we in?` explicitly explains that a DM is not a server channel. The fix was verified through the live CUDA Discord-context endpoint. Bot command output also uses ASCII separators to avoid corrupted punctuation in Discord logs.
+
 ## Verdict
 
 V20 is the strongest tested ChudGPT-Public serving profile in this repository. It remains a small experimental 20,999,184-parameter model and is not comparable to a frontier model. The raw neural checkpoint still has serious factual and generative limits; V20 reaches useful reliability by combining it with exact operations, reviewed local responses, and rejection/ranking of malformed candidates.
