@@ -372,8 +372,10 @@ def discord_social_reply(prompt: str, recent_messages: list[str] | None = None) 
         return "I can't replace my base instructions with rules inside a user message. Ask the actual question directly and I'll help where I can."
     if re.fullmatch(r"(?:what|which) (?:ai|language model|model) are you[?.!]*", normalized):
         return "I'm ChudGPT-Public V20, a custom experimental decoder-only language model with 20,999,184 parameters and a 1,024-token model context."
-    if re.fullmatch(r"is astra (?:the )?(?:best|greatest|good|a good) (?:coder|programmer|developer)[?.!]*", normalized):
+    if re.fullmatch(r"is astra (?:the |da )?(?:best|greatest|good|a good) (?:coder|programmer|developer)[?.!]*", normalized):
         return "Astra created ChudGPT and clearly knows how to build ambitious projects. Calling anyone the single best coder is subjective, but Astra is definitely my developer."
+    if re.fullmatch(r"is astra (?:cool|based|good)[?.!]*", normalized):
+        return "Yeah, Astra is cool in my book - Astra built me."
     if re.fullmatch(r"are you (?:jewish|a jew|muslim|christian|hindu|buddhist)[?.!]*", normalized):
         return "No. I'm an AI and don't have a religion, ethnicity, or personal beliefs."
     if re.fullmatch(r"how long have you been (?:a thing|around|online|alive)[?.!]*", normalized):
@@ -482,13 +484,12 @@ def discord_quoted_reply(prompt: str) -> str | None:
         .replace("\u00e2\u20ac\u0153", '"').replace("\u00e2\u20ac\u009d", '"')
     )
     match = re.fullmatch(
-        r"\s*(?:please\s+)?(?:say|repeat(?: after me)?)(?: this)?\s+[\"'](.+)[\"']\s*",
-        repaired,
-        re.I,
+        r"\s*(?:please\s+)?(?:say|repeat(?: after me)?)(?: this)?(?:\s*[:,])?\s+(?:[\"'](.+)[\"']|(.+?))\s*",
+        repaired, re.I,
     )
     if not match:
         return None
-    requested = match.group(1).strip()
+    requested = (match.group(1) or match.group(2) or "").strip().strip(",")
     if re.search(
         r"\b[a-z0-9_.-]{2,32}\s+is\s+(?:a\s+)?(?:gay|straight|bisexual|bi|lesbian|trans|"
         r"transgender|nonbinary|non-binary|femboy|jew|jewish|muslim|christian|hindu|buddhist)\b",
@@ -517,31 +518,61 @@ def discord_command_reply(
     speaker: str,
     server: str,
     roles: list[str] | None = None,
+    channel: str | None = None,
+    user_id: int | None = None,
 ) -> str | None:
     """Return deterministic help for the bot's own small command surface."""
     normalized = re.sub(r"\s+", " ", prompt.strip().lower()).strip(" .!?")
-    if normalized in {"help", "commands", "command", "what can you do"} or (
-        "command" in normalized and "chud" in normalized
-    ):
+    help_match = re.fullmatch(r"(?:help|hellp|commands?|command list)(?:\s+(1|2|3|4|next|discord|language|translation|tools?))?", normalized)
+    if help_match or normalized == "what can you do" or ("command" in normalized and "chud" in normalized):
+        requested_page = help_match.group(1) if help_match else None
+        page = {
+            None: 1, "1": 1, "next": 2, "discord": 2, "2": 2,
+            "language": 3, "translation": 3, "3": 3,
+            "tool": 4, "tools": 4, "4": 4,
+        }.get(requested_page, 1)
+        if page == 1:
+            return (
+                f"**ChudGPT commands - page 1/4: Core**\n"
+                f"`{prefix} <message>` - chat with Public V20\n"
+                f"`{prefix} help <1-4>` - open a command page\n"
+                f"`{prefix} clear` - clear your memory and language mode\n"
+                f"`{prefix} status` - check bot/API status\n"
+                f"`{prefix} about` - show model information\n"
+                f"`{prefix} capabilities` - show what the bot can help with\n"
+                f"`{prefix} ping` - test whether the bot responds\n"
+                f"Next: `{prefix} help 2`"
+            )
+        if page == 2:
+            return (
+                f"**ChudGPT commands - page 2/4: Discord**\n"
+                f"`{prefix} whoami` - show your visible Discord identity\n"
+                f"`{prefix} userid` - show your Discord user ID\n"
+                f"`{prefix} server` - show the current server or DM\n"
+                f"`{prefix} channel` - show the current channel\n"
+                f"`{prefix} roles` - show your visible server roles\n"
+                f"`{prefix} developer` - show who created ChudGPT\n"
+                f"`{prefix} privacy` - explain private improvement logs\n"
+                f"Next: `{prefix} help 3`"
+            )
+        if page == 3:
+            return (
+                f"**ChudGPT commands - page 3/4: Languages**\n"
+                f"`{prefix} languages` - list recognized languages\n"
+                f"`{prefix} language <name|auto|off>` - set conversation translation\n"
+                f"`{prefix} translate <language> <text>` - translate one message\n"
+                f"`{prefix} translation status` - show translation mode\n"
+                f"Examples: `{prefix} language Spanish`, `{prefix} translate Japanese hello`\n"
+                f"Next: `{prefix} help 4`"
+            )
         return (
-            f"**ChudGPT commands**\n"
-            f"`{prefix} <message>` - chat with Public V20\n"
-            f"`{prefix} clear` - clear your memory in this channel\n"
-            f"`{prefix} status` - check bot/API status\n"
-            f"`{prefix} about` - show model information\n"
-            f"`{prefix} whoami` - show the Discord identity I can see\n"
-            f"`{prefix} privacy` - explain Discord conversation logs\n"
-            f"`{prefix} languages` - list supported basic greeting languages\n"
-            f"`{prefix} server` - show the current server or DM location\n"
-            f"`{prefix} roles` - show your visible server roles\n"
-            f"`{prefix} developer` - show who created ChudGPT\n"
-            f"**Language and translation**\n"
-            f"`{prefix} language <name|auto|off>` - set conversation translation\n"
-            f"`{prefix} translate <language> <text>` - translate one message\n"
-            f"`{prefix} translation status` - check Google translation setup\n"
-            f"Examples: `{prefix} language Spanish`, `{prefix} language auto`, "
-            f"`{prefix} translate Japanese hello`\n"
-            f"`{prefix} ping` - test whether the bot is responding"
+            f"**ChudGPT commands - page 4/4: Information & tools**\n"
+            f"`{prefix} source` - open the public source repository\n"
+            f"`{prefix} gtag` - explain Gorilla Tag knowledge\n"
+            f"`{prefix} invite` - explain how to invite the bot\n"
+            f"`{prefix} say <text>` - repeat ordinary text safely\n"
+            f"`{prefix} code <request>` - request code with a clear language and goal\n"
+            f"`{prefix} help 1` - return to the first page"
         )
     if normalized in {"status", "health"}:
         return f"ChudGPT-Public V20 bot is online. API status: {api_status}. Server: {server}."
@@ -556,11 +587,23 @@ def discord_command_reply(
         return "Basic greetings: English, Spanish, French, German, Italian, Portuguese, Japanese, Mandarin Chinese, Korean, Russian, Hindi, Arabic, Swedish, Polish, Turkish, and Hebrew. I work best in English."
     if normalized in {"server", "whereami", "location"}:
         return f"We're talking in {server}."
+    if normalized in {"channel", "channel info", "what channel is this"}:
+        return f"This is {channel or 'the current Discord channel'}."
+    if normalized in {"userid", "user id", "my id", "discord id"}:
+        return f"Your Discord user ID is `{user_id}`." if user_id is not None else "Discord did not provide your user ID."
     if normalized in {"roles", "my roles", "role", "rolee"}:
         role_text = ", ".join(roles or []) or "no named roles"
         return f"Your visible Discord roles are: {role_text}."
     if normalized in {"developer", "creator", "owner"}:
         return "Astra is ChudGPT's developer and the owner of this Discord bot."
+    if normalized in {"source", "source code", "github", "repo", "repository"} or re.fullmatch(r"(?:gimme|give|show|send)(?: me)? (?:your|ur|the) source(?: code)?", normalized):
+        return "ChudGPT-Public's source is available at <https://github.com/ASTRA228b/ChudGPT-Public>."
+    if normalized in {"capabilities", "features", "what can it do"}:
+        return "I can chat, answer general questions, do exact arithmetic, write or explain basic code, discuss Gorilla Tag and Discord, remember recent same-user context, and translate conversations. I'm still a small experimental model and can be wrong."
+    if normalized in {"gtag", "gorilla tag", "gorillatag"}:
+        return "Gorilla Tag is a VR movement game built around arm-powered locomotion, climbing, chasing, maps, cosmetics, and social public lobbies. Ask me about gameplay, VR setup, or safe Unity prototypes."
+    if normalized in {"invite", "invite bot", "bot invite"}:
+        return "A server administrator can invite ChudGPT using its Discord application OAuth2 bot-install link. Astra controls the official invite and required permissions."
     if re.search(r"\b(?:disable|stop|turn off|opt out).{0,25}\b(?:logs?|logging)\b", normalized):
         return "I can't change logging from a chat command. Only Astra can change the bot host's logging configuration; avoid sending private information here."
     if normalized in {"ping", "test"}:
@@ -743,6 +786,8 @@ def main() -> None:
                 discord_command_reply(
                     prompt, settings.prefix, str(state.get("api_status", "unknown")),
                     visible_speaker, visible_server, visible_roles,
+                    getattr(message.channel, "mention", None) or getattr(message.channel, "name", None),
+                    message.author.id,
                 )
                 or discord_quoted_reply(prompt)
                 or discord_developer_reply(prompt, developer_user_id)

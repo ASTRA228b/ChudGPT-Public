@@ -57,15 +57,24 @@ Clear your private conversation session in the current channel with:
 Other built-in commands:
 
 ```text
-!chud help       Show all bot commands
+!chud help       Show core commands (page 1)
+!chud help 2     Discord identity and location commands
+!chud help 3     Language and translation commands
+!chud help 4     Information and utility commands
 !chud status     Show bot, API, and server status
 !chud about      Show the fixed Public V20 model profile
 !chud whoami     Show the Discord name and roles visible to the bot
+!chud userid     Show your Discord user ID
+!chud channel    Show the current channel
 !chud privacy    Explain the private quality-improvement logs
 !chud languages  List built-in basic greeting languages
 !chud server     Show the current server or DM location
 !chud roles      Show your visible server roles
 !chud developer  Show who created ChudGPT
+!chud source     Show the public source repository
+!chud capabilities  Summarize supported tasks
+!chud gtag       Show Gorilla Tag knowledge
+!chud invite     Explain who can invite the bot
 !chud language Spanish                 Translate this conversation to/from Spanish
 !chud language auto                    Auto-detect non-English messages
 !chud language off                     Disable translation for this conversation

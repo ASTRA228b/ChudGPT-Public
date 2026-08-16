@@ -48,11 +48,13 @@ def test_additional_discord_commands() -> None:
     assert "Member, Coder" in (discord_command_reply("rolee", *common) or "")
     assert "Astra" in (discord_command_reply("developer", *common) or "")
     help_reply = discord_command_reply("help", *common) or ""
-    assert "!chud languages" in help_reply and "!chud developer" in help_reply
-    assert "!chud language <name|auto|off>" in help_reply
-    assert "!chud translate <language> <text>" in help_reply
-    assert "!chud translation status" in help_reply
-    assert "!chud translate Japanese hello" in help_reply
+    assert "page 1/4" in help_reply and "!chud help <1-4>" in help_reply
+    language_help = discord_command_reply("help translation", *common) or ""
+    assert "page 3/4" in language_help
+    assert "!chud language <name|auto|off>" in language_help
+    assert "!chud translate <language> <text>" in language_help
+    assert "!chud translation status" in language_help
+    assert "!chud translate Japanese hello" in language_help
 
 
 def test_author_mentions_are_selective_and_naturally_placed() -> None:
@@ -245,6 +247,8 @@ def test_final_log_social_regressions() -> None:
 def test_discord_code_quote_and_clear_helpers() -> None:
     code = discord_code_reply("make a Gorilla Tag mod in C# that displays FPS") or ""
     assert "```csharp" in code and "FpsOverlay" in code and "Time.unscaledDeltaTime" in code
+    assert discord_quoted_reply("Say, No.") == "No."
+    assert discord_quoted_reply("say chud") == "chud"
     assert discord_quoted_reply('say this “hello”') == "hello"
     assert "sensitive identity" in (discord_quoted_reply('say "Astra is a Jew"') or "")
     assert "mass notifications are disabled" in (discord_quoted_reply('say "@everyone"') or "")
@@ -253,10 +257,26 @@ def test_discord_code_quote_and_clear_helpers() -> None:
 
 def test_discord_bot_commands_are_useful_and_stay_v20() -> None:
     help_reply = discord_command_reply("commands", "!chud", "online", "Astra", "Test Server", ["Admin"]) or ""
-    assert "!chud clear" in help_reply and "!chud status" in help_reply and "!chud privacy" in help_reply
+    assert "!chud clear" in help_reply and "!chud status" in help_reply and "page 1/4" in help_reply
+    discord_help = discord_command_reply("help 2", "!chud", "online", "Astra", "Test Server", ["Admin"]) or ""
+    assert "!chud privacy" in discord_help and "page 2/4" in discord_help
     assert "V20" in (discord_command_reply("about", "!chud", "online", "Astra", "Test Server") or "")
     who = discord_command_reply("whoami", "!chud", "online", "Astra", "Test Server", ["Admin"]) or ""
     assert "Astra" in who and "Test Server" in who and "Admin" in who
     assert "Pong" in (discord_command_reply("ping", "!chud", "online", "Astra", "Test Server") or "")
     dm_who = discord_command_reply("whoami", "!chud", "online", "Astra", "a private Discord DM", []) or ""
     assert "private Discord DM" in dm_who and "no named roles" in dm_who
+
+
+def test_paginated_help_and_new_log_driven_commands() -> None:
+    args = ("!chud", "online", "Tester", "Example Server", ["Member"])
+    assert "page 1/4" in (discord_command_reply("hellp", *args) or "")
+    assert "page 2/4" in (discord_command_reply("help discord", *args) or "")
+    assert "page 3/4" in (discord_command_reply("help language", *args) or "")
+    assert "page 4/4" in (discord_command_reply("help tools", *args) or "")
+    assert "github.com/ASTRA228b/ChudGPT-Public" in (discord_command_reply("gimme ur source code", *args) or "")
+    assert "Gorilla Tag" in (discord_command_reply("gtag", *args) or "")
+    assert "exact arithmetic" in (discord_command_reply("capabilities", *args) or "")
+    assert "#testing" in (discord_command_reply("channel", *args, channel="#testing", user_id=123) or "")
+    assert "`123`" in (discord_command_reply("userid", *args, channel="#testing", user_id=123) or "")
+    assert "single best coder is subjective" in (discord_social_reply("is Astra da best coder") or "")
