@@ -64,6 +64,11 @@ def exact_math_response(message: str) -> str | None:
     ).rstrip(" ?")
     compact_expression = expression_text.replace(",", "")
     if re.fullmatch(r"[+-]?\d+(?:\s*[+*-]\s*[+-]?\d+){2,}", compact_expression):
+        # Python rejects decimal integer literals with leading zeroes. Users
+        # commonly paste those into Discord calculators, so canonicalize each
+        # literal before parsing while retaining exact arbitrary-size ints.
+        compact_expression = re.sub(r"(?<!\d)0+(?=\d)", "", compact_expression)
+
         def evaluate_integer(node: ast.AST) -> int:
             if isinstance(node, ast.Expression):
                 return evaluate_integer(node.body)

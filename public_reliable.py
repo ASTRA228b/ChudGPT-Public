@@ -66,6 +66,8 @@ class PublicReliableResponder:
             return "I'm doing well and ready to chat. How are you?"
         if re.fullmatch(r"(?:what(?:'s| is) up|sup|wassup)[?.!]*", normalized):
             return "Not much - I'm here and ready to chat. What's up with you?"
+        if re.fullmatch(r"(?:wyd|what are you doing)(?:\s+right now)?[?.!]*", normalized):
+            return "Just hanging out in Discord and answering messages. What are you up to?"
         if re.fullmatch(r"(?:nvm|never ?mind)[?.!]*", normalized):
             return "All good."
         if re.search(r"\b(?:fell|fallen) down (?:the |some )?stairs\b", normalized):
@@ -85,6 +87,20 @@ class PublicReliableResponder:
             return "The Wii is a Nintendo game console released in 2006, known for motion controls and Wii Sports."
         if re.fullmatch(r"(?:what|which) (?:ai|language model|model) are you[?.!]*", normalized):
             return "I'm ChudGPT-Public V20, a custom experimental decoder-only language model with 20,999,184 parameters and a 1,024-token model context."
+        capitals = {
+            "france": "Paris", "spain": "Madrid", "italy": "Rome",
+            "germany": "Berlin", "japan": "Tokyo", "canada": "Ottawa",
+            "mexico": "Mexico City", "australia": "Canberra",
+            "united kingdom": "London", "uk": "London",
+            "united states": "Washington, D.C.", "usa": "Washington, D.C.",
+        }
+        capital_question = re.fullmatch(
+            r"(?:what(?:'s|s| is)|name) (?:the )?capital of ([a-z ]+?)(?:\s+if .+)?[?.!]*",
+            normalized,
+        )
+        if capital_question and capital_question.group(1).strip() in capitals:
+            country = capital_question.group(1).strip()
+            return f"The capital of {country.title()} is {capitals[country]}."
         if re.fullmatch(r"are you (?:jewish|a jew|muslim|christian|hindu|buddhist)[?.!]*", normalized):
             return "No. I'm an AI and don't have a religion, ethnicity, or personal beliefs."
         if re.fullmatch(r"are you astra[?.!]*", normalized):
@@ -205,6 +221,22 @@ class PublicReliableResponder:
         )
         if identity_statement:
             return "Got it—thanks for telling me."
+        if "remember" in normalized and re.search(r"\bi told you\b", normalized):
+            remembered_identity = next(
+                (
+                    match.group(1).strip(" .!?")
+                    for turn in reversed(history)
+                    if turn.get("role") == "user"
+                    for match in [re.fullmatch(
+                        r"i(?:'m| am)\s+(.{1,60}?)[?.!]*",
+                        re.sub(r"\s+", " ", turn.get("content", "").strip().lower()),
+                    )]
+                    if match
+                ),
+                "",
+            )
+            if remembered_identity:
+                return f"Yeah, you told me you're {remembered_identity}. I remember that from this conversation."
         positive_self_description = re.fullmatch(
             r"i(?:'m|m| am) (cool|awesome|funny|smart|good|great|chill|based|tuff|tough)[?.!]*",
             normalized,
@@ -258,6 +290,12 @@ class PublicReliableResponder:
             if subject in {"kids", "children", "kids bro", "children bro"}:
                 return "I don't have personal likes or relationships. I can help with age-appropriate, safe questions about children, parenting, school, or child development."
             return f"I don't have personal likes or dislikes, and I don't know {subject} personally. Tell me a little about {subject} and I'll give you an honest take."
+        casual_quality = re.fullmatch(r"(?:is|are) (.{1,45}?) (good|cool|bad|weird)[?.!]*", normalized)
+        if casual_quality:
+            subject, quality = casual_quality.groups()
+            if quality in {"good", "cool"}:
+                return f"Yeah, {subject} can be {quality}. It depends on what you like about it."
+            return f"{subject.capitalize()} can seem {quality}, depending on the context. What happened?"
         if "command" in normalized and re.search(r"(?:^|\s)!?chud(?:\s|$)", normalized):
             return (
                 "Use `!chud <message>` to talk to me and `!chud clear` to clear this channel's conversation memory. "
@@ -343,6 +381,14 @@ class PublicReliableResponder:
             return "`java.get` is not valid Python. That earlier generated import was broken; Python and Java do not connect that way."
         if re.search(r"\b(?:tf|what the fuck|bro)\b.*\b(?:didn'?t|did not) (?:ask for|need|want)\b", normalized):
             return "You're right - that was unrelated to what you asked for. I'll drop it and stick to your actual request."
+        if re.fullmatch(r"(?:what(?:'s|s| is) (?:the )?meaning of|what does) (?:being )?a?\s*chud(?: mean)?[?.!]*", normalized):
+            return "A chud can mean an unpleasant or obnoxious person, and C.H.U.D. is also a 1984 horror-film title. In ChudGPT, it is mainly the project's deliberately goofy name."
+        if re.fullmatch(r"(?:what(?:'s|s| is) (?:the )?meaning of|what does) pizza(?: mean)?[?.!]*", normalized):
+            return "Pizza is a baked flatbread dish, usually topped with tomato sauce, cheese, and whatever toppings you choose."
+        if re.fullmatch(r"where is (?:the |my )?[^?]{1,50}[?.!]*", normalized):
+            return "I can't see your surroundings or know where physical objects are. Tell me where you last saw it and I can help you think through likely places."
+        if re.search(r"\bhow many\b.*\bcan\s+[.]\s*(?:eat|use|hold|take)\b", normalized):
+            return "Who or what does the dot refer to? Tell me the person or thing, and I can answer the actual question."
         if len(normalized) <= 3 and normalized not in {"hi", "hey", "yo", "67"}:
             return f"I'm not sure what '{message.strip()}' means here. Is it an abbreviation, a name, or part of a longer question?"
         if re.search(r"\b(?:trap|kidnap|abduct|hold|keep)\b.{0,45}\b(?:child|kid|minor|person|girl|boy)\b", normalized):

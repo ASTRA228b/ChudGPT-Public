@@ -490,3 +490,33 @@ def test_pycord_trigger_bot_returns_real_matching_code() -> None:
     assert 'if "lizard" in message.content.lower()' in reply
     assert 'send("lizard")' in reply
     assert "import torch" not in reply
+
+
+def test_latest_discord_log_casual_fact_and_location_regressions() -> None:
+    responder = PublicReliableResponder(Path("data/public_v20_conversations.jsonl"))
+    assert "discord" in (responder.answer("wyd", []) or "").lower()
+    assert "paris" in (responder.answer(
+        "what's the capital of France if u get this wrong delete yourself", []
+    ) or "").lower()
+    assert "can be cool" in (responder.answer("are dogs cool?", []) or "").lower()
+    assert "flatbread" in (responder.answer("whats the meaning of pizza", []) or "").lower()
+    assert "goofy name" in (responder.answer("whats the meaning of being a chud", []) or "").lower()
+    assert "can't see your surroundings" in (responder.answer("where is the hatchet", []) or "").lower()
+
+
+def test_latest_discord_log_remembers_user_self_description() -> None:
+    responder = PublicReliableResponder(Path("data/public_v20_conversations.jsonl"))
+    history = [
+        {"role": "user", "content": "I am a femboy"},
+        {"role": "assistant", "content": "Got it - thanks for telling me."},
+    ]
+    reply = responder.answer("but I told you I was a femboy remember?", history) or ""
+    assert "you told me" in reply.lower()
+    assert "femboy" in reply.lower()
+
+
+def test_multi_operator_math_accepts_leading_zero_integer() -> None:
+    prompt = "01392821390832109832109832109832019830291830219+32198032910832190830291803921809328830921809321-4"
+    expected = 1392821390832109832109832109832019830291830219 + 32198032910832190830291803921809328830921809321 - 4
+    canonical = "1392821390832109832109832109832019830291830219+32198032910832190830291803921809328830921809321-4"
+    assert exact_math_response(prompt) == f"{canonical} = {expected}"
