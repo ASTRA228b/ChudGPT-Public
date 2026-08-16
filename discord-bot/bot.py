@@ -432,7 +432,7 @@ def discord_command_reply(
         return "Basic greetings: English, Spanish, French, German, Italian, Portuguese, Japanese, Mandarin Chinese, Korean, Russian, Hindi, Arabic, Swedish, Polish, Turkish, and Hebrew. I work best in English."
     if normalized in {"server", "whereami", "location"}:
         return f"We're talking in {server}."
-    if normalized in {"roles", "my roles", "role"}:
+    if normalized in {"roles", "my roles", "role", "rolee"}:
         role_text = ", ".join(roles or []) or "no named roles"
         return f"Your visible Discord roles are: {role_text}."
     if normalized in {"developer", "creator", "owner"}:

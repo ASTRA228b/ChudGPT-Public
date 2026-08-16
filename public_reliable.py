@@ -127,6 +127,14 @@ class PublicReliableResponder:
             "dzien dobry": "Dzień dobry! Jak się masz? (Good day! How are you?)",
             "merhaba": "Merhaba! Nasılsın? (Hello! How are you?)",
             "shalom": "שלום! מה שלומך? (Hello! How are you?)",
+            "привет": "Привет! Как дела? (Hi! How are you?)",
+            "здравствуйте": "Здравствуйте! Как дела? (Hello! How are you?)",
+            "こんにちは": "こんにちは！元気ですか？ (Hello! How are you?)",
+            "你好": "你好！你好吗？ (Hello! How are you?)",
+            "안녕하세요": "안녕하세요! 잘 지내세요? (Hello! How are you?)",
+            "नमस्ते": "नमस्ते! आप कैसे हैं? (Hello! How are you?)",
+            "مرحبا": "مرحبًا! كيف حالك؟ (Hello! How are you?)",
+            "שלום": "שלום! מה שלומך? (Hello! How are you?)",
         }
         greeting_key = normalized.strip(" .!?")
         if greeting_key in greeting_by_word:
@@ -150,6 +158,8 @@ class PublicReliableResponder:
         }
         if greeting_key in greeting_by_language:
             return greeting_by_language[greeting_key]
+        if "погод" in normalized and ("нью-йорк" in normalized or "нью-йорке" in normalized):
+            return "Я не могу проверить погоду в реальном времени. Для текущей погоды в Нью-Йорке используйте надежное погодное приложение или сайт. (I can't check live weather; use a reliable weather app or site.)"
         if re.fullmatch(r"are (?:you|u) (?:grok|groc)[?.!]*", normalized):
             return "No. I'm ChudGPT-Public, part of the custom ChudGPT model family—not Grok."
         if re.search(r"\b(?:are you|you are|you're|becoming) sentient\b|\bconscious(?:ness)?\b", normalized):

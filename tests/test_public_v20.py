@@ -86,6 +86,11 @@ def test_new_log_intents_work_in_normal_public_mode(prompt: str, expected: str) 
         ("konnichiwa", "こんにちは"),
         ("ni hao", "你好"),
         ("namaste", "नमस्ते"),
+        ("привет", "Привет!"),
+        ("こんにちは", "こんにちは！"),
+        ("你好", "你好！"),
+        ("안녕하세요", "안녕하세요!"),
+        ("مرحبا", "مرحبًا!"),
         ("German", "German: Hallo"),
         ("Japanese", "Japanese: こんにちは"),
         ("list languages", "Spanish, French, German"),
@@ -94,6 +99,13 @@ def test_new_log_intents_work_in_normal_public_mode(prompt: str, expected: str) 
 def test_basic_multilingual_greetings(prompt: str, expected: str) -> None:
     reply = PublicReliableResponder(Path("data/public_v20_conversations.jsonl")).answer(prompt, [])
     assert reply is not None and expected in reply
+
+
+def test_russian_live_weather_question_is_understood() -> None:
+    reply = PublicReliableResponder(Path("data/public_v20_conversations.jsonl")).answer(
+        "Какая погода в Нью-Йорке?", []
+    )
+    assert reply is not None and "не могу проверить погоду" in reply
 
 
 @pytest.mark.parametrize(

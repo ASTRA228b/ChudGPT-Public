@@ -45,6 +45,7 @@ def test_additional_discord_commands() -> None:
     assert "Spanish" in (discord_command_reply("languages", *common) or "")
     assert "Example Server" in (discord_command_reply("server", *common) or "")
     assert "Member, Coder" in (discord_command_reply("roles", *common) or "")
+    assert "Member, Coder" in (discord_command_reply("rolee", *common) or "")
     assert "Astra" in (discord_command_reply("developer", *common) or "")
     help_reply = discord_command_reply("help", *common) or ""
     assert "!chud languages" in help_reply and "!chud developer" in help_reply
