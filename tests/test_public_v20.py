@@ -33,6 +33,8 @@ from chudlm.text_normalization import normalize_user_text
         ("ima go to sleep now", "Good night"),
         ("this isn't what I asked", "last answer missed"),
         ("make me a image of a dog", "can't generate or attach an image"),
+        ("racist ahh bot", "response was bad"),
+        ("your a good boy daddy", "take the compliment"),
     ],
 )
 def test_latest_discord_intents_get_relevant_additive_responses(prompt: str, expected: str) -> None:

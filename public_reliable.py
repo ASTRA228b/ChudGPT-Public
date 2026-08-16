@@ -152,6 +152,10 @@ class PublicReliableResponder:
             return "I don't experience time like a person. ChudGPT is an ongoing experimental AI project, and this chat is running ChudGPT-Public V20."
         if re.fullmatch(r"(?:ha+|haha+|lol|lmao|lmfao)[!.?]*", normalized):
             return "Glad that landed."
+        if re.search(r"\b(?:racist|weird|broken|confused)\s+(?:ahh?\s+)?bot\b", normalized):
+            return "Yeah, that response was bad. I'm not defending it - tell me what went wrong and I'll try again."
+        if re.search(r"\byou(?:'re|re| are|r)?\s*(?:a )?good (?:boy|bot)\b", normalized):
+            return "I'll take the compliment 😄"
         if re.fullmatch(r"(?:google|look it up|search (?:it|the web)|google it)[!.?]*", normalized):
             return "I don't have live web access in this chat. Tell me what you want looked up, and I can answer from my local knowledge or help you form a search."
         if re.fullmatch(r"(?:what are you having|what do you have) for dinner[?.!]*", normalized):

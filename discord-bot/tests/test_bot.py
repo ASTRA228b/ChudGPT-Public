@@ -29,6 +29,9 @@ def test_latest_discord_social_safeguards_are_relevant() -> None:
     assert "text chat" in (discord_social_reply("join vc1 and don't leave it") or "")
     assert "Good night" in (discord_social_reply("ima go to sleep now") or "")
     assert "missed your request" in (discord_social_reply("this isnt what i asked") or "")
+    assert "response was bad" in (discord_social_reply("racist ahh bot") or "")
+    assert "take the compliment" in (discord_social_reply("your a good boy daddy") or "")
+    assert "last reply made no sense" in (discord_social_reply("Bro what 😭", ["bad answer"]) or "")
 
 
 def test_logging_can_only_be_changed_by_owner() -> None:

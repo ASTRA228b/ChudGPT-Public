@@ -262,6 +262,12 @@ def discord_social_reply(prompt: str, recent_messages: list[str] | None = None) 
         return "I don't experience time like a person. ChudGPT is an ongoing experimental AI project, and this bot uses ChudGPT-Public V20."
     if re.fullmatch(r"(?:ha+|haha+|lol|lmao|lmfao)[!.?]*", normalized):
         return "Glad that landed."
+    if re.match(r"^bro\s+what(?:\s|[?!]|$)", normalized) and recent_text:
+        return "Yeah, that last reply made no sense. Let me reset and answer normally."
+    if re.search(r"\b(?:racist|weird|broken|confused)\s+(?:ahh?\s+)?bot\b", normalized):
+        return "Yeah, that response was bad. I'm not defending it - tell me what went wrong and I'll try again."
+    if re.search(r"\byou(?:'re|re| are|r)?\s*(?:a )?good (?:boy|bot)\b", normalized):
+        return "I'll take the compliment 😄"
     if re.fullmatch(r"(?:make|tell|give) (?:me )?(?:another |one more |a new )?(?:one|joke)[?.!]*", normalized):
         if "joke" in normalized or "joke" in recent_text:
             return "Why did the computer bring a jacket? It left its Windows open."
