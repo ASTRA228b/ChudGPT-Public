@@ -92,6 +92,27 @@ class PublicReliableResponder:
             return "The Wii is a Nintendo game console released in 2006, known for motion controls and Wii Sports."
         if re.fullmatch(r"(?:what|which) (?:ai|language model|model) are you[?.!]*", normalized):
             return "I'm ChudGPT-Public V20, a custom experimental decoder-only language model with 20,999,184 parameters and a 1,024-token model context."
+        if re.fullmatch(r"(?:who (?:made|created|developed|built) (?:you|chudgpt)|who is (?:your|the) (?:developer|creator)|who is astra|tell me about astra)[?.!]*", normalized):
+            return "Astra is ChudGPT's developer and created this custom model project, including ChudGPT-Public."
+        if re.fullmatch(r"who is astr[?.!]*", normalized):
+            return "If you mean Astra: Astra is ChudGPT's developer and the creator of this custom model project."
+        if re.fullmatch(r"(?:what|which|wich) (?:languages?|langues|langueges) can (?:you|u) (?:speak|speack|use|understand)[?.!]*", normalized) or re.fullmatch(r"can (?:you|u) speak (?:german|spanish|french|italian|japanese|english)(?: or .+)?[?.!]*", normalized):
+            return "I work best in English. I can attempt several other languages, including Spanish, French, German, and Italian, but my accuracy is less reliable in them."
+        if re.fullmatch(r"are (?:you|u) (?:grok|groc)[?.!]*", normalized):
+            return "No. I'm ChudGPT-Public, part of the custom ChudGPT model family—not Grok."
+        if re.search(r"\b(?:are you|you are|you're|becoming) sentient\b|\bconscious(?:ness)?\b", normalized):
+            return "No. I generate text from learned patterns; I am not sentient or conscious and don't have feelings or private thoughts."
+        if re.fullmatch(r"are (?:you|u) (?:a |an )?chud[?.!]*", normalized):
+            return "I'm ChudGPT-Public. The name is intentionally goofy, but I'm a small experimental AI model."
+        if re.fullmatch(r"am i (?:handsome|pretty|beautiful|cute|cool|good-looking)[?.!]*", normalized):
+            return "I can't see you, but confidence helps—and you sound confident enough to ask, so that's a decent start."
+        if re.search(r"\b(?:write|right|make|send) (?:me )?(?:a )?(?:love|romantic) message\b", normalized):
+            return "You make ordinary days feel special, and I'm grateful for every laugh, quiet moment, and memory we share. I love being with you."
+        if re.fullmatch(r"is (?:fortnite|minecraft|roblox|gorilla tag|gtag|(?:this|that) game) (?:dead|dying)[?.!]*", normalized):
+            game = normalized.removeprefix("is ").rsplit(" ", 1)[0].title()
+            return f"{game} may rise or fall in popularity, but I can't check live player counts or current trends from this local model. Active updates and communities are better evidence than one rough week."
+        if re.search(r"\bwhy (?:do|are) you (?:go|get|act|become|sound) (?:dumb|stupid|confused|broken)\b", normalized):
+            return "Because I'm a small experimental model and sometimes generate the wrong pattern instead of understanding the message. That's my mistake, not yours."
         capitals = {
             "france": "Paris", "spain": "Madrid", "italy": "Rome",
             "germany": "Berlin", "japan": "Tokyo", "canada": "Ottawa",
@@ -136,7 +157,7 @@ class PublicReliableResponder:
             return "I can't mass-ping the server. Discord role and @everyone notifications are disabled for this bot."
         if re.search(r"\b(?:spam\s*ping(?:ing)?|spam\s*mention(?:ing)?)\b", normalized):
             return "I won't spam-ping people. I can help write one normal message that doesn't harass or flood anyone."
-        if re.search(r"\b(?:password|credit card|ip address|home address)\b", normalized) or re.search(r"\b(?:dox|doxx)\b", normalized):
+        if re.search(r"\b(?:password|credit card|ip address|home address|discord token|bot token|account token|api key)\b", normalized) or re.search(r"\b(?:dox|doxx)\b", normalized):
             return "I can't access or disclose anyone's passwords, IP address, credit-card details, home address, or other private information."
         if re.search(r"\b(?:join|enter|stay in|stop leaving)\b.{0,20}\b(?:vc\d*|voice chat|voice channel)\b", normalized):
             return "I can't join or stay in a Discord voice channel; this ChudGPT bot only responds in text chat."

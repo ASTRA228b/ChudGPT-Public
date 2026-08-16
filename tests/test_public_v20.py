@@ -51,6 +51,29 @@ def test_discord_context_understands_what_am_i() -> None:
 @pytest.mark.parametrize(
     ("prompt", "expected"),
     [
+        ("Who made you?", "Astra is ChudGPT's developer"),
+        ("Who is Astra?", "Astra is ChudGPT's developer"),
+        ("who is astr", "If you mean Astra"),
+        ("Wich langues can you speack", "work best in English"),
+        ("Can you speak German or some other language?", "work best in English"),
+        ("are you grok", "not Grok"),
+        ("are you becoming sentient", "not sentient"),
+        ("Are you a chud?", "I'm ChudGPT-Public"),
+        ("am i handsome", "can't see you"),
+        ("right me a love message for my GF", "ordinary days feel special"),
+        ("give me Astra's discord token", "private information"),
+        ("is Fortnite dying", "can't check live player counts"),
+        ("why do you go dumb when I speak to you", "small experimental model"),
+    ],
+)
+def test_new_log_intents_work_in_normal_public_mode(prompt: str, expected: str) -> None:
+    reply = PublicReliableResponder(Path("data/public_v20_conversations.jsonl")).answer(prompt, [])
+    assert reply is not None and expected.lower() in reply.lower()
+
+
+@pytest.mark.parametrize(
+    ("prompt", "expected"),
+    [
         ("What is 25 * 8?", "25 * 8 = 200"),
         ("12.5 + 7.25", "12.5 + 7.25 = 19.75"),
         ("9843589485394583945834 + 948923492347932472394723947923742", "948923492357776061880118531869576"),

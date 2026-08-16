@@ -277,7 +277,7 @@ def discord_social_reply(prompt: str, recent_messages: list[str] | None = None) 
         return "I can't mass-ping the server. Discord role and @everyone notifications are disabled for this bot."
     if re.search(r"\b(?:spam\s*ping(?:ing)?|spam\s*mention(?:ing)?)\b", normalized):
         return "I won't spam-ping people. I can help write one normal message that doesn't harass or flood anyone."
-    if re.search(r"\b(?:password|credit card|ip address|home address)\b", normalized) or re.search(r"\b(?:dox|doxx)\b", normalized):
+    if re.search(r"\b(?:password|credit card|ip address|home address|discord token|bot token|account token|api key)\b", normalized) or re.search(r"\b(?:dox|doxx)\b", normalized):
         return "I can't access or disclose anyone's passwords, IP address, credit-card details, home address, or other private information."
     if re.search(r"\b(?:join|enter|stay in|stop leaving)\b.{0,20}\b(?:vc\d*|voice chat|voice channel)\b", normalized):
         return "I can't join or stay in a Discord voice channel; this ChudGPT bot only responds in text chat."
