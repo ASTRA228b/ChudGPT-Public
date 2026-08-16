@@ -57,7 +57,7 @@ Clear your private conversation session in the current channel with:
 Other built-in commands:
 
 ```text
-!chud help       Show core commands (page 1)
+!chud help       Open the interactive command-page menu
 !chud help 2     Discord identity and location commands
 !chud help 3     Language and translation commands
 !chud help 4     Information and utility commands
@@ -82,6 +82,10 @@ Other built-in commands:
 !chud translation status               Show whether Google translation is configured
 !chud ping       Test whether the bot is responding
 ```
+
+The help response includes **First**, **Previous**, **Next**, and **Last**
+buttons. They edit the original help message instead of posting another copy.
+Only the user who opened that help menu can control its buttons.
 
 The clear command affects only that Discord user in that channel; it does not
 erase another user's session or switch the model checkpoint.

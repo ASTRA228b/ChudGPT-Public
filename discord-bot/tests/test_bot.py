@@ -1,9 +1,11 @@
 from bot import (
-    ChudGPTClient, DISCORD_SYSTEM_PROMPT, GoogleTranslateClient, add_recent_context, clean_prompt,
+    ChudGPTClient, DISCORD_SYSTEM_PROMPT, GoogleTranslateClient, HelpPaginationView,
+    add_recent_context, clean_prompt,
     acquire_instance_lock,
     discord_code_reply, discord_command_reply, discord_developer_reply, discord_quoted_reply,
-    discord_social_reply, is_memory_clear_request, make_session_id,
+    discord_help_page, discord_social_reply, is_memory_clear_request, make_session_id,
     parse_translation_command, place_author_mention, resolve_language, split_discord_message,
+    requested_help_page,
 )
 
 
@@ -280,3 +282,24 @@ def test_paginated_help_and_new_log_driven_commands() -> None:
     assert "#testing" in (discord_command_reply("channel", *args, channel="#testing", user_id=123) or "")
     assert "`123`" in (discord_command_reply("userid", *args, channel="#testing", user_id=123) or "")
     assert "single best coder is subjective" in (discord_social_reply("is Astra da best coder") or "")
+
+
+def test_help_pagination_view_has_interactive_navigation() -> None:
+    import asyncio
+
+    assert requested_help_page("help") == 1
+    assert requested_help_page("commands 3") == 3
+    assert requested_help_page("hello") is None
+    assert "page 4/4" in discord_help_page("!chud", 4)
+    async def make_view() -> HelpPaginationView:
+        return HelpPaginationView("!chud", 2, requester_id=123)
+
+    view = asyncio.run(make_view())
+    buttons = {item.custom_id: item for item in view.children}
+    assert set(buttons) == {
+        "chud_help:first", "chud_help:previous", "chud_help:counter",
+        "chud_help:next", "chud_help:last",
+    }
+    assert buttons["chud_help:counter"].label == "2/4"
+    assert not buttons["chud_help:previous"].disabled
+    assert not buttons["chud_help:next"].disabled

@@ -511,6 +511,126 @@ def is_memory_clear_request(prompt: str) -> bool:
     )
 
 
+def requested_help_page(prompt: str) -> int | None:
+    """Return the requested command page, or None for a non-help prompt."""
+    normalized = re.sub(r"\s+", " ", prompt.strip().lower()).strip(" .!?")
+    match = re.fullmatch(
+        r"(?:help|hellp|commands?|command list)(?:\s+(1|2|3|4|next|discord|language|translation|tools?))?",
+        normalized,
+    )
+    if not match and normalized != "what can you do" and not ("command" in normalized and "chud" in normalized):
+        return None
+    requested = match.group(1) if match else None
+    return {
+        None: 1, "1": 1, "next": 2, "discord": 2, "2": 2,
+        "language": 3, "translation": 3, "3": 3,
+        "tool": 4, "tools": 4, "4": 4,
+    }.get(requested, 1)
+
+
+def discord_help_page(prefix: str, page: int) -> str:
+    """Render one compact Discord command page."""
+    page = max(1, min(4, page))
+    if page == 1:
+        return (
+            f"**ChudGPT commands - page 1/4: Core**\n"
+            f"`{prefix} <message>` - chat with Public V20\n"
+            f"`{prefix} help <1-4>` - open a command page\n"
+            f"`{prefix} clear` - clear your memory and language mode\n"
+            f"`{prefix} status` - check bot/API status\n"
+            f"`{prefix} about` - show model information\n"
+            f"`{prefix} capabilities` - show what the bot can help with\n"
+            f"`{prefix} ping` - test whether the bot responds"
+        )
+    if page == 2:
+        return (
+            f"**ChudGPT commands - page 2/4: Discord**\n"
+            f"`{prefix} whoami` - show your visible Discord identity\n"
+            f"`{prefix} userid` - show your Discord user ID\n"
+            f"`{prefix} server` - show the current server or DM\n"
+            f"`{prefix} channel` - show the current channel\n"
+            f"`{prefix} roles` - show your visible server roles\n"
+            f"`{prefix} developer` - show who created ChudGPT\n"
+            f"`{prefix} privacy` - explain private improvement logs"
+        )
+    if page == 3:
+        return (
+            f"**ChudGPT commands - page 3/4: Languages**\n"
+            f"`{prefix} languages` - list recognized languages\n"
+            f"`{prefix} language <name|auto|off>` - set conversation translation\n"
+            f"`{prefix} translate <language> <text>` - translate one message\n"
+            f"`{prefix} translation status` - show translation mode\n"
+            f"Examples: `{prefix} language Spanish`, `{prefix} translate Japanese hello`"
+        )
+    return (
+        f"**ChudGPT commands - page 4/4: Information & tools**\n"
+        f"`{prefix} source` - open the public source repository\n"
+        f"`{prefix} gtag` - explain Gorilla Tag knowledge\n"
+        f"`{prefix} invite` - explain how to invite the bot\n"
+        f"`{prefix} say <text>` - repeat ordinary text safely\n"
+        f"`{prefix} code <request>` - request code with a clear language and goal"
+    )
+
+
+class HelpPaginationView(discord.ui.View):
+    """Interactive command pages that edit one Discord help message."""
+
+    def __init__(self, prefix: str, page: int, requester_id: int, timeout: float = 180.0) -> None:
+        super().__init__(timeout=timeout)
+        self.prefix = prefix
+        self.page = max(1, min(4, page))
+        self.requester_id = requester_id
+        self.message: discord.Message | None = None
+        self._refresh_buttons()
+
+    def _refresh_buttons(self) -> None:
+        self.first_page.disabled = self.page == 1
+        self.previous_page.disabled = self.page == 1
+        self.page_counter.label = f"{self.page}/4"
+        self.next_page.disabled = self.page == 4
+        self.last_page.disabled = self.page == 4
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id == self.requester_id:
+            return True
+        await interaction.response.send_message("Open your own `!chud help` menu to use these buttons.", ephemeral=True)
+        return False
+
+    async def _show(self, interaction: discord.Interaction, page: int) -> None:
+        self.page = max(1, min(4, page))
+        self._refresh_buttons()
+        await interaction.response.edit_message(content=discord_help_page(self.prefix, self.page), view=self)
+
+    @discord.ui.button(label="First", style=discord.ButtonStyle.secondary, custom_id="chud_help:first")
+    async def first_page(self, interaction: discord.Interaction, _button: discord.ui.Button) -> None:
+        await self._show(interaction, 1)
+
+    @discord.ui.button(label="Previous", style=discord.ButtonStyle.primary, custom_id="chud_help:previous")
+    async def previous_page(self, interaction: discord.Interaction, _button: discord.ui.Button) -> None:
+        await self._show(interaction, self.page - 1)
+
+    @discord.ui.button(label="1/4", style=discord.ButtonStyle.secondary, disabled=True, custom_id="chud_help:counter")
+    async def page_counter(self, _interaction: discord.Interaction, _button: discord.ui.Button) -> None:
+        return
+
+    @discord.ui.button(label="Next", style=discord.ButtonStyle.primary, custom_id="chud_help:next")
+    async def next_page(self, interaction: discord.Interaction, _button: discord.ui.Button) -> None:
+        await self._show(interaction, self.page + 1)
+
+    @discord.ui.button(label="Last", style=discord.ButtonStyle.secondary, custom_id="chud_help:last")
+    async def last_page(self, interaction: discord.Interaction, _button: discord.ui.Button) -> None:
+        await self._show(interaction, 4)
+
+    async def on_timeout(self) -> None:
+        for item in self.children:
+            item.disabled = True
+        if self.message is not None:
+            try:
+                await self.message.edit(view=self)
+            except discord.HTTPException:
+                pass
+
+
 def discord_command_reply(
     prompt: str,
     prefix: str,
@@ -523,57 +643,9 @@ def discord_command_reply(
 ) -> str | None:
     """Return deterministic help for the bot's own small command surface."""
     normalized = re.sub(r"\s+", " ", prompt.strip().lower()).strip(" .!?")
-    help_match = re.fullmatch(r"(?:help|hellp|commands?|command list)(?:\s+(1|2|3|4|next|discord|language|translation|tools?))?", normalized)
-    if help_match or normalized == "what can you do" or ("command" in normalized and "chud" in normalized):
-        requested_page = help_match.group(1) if help_match else None
-        page = {
-            None: 1, "1": 1, "next": 2, "discord": 2, "2": 2,
-            "language": 3, "translation": 3, "3": 3,
-            "tool": 4, "tools": 4, "4": 4,
-        }.get(requested_page, 1)
-        if page == 1:
-            return (
-                f"**ChudGPT commands - page 1/4: Core**\n"
-                f"`{prefix} <message>` - chat with Public V20\n"
-                f"`{prefix} help <1-4>` - open a command page\n"
-                f"`{prefix} clear` - clear your memory and language mode\n"
-                f"`{prefix} status` - check bot/API status\n"
-                f"`{prefix} about` - show model information\n"
-                f"`{prefix} capabilities` - show what the bot can help with\n"
-                f"`{prefix} ping` - test whether the bot responds\n"
-                f"Next: `{prefix} help 2`"
-            )
-        if page == 2:
-            return (
-                f"**ChudGPT commands - page 2/4: Discord**\n"
-                f"`{prefix} whoami` - show your visible Discord identity\n"
-                f"`{prefix} userid` - show your Discord user ID\n"
-                f"`{prefix} server` - show the current server or DM\n"
-                f"`{prefix} channel` - show the current channel\n"
-                f"`{prefix} roles` - show your visible server roles\n"
-                f"`{prefix} developer` - show who created ChudGPT\n"
-                f"`{prefix} privacy` - explain private improvement logs\n"
-                f"Next: `{prefix} help 3`"
-            )
-        if page == 3:
-            return (
-                f"**ChudGPT commands - page 3/4: Languages**\n"
-                f"`{prefix} languages` - list recognized languages\n"
-                f"`{prefix} language <name|auto|off>` - set conversation translation\n"
-                f"`{prefix} translate <language> <text>` - translate one message\n"
-                f"`{prefix} translation status` - show translation mode\n"
-                f"Examples: `{prefix} language Spanish`, `{prefix} translate Japanese hello`\n"
-                f"Next: `{prefix} help 4`"
-            )
-        return (
-            f"**ChudGPT commands - page 4/4: Information & tools**\n"
-            f"`{prefix} source` - open the public source repository\n"
-            f"`{prefix} gtag` - explain Gorilla Tag knowledge\n"
-            f"`{prefix} invite` - explain how to invite the bot\n"
-            f"`{prefix} say <text>` - repeat ordinary text safely\n"
-            f"`{prefix} code <request>` - request code with a clear language and goal\n"
-            f"`{prefix} help 1` - return to the first page"
-        )
+    help_page = requested_help_page(prompt)
+    if help_page is not None:
+        return discord_help_page(prefix, help_page)
     if normalized in {"status", "health"}:
         return f"ChudGPT-Public V20 bot is online. API status: {api_status}. Server: {server}."
     if normalized in {"about", "model", "version", "model info"}:
@@ -807,6 +879,16 @@ def main() -> None:
             await __import__("asyncio").to_thread(
                 log_discord_exchange, settings.conversation_log_dir, message, prompt, reply
             )
+            help_page = requested_help_page(prompt)
+            if help_page is not None:
+                view = HelpPaginationView(settings.prefix, help_page, message.author.id)
+                view.message = await message.reply(
+                    discord_help_page(settings.prefix, help_page),
+                    view=view,
+                    mention_author=False,
+                    allowed_mentions=safe_mentions,
+                )
+                return
             for index, chunk in enumerate(split_discord_message(reply)):
                 if index == 0:
                     # Put the real Discord mention in the visible response. It
