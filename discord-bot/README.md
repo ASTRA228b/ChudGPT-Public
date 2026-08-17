@@ -119,7 +119,8 @@ whether delivery succeeds or fails. To rebuild, attach that DMed `.txt` to the
 different temporary host directory. The bot needs
 **Manage Channels** for delete/rebuild and **Manage Messages** plus **Read
 Message History** for purge. When first added to a server, it privately DMs the
-server owner the normal and server-administration help.
+server owner one short welcome message pointing to `!chud help` and uppercase
+`!chud SERVER`; it does not automatically send either command list.
 
 ## Local soundboard
 

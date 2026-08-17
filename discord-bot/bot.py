@@ -1463,8 +1463,6 @@ def main() -> None:
                 f"Use `{settings.prefix} help` for normal commands and uppercase "
                 f"`{settings.prefix} SERVER` for restricted server-owner/Administrator tools."
             )
-            await owner.send(discord_help_page(settings.prefix, 1))
-            await owner.send(SERVER_ADMIN_HELP.format(prefix=settings.prefix))
         except discord.Forbidden:
             LOGGER.info("Guild owner %s has DMs disabled; onboarding DM skipped", owner.id)
         except discord.HTTPException as error:
