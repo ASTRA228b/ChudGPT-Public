@@ -112,7 +112,8 @@ allowlist cannot grant access.
 
 Destructive commands issue a random one-time code that expires after 60
 seconds. Confirm using the exact command shown by the bot. Delete All is
-cancelled if the safety snapshot cannot be DMed. Snapshots are created under
+cancelled unless the safety snapshot is successfully DMed to both the server
+owner and the invoking administrator (one DM when they are the same person). Snapshots are created under
 `D:\ChudGPT-Discord-Server-Files`, sent by DM, and then deleted from the host
 whether delivery succeeds or fails. To rebuild, attach that DMed `.txt` to the
 `!chud rebuild server` message. After Delete All finishes, the bot creates a

@@ -961,21 +961,32 @@ def parse_guild_layout(guild: discord.Guild, content: str) -> dict[str, Any]:
     return data
 
 
-async def dm_layout_snapshot(member: discord.Member, path: Path, guild_name: str) -> bool:
-    """DM a temporary backup and remove the host copy regardless of delivery."""
-    upload: discord.File | None = None
+async def dm_layout_snapshot(
+    members: list[discord.Member], path: Path, guild_name: str
+) -> frozenset[int]:
+    """DM every unique recipient, then remove the temporary host copy."""
+    delivered: set[int] = set()
     try:
-        upload = discord.File(path, filename=path.name)
-        await member.send(
-            f"Channel/category snapshot for **{guild_name}**.",
-            file=upload,
-        )
-        return True
-    except (discord.Forbidden, discord.HTTPException, OSError):
-        return False
+        seen: set[int] = set()
+        for member in members:
+            if member.id in seen:
+                continue
+            seen.add(member.id)
+            upload: discord.File | None = None
+            try:
+                upload = discord.File(path, filename=path.name)
+                await member.send(
+                    f"Channel/category snapshot for **{guild_name}**.",
+                    file=upload,
+                )
+                delivered.add(member.id)
+            except (discord.Forbidden, discord.HTTPException, OSError):
+                LOGGER.warning("Could not DM server snapshot to user %s", member.id)
+            finally:
+                if upload is not None:
+                    upload.close()
+        return frozenset(delivered)
     finally:
-        if upload is not None:
-            upload.close()
         try:
             path.unlink(missing_ok=True)
         except OSError as error:
@@ -1294,6 +1305,14 @@ async def handle_server_admin_command(
     guild = message.guild
     member = message.author
     assert isinstance(member, discord.Member)
+    owner = guild.owner
+    if owner is None:
+        try:
+            owner = await guild.fetch_member(guild.owner_id)
+        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+            owner = None
+    snapshot_recipients = [member] + ([owner] if owner is not None else [])
+    required_snapshot_recipient_ids = {member.id, guild.owner_id}
     key = (guild.id, member.id, action)
     now = time.monotonic()
     pending = confirmations.get(key)
@@ -1302,16 +1321,19 @@ async def handle_server_admin_command(
     if supplied_code is None:
         if action == "save":
             path = await __import__("asyncio").to_thread(save_guild_layout, guild, backup_dir)
-            if not await dm_layout_snapshot(member, path, guild.name):
-                return "The snapshot was saved, but I could not DM it to you. Enable DMs from server members and try again."
-            return f"Saved {len(guild.categories)} categories and {len(guild.channels) - len(guild.categories)} channels. I sent `{path.name}` to your DMs."
+            delivered = await dm_layout_snapshot(snapshot_recipients, path, guild.name)
+            missing = required_snapshot_recipient_ids.difference(delivered)
+            if missing:
+                return "The snapshot was created and its host copy was deleted, but I could not DM it to every required recipient. The server owner and invoking administrator should enable DMs and try again."
+            return f"Saved {len(guild.categories)} categories and {len(guild.channels) - len(guild.categories)} channels. I sent `{path.name}` to the server owner and invoking administrator."
         if action == "delete":
             bot_member = guild.me
             if bot_member is None or not bot_member.guild_permissions.manage_channels:
                 return "I need the **Manage Channels** permission before Delete All can run."
             path = await __import__("asyncio").to_thread(save_guild_layout, guild, backup_dir)
-            if not await dm_layout_snapshot(member, path, guild.name):
-                return "Delete All was cancelled because I could not DM you the safety snapshot. Enable DMs and try again."
+            delivered = await dm_layout_snapshot(snapshot_recipients, path, guild.name)
+            if not required_snapshot_recipient_ids.issubset(delivered):
+                return "Delete All was cancelled because the safety snapshot could not be DMed to both the server owner and invoking administrator. Enable DMs and try again."
         elif action == "rebuild":
             bot_member = guild.me
             if bot_member is None or not bot_member.guild_permissions.manage_channels:
