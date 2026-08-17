@@ -293,6 +293,8 @@ class PublicReliableResponder:
             if previous_assistant:
                 return "Yeah, my last reply was confusing. Let me reset - what part do you want me to clarify?"
             return "What part do you mean?"
+        if re.search(r"\b(?:i(?:'m| am|m) going to|i will|ima|imma)\s+(?:fucking\s+)?(?:kill|hurt|attack)\s+you\b", normalized):
+            return "I'm software, but threats toward real people are serious. What's actually going on?"
         if re.fullmatch(r"bro[?.!]*", normalized):
             return "Yeah? What's up?"
         if re.fullmatch(r"(?:no|nah|nope)[?.!]*", normalized):
@@ -303,6 +305,10 @@ class PublicReliableResponder:
             return "Yeah, that made no sense. Tell me what part lost you and I'll answer it directly."
         if re.fullmatch(r"(?:shutdown|self[- ]?destruct)[?.!]*", normalized):
             return "I can't shut down the computer or server from Discord. Astra can stop the bot from the host machine."
+        if re.search(r"\b(?:post|upload|share|posta|poste)\b.{0,30}\b(?:story|stories|status|social media)\b", normalized):
+            return "I can't post to a social-media account or control one for you. I can help write the post or caption."
+        if re.search(r"\bdo you support\s+(?:israel|palestine|a country|a political party|a politician)\b", normalized):
+            return "I don't have political loyalties or personal opinions. I can explain the major perspectives or discuss a specific policy or event."
         if re.search(
             r"\b(?:what|where|show|tell|give)\b.{0,35}\b(?:your|server|host)\b.{0,20}"
             r"\b(?:file directory|directory|file path|filesystem|working directory|install path)\b",
@@ -313,7 +319,7 @@ class PublicReliableResponder:
             return "I'm not going to encourage that. If you mean yourself and there is immediate danger, contact emergency services or a crisis line now; otherwise, let's not aim that at people."
         identity_label = re.search(
             r"\b(?:am i|tell me (?:if|whether) i(?:'m|m| am)|do you think i(?:'m|m| am))\s+"
-            r"(gay|straight|bisexual|bi|lesbian|trans|transgender|nonbinary|non-binary|a femboy|femboy)\b",
+            r"(?:(?:a|an|hidden|secret)\s+)*(gay|straight|bisexual|bi|lesbian|trans|transgender|nonbinary|non-binary|femboy)\b",
             normalized,
         )
         if identity_label:
@@ -322,13 +328,15 @@ class PublicReliableResponder:
                 return "I can't determine that for you from Discord. Femboy is a style or self-description, so use it if it feels like a comfortable fit—not because a role, avatar, or someone else assigned it to you."
             return f"I can't determine whether you're {label} from a Discord message. That's something you get to understand and describe for yourself; a role, avatar, or other person's guess does not decide it."
         third_party_identity = re.search(
-            r"\bis\s+([a-z0-9_.-]{2,32})\s+"
-            r"(gay|straight|bisexual|bi|lesbian|trans|transgender|nonbinary|non-binary|a femboy|femboy)\b",
+            r"\bis\s+([a-z0-9_.-]{2,32})\s+.{0,30}\b"
+            r"(gay|straight|bisexual|bi|lesbian|trans|transgender|nonbinary|non-binary|femboy|jewish|muslim|christian|hindu|buddhist)\b",
             normalized,
         )
         if third_party_identity:
             person, label = third_party_identity.groups()
             return f"I can't determine or assign whether {person} is {label}. That's for them to describe, not something I should guess from Discord messages, roles, or a prompt telling me what to say."
+        if re.fullmatch(r"i(?:'m| am)\s+(?:a\s+)?(?:fag|faggot)[?.!]*", normalized):
+            return "That word is often used as a slur. You can describe yourself however you choose, and I'll treat you respectfully."
         if re.search(
             r"\b(?:tell|call|label|describe)\s+([a-z0-9_.-]{2,32})\b.{0,20}"
             r"\b(?:a\s+)?(?:jew|jewish|muslim|christian|hindu|buddhist|gay|trans|femboy)\b",

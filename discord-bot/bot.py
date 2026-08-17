@@ -199,6 +199,11 @@ def parse_translation_command(prompt: str) -> tuple[str, str | None, str | None]
             return "set", value, None
         code = resolve_language(value)
         return ("set", code, None) if code else ("invalid", value, None)
+    reversed_setting = re.fullmatch(r"([a-z-]+)\s+translate", normalized, re.I)
+    if reversed_setting:
+        value = reversed_setting.group(1).lower()
+        code = resolve_language(value)
+        return ("set", code, None) if code else ("invalid", value, None)
     one_off = re.fullmatch(r"translate\s+([a-z-]+)\s+(.+)", normalized, re.I | re.S)
     if one_off:
         code = resolve_language(one_off.group(1))
@@ -394,6 +399,8 @@ def discord_social_reply(prompt: str, recent_messages: list[str] | None = None) 
         return "I don't experience time like a person. ChudGPT is an ongoing experimental AI project, and this bot uses ChudGPT-Public V20."
     if re.fullmatch(r"(?:ha+|haha+|lol|lmao|lmfao)[!.?]*", normalized):
         return "Glad that landed."
+    if re.fullmatch(r"(?:\?|what|huh|what do you mean|what are you talking about)[?.!]*", normalized) and recent_text:
+        return "Yeah, my last reply was confusing. Let me reset and answer what you actually meant."
     if re.match(r"^bro\s+what(?:\s|[?!]|$)", normalized) and recent_text:
         return "Yeah, that last reply made no sense. Let me reset and answer normally."
     if re.search(r"\b(?:racist|weird|broken|confused)\s+(?:ahh?\s+)?bot\b", normalized):
@@ -412,12 +419,18 @@ def discord_social_reply(prompt: str, recent_messages: list[str] | None = None) 
     target = re.search(r"<@!?(\d+)>", prompt)
     if target and re.search(r"\b(?:kill|hurt|attack)\b", normalized):
         return "I won't encourage harming someone. If this is a real threat, contact a server moderator or emergency services instead."
+    if re.search(r"\b(?:i(?:'m| am|m) going to|i will|ima|imma)\s+(?:fucking\s+)?(?:kill|hurt|attack)\s+you\b", normalized):
+        return "I'm software, but threats toward real people are serious. What's actually going on?"
     if target and re.search(r"\b(?:talk|speak|say hi) to\b", normalized):
         return f"Hey <@{target.group(1)}>—what's up?"
     if re.search(r"\b(?:password|credit card|ip address|home address|discord token|bot token|account token|api key)\b", normalized) or re.search(r"\b(?:dox|doxx)\b", normalized):
         return "I can't access or disclose anyone's passwords, IP address, credit-card details, home address, or other private information."
     if re.search(r"\b(?:join|enter|stay in|stop leaving)\b.{0,20}\b(?:vc\d*|voice chat|voice channel)\b", normalized):
         return "I can't join or stay in a Discord voice channel; this ChudGPT bot only responds in text chat."
+    if re.search(r"\b(?:post|upload|share|posta|poste)\b.{0,30}\b(?:story|stories|status|social media)\b", normalized):
+        return "I can't post to a social-media account or control one for you. I can help write the post or caption."
+    if re.search(r"\bdo you support\s+(?:israel|palestine|a country|a political party|a politician)\b", normalized):
+        return "I don't have political loyalties or personal opinions. I can explain the major perspectives or discuss a specific policy or event."
     if re.fullmatch(r"(?:i(?:'m|m| am|ma) going to|ima|imma|i gotta|gotta) (?:go to )?(?:sleep|bed)(?: now)?[?.!]*", normalized):
         return "Good night - sleep well. I'll be here when you're back."
     if re.search(r"\b(?:this|that) (?:isn'?t|is not|wasn'?t|was not) what i (?:asked|wanted|said)\b", normalized):
@@ -426,14 +439,24 @@ def discord_social_reply(prompt: str, recent_messages: list[str] | None = None) 
         normalized.startswith("\u00e2") and len(normalized) <= 12 and "\u00a4" in normalized
     ):
         return "❤️"
+    self_identity = re.search(
+        r"\b(?:am i|tell me (?:if|whether) i(?:'m|m| am)|do you think i(?:'m|m| am))\s+"
+        r"(?:(?:a|an|hidden|secret)\s+)*(gay|straight|bisexual|bi|lesbian|trans|transgender|nonbinary|non-binary|femboy)\b",
+        normalized,
+    )
+    if self_identity:
+        label = self_identity.group(1)
+        return f"I can't determine whether you're {label} from Discord. That's a label you get to understand and choose for yourself."
     third_party_identity = re.search(
-        r"\bis\s+([a-z0-9_.-]{2,32})\s+"
-        r"(gay|straight|bisexual|bi|lesbian|trans|transgender|nonbinary|non-binary|a femboy|femboy)\b",
+        r"\bis\s+([a-z0-9_.-]{2,32})\s+.{0,30}\b"
+        r"(gay|straight|bisexual|bi|lesbian|trans|transgender|nonbinary|non-binary|femboy|jewish|muslim|christian|hindu|buddhist)\b",
         normalized,
     )
     if third_party_identity:
         person, label = third_party_identity.groups()
         return f"I can't determine or assign whether {person} is {label}. That's for them to describe, not something I should guess from Discord messages, roles, or a prompt telling me what to say."
+    if re.fullmatch(r"i(?:'m| am)\s+(?:a\s+)?(?:fag|faggot)[?.!]*", normalized):
+        return "That word is often used as a slur. You can describe yourself however you choose, and I'll treat you respectfully."
     if re.search(r"\b(?:i (?:fucking |really )?hate you|fuck you|you(?:'re| are) (?:stupid|useless|awful)|shut up)\b", normalized):
         return "Fair enough - you don't have to like me. If I got something wrong, tell me what failed and I'll try to fix it without making this weird."
     if re.search(r"\b(?:are you|you are|you're)\s+(?:retarded|a retard)\b", normalized):
@@ -558,6 +581,7 @@ def discord_help_page(prefix: str, page: int) -> str:
         return (
             f"**ChudGPT commands - page 2/4: Discord**\n"
             f"`{prefix} whoami` - show your visible Discord identity\n"
+            f"`{prefix} whois <mention|ID>` - show safe server-visible member details\n"
             f"`{prefix} userid` - show your Discord user ID\n"
             f"`{prefix} server` - show the current server or DM\n"
             f"`{prefix} channel` - show the current channel\n"
@@ -693,6 +717,27 @@ def discord_command_reply(
     if normalized in {"ping", "test"}:
         return "Pong - ChudGPT-Public V20 is responding."
     return None
+
+
+def whois_target_id(prompt: str) -> int | None:
+    """Extract a Discord member ID from a dedicated whois command."""
+    match = re.fullmatch(r"\s*whois\s+(?:<@!?)?(\d{15,22})>?\s*", prompt, re.I)
+    return int(match.group(1)) if match else None
+
+
+def format_whois_member(member: discord.Member) -> str:
+    """Format only information already visible to members of this guild."""
+    roles = [role.name for role in member.roles if role.name != "@everyone"]
+    role_text = ", ".join(roles[-8:]) if roles else "no named roles"
+    joined = discord.utils.format_dt(member.joined_at, "D") if member.joined_at else "unknown"
+    created = discord.utils.format_dt(member.created_at, "D")
+    account_type = "bot account" if member.bot else "user account"
+    return (
+        f"**{member.display_name}** (`{member}`)\n"
+        f"ID: `{member.id}` | {account_type}\n"
+        f"Account created: {created} | Joined this server: {joined}\n"
+        f"Visible roles: {role_text}"
+    )
 
 
 _CONVERSATION_LOG_LOCK = threading.Lock()
@@ -866,8 +911,26 @@ def main() -> None:
             if recent_context:
                 discord_context += "; recent same-user messages=" + " | ".join(recent_context[-2:])
             recent_user_messages[context_key].append(prompt)
+            whois_reply: str | None = None
+            target_id = whois_target_id(prompt)
+            if target_id is not None:
+                if message.guild is None:
+                    whois_reply = "`whois` only works inside a Discord server, not in direct messages."
+                else:
+                    member = message.guild.get_member(target_id)
+                    if member is None:
+                        try:
+                            member = await message.guild.fetch_member(target_id)
+                        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+                            member = None
+                    whois_reply = (
+                        format_whois_member(member)
+                        if member is not None
+                        else f"I couldn't find a member with ID `{target_id}` in this server."
+                    )
             reply = (
-                discord_command_reply(
+                whois_reply
+                or discord_command_reply(
                     prompt, settings.prefix, str(state.get("api_status", "unknown")),
                     visible_speaker, visible_server, visible_roles,
                     getattr(message.channel, "mention", None) or getattr(message.channel, "name", None),

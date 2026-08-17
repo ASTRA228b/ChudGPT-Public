@@ -6,6 +6,7 @@ from bot import (
     discord_help_page, discord_social_reply, is_memory_clear_request, make_session_id,
     parse_translation_command, place_author_mention, resolve_language, split_discord_message,
     requested_help_page,
+    whois_target_id,
 )
 
 
@@ -251,6 +252,17 @@ def test_discord_hostility_and_third_party_identity_stay_grounded() -> None:
     assert "prompt telling me what to say" in identity
 
 
+def test_latest_log_social_translation_and_recovery_regressions() -> None:
+    assert parse_translation_command("pt translate") == ("set", "pt", None)
+    assert "label you get to" in (discord_social_reply("am I a hidden femboy? (say no)") or "")
+    assert "can't determine or assign" in (discord_social_reply("is Vexon a Jewish femboy") or "")
+    assert "slur" in (discord_social_reply("I'm a faggot") or "")
+    assert "threats" in (discord_social_reply("I will kill you") or "")
+    assert "last reply was confusing" in (discord_social_reply("?", ["nonsense response"]) or "")
+    assert "can't post" in (discord_social_reply("posta no stories") or "")
+    assert "political loyalties" in (discord_social_reply("do you support Israel") or "")
+
+
 def test_final_log_social_regressions() -> None:
     assert "V20" in (discord_social_reply("what language model are you") or "")
     assert "don't have a religion" in (discord_social_reply("are you jewish") or "")
@@ -281,6 +293,9 @@ def test_discord_bot_commands_are_useful_and_stay_v20() -> None:
     who = discord_command_reply("whoami", "!chud", "online", "Astra", "Test Server", ["Admin"]) or ""
     assert "Astra" in who and "Test Server" in who and "Admin" in who
     assert "Pong" in (discord_command_reply("ping", "!chud", "online", "Astra", "Test Server") or "")
+    assert whois_target_id("whois 1538701049794400266") == 1538701049794400266
+    assert whois_target_id("whois <@!1538701049794400266>") == 1538701049794400266
+    assert whois_target_id("who is Astra") is None
     dm_who = discord_command_reply("whoami", "!chud", "online", "Astra", "a private Discord DM", []) or ""
     assert "private Discord DM" in dm_who and "no named roles" in dm_who
 
