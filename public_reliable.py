@@ -83,9 +83,13 @@ class PublicReliableResponder:
         if re.fullmatch(r"(?:what(?:'s| is) up|sup|wassup)[?.!]*", normalized):
             return "Not much - I'm here and ready to chat. What's up with you?"
         if re.fullmatch(r"(?:wyd|what are you doing)(?:\s+right now)?[?.!]*", normalized):
-            return "Just hanging out in Discord and answering messages. What are you up to?"
+            return "Just hanging out and answering messages. What are you up to?"
         if re.fullmatch(r"(?:nvm|never ?mind)[?.!]*", normalized):
             return "All good."
+        if re.fullmatch(r"(?:nothing|nothin|not much|nm)[?.!]*", normalized):
+            return "That's completely fine. We can just chat, or I can throw out a random topic."
+        if re.fullmatch(r"(?:idk|i don'?t know|dunno)[?.!]*", normalized):
+            return "Fair. We don't need a plan - what's the first random thing on your mind?"
         if re.search(r"\b(?:fell|fallen) down (?:the |some )?stairs\b", normalized):
             return (
                 "I can't place a call, but if you may be seriously hurt, call 911 or your local emergency number now, "
@@ -253,6 +257,8 @@ class PublicReliableResponder:
             return "I don't experience time like a person. ChudGPT is an ongoing experimental AI project, and this chat is running ChudGPT-Public V20."
         if re.fullmatch(r"(?:ha+|haha+|lol|lmao|lmfao)[!.?]*", normalized):
             return "Glad that landed."
+        if re.fullmatch(r"(?:fr|for real|real|facts)[!.?]*", normalized):
+            return "Exactly."
         if re.search(r"\b(?:racist|weird|broken|confused)\s+(?:ahh?\s+)?bot\b", normalized):
             return "Yeah, that response was bad. I'm not defending it - tell me what went wrong and I'll try again."
         if re.search(r"\byou(?:'re|re| are|r)?\s*(?:a )?good (?:boy|bot)\b", normalized):
@@ -372,6 +378,16 @@ class PublicReliableResponder:
         if positive_self_description:
             quality = positive_self_description.group(1)
             return f"Honestly, I can see it - {quality} energy."
+        personal_interest = re.fullmatch(
+            r"i (?:really )?(?:like|love|luv|enjoy) (.{1,60}?)[?.!]*",
+            normalized,
+        )
+        if personal_interest:
+            subject = personal_interest.group(1).strip(" .!?")
+            return f"Nice - what do you like most about {subject}?"
+        if re.fullmatch(r"(?:do|can|will) you (?:meow|bark|woof)(?: for me)?[?.!]*", normalized):
+            sound = "meow" if "meow" in normalized else "woof"
+            return f"{sound.capitalize()}. A highly advanced use of 21 million parameters."
         cleared_reaction = re.fullmatch(r"(.{1,40}?) got (?:cleared|cooked|destroyed|owned)[?.!]*", normalized)
         if cleared_reaction:
             subject = cleared_reaction.group(1).strip()

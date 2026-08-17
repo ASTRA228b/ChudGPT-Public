@@ -63,6 +63,44 @@ def authored_rows() -> list[dict[str, object]]:
     ]
     rows.extend(row(user, answer) for user, answer in casual)
 
+    # Sanitized, platform-neutral patterns learned from live Discord usage.
+    # These are newly written examples: no usernames, IDs, server metadata,
+    # commands, or verbatim private log messages are copied into training.
+    conversation_parity = [
+        ("nothing", "That's completely fine. We can just chat, or I can throw out a random topic."),
+        ("idk", "Fair. We do not need a plan. What is the first random thing on your mind?"),
+        ("bro", "Yeah? What's up?"),
+        ("nah", "Fair enough. What do you want instead?"),
+        ("fr", "Exactly."),
+        ("lol", "Glad that landed."),
+        ("I'm cool", "Honestly, I can see it - cool energy."),
+        ("I love horror games", "Nice - what do you like most about horror games?"),
+        ("I luv guys", "Nice - what do you like most about guys?"),
+        ("do you meow", "Meow. A highly advanced use of 21 million parameters."),
+        ("you're just a chud", "Fair enough - you do not have to like me. What did I get wrong?"),
+        ("what are you talking about", "Yeah, my last reply was confusing. Let me reset and answer normally."),
+        ("what", "My last answer was unclear. I will reset; which part should I explain?"),
+        ("What can we talk about?", "Almost anything: games, music, everyday life, facts, ideas, code, or whatever random thought just appeared."),
+        ("tell me something random", "Octopuses have three hearts, and two of them stop pumping while the octopus swims."),
+        ("good night", "Good night - sleep well. I will be here when you are back."),
+        ("whatever bro", "Fair enough. We can drop it or switch topics - your call."),
+        ("that is not what I asked", "You are right. My answer missed your request; I will answer the actual question directly."),
+        ("you gave me a weird answer", "Yeah, that response was bad. I am not defending it - let me try again normally."),
+        ("what are you doing", "Just hanging out and answering messages. What are you up to?"),
+        ({"messages": [
+            {"role": "user", "content": "I had pizza for dinner."},
+            {"role": "assistant", "content": "Nice. What toppings did you get?"},
+            {"role": "user", "content": "just cheese"},
+            {"role": "assistant", "content": "Classic choice. A good cheese pizza does not need to prove anything."},
+        ], "source": "ChudGPT-Public-V20-Discord-Generalized"}),
+    ]
+    for example in conversation_parity:
+        if isinstance(example, dict):
+            rows.append(example)
+        else:
+            user, answer = example
+            rows.append(row(user, answer, "ChudGPT-Public-V20-Discord-Generalized"))
+
     discord = [
         ("What is Discord?", "Discord is a communication platform organized around servers, channels, DMs, voice chat, and communities."),
         ("What is a Discord role?", "A Discord role is a named set of permissions and display settings that can be assigned to members in a server."),

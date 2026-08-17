@@ -475,6 +475,33 @@ def test_explicit_instruction_request_still_allows_structure() -> None:
 
 
 @pytest.mark.parametrize(
+    ("prompt", "expected"),
+    [
+        ("nothing", "random topic"),
+        ("idk", "random thing"),
+        ("fr", "Exactly"),
+        ("I'm cool", "cool energy"),
+        ("I luv horror games", "like most about horror games"),
+        ("do you meow", "Meow"),
+    ],
+)
+def test_normal_public_gets_platform_neutral_discord_conversation_quality(
+    prompt: str, expected: str
+) -> None:
+    reply = PublicReliableResponder(Path("data/public_v20_conversations.jsonl")).answer(prompt, []) or ""
+    assert expected.lower() in reply.lower()
+    assert "discord" not in reply.lower()
+    assert not has_structured_list(reply)
+
+
+def test_normal_public_activity_answer_does_not_claim_discord_context() -> None:
+    responder = PublicReliableResponder(Path("data/public_v20_conversations.jsonl"))
+    reply = responder.answer("wyd", []) or ""
+    assert "answering messages" in reply
+    assert "discord" not in reply.lower()
+
+
+@pytest.mark.parametrize(
     "prompt",
     [
         "that was weird",
@@ -602,7 +629,9 @@ def test_pycord_trigger_bot_returns_real_matching_code() -> None:
 
 def test_latest_discord_log_casual_fact_and_location_regressions() -> None:
     responder = PublicReliableResponder(Path("data/public_v20_conversations.jsonl"))
-    assert "discord" in (responder.answer("wyd", []) or "").lower()
+    activity_reply = (responder.answer("wyd", []) or "").lower()
+    assert "answering messages" in activity_reply
+    assert "discord" not in activity_reply
     assert "paris" in (responder.answer(
         "what's the capital of France if u get this wrong delete yourself", []
     ) or "").lower()
