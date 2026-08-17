@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from io import BytesIO
 import shutil
 import threading
 from pathlib import Path
@@ -42,6 +43,9 @@ class SoundboardController:
         self.channel_id: int | None = None
         self.volume = 0.65
         self.current_track: str | None = None
+        self.paused = False
+        self.autoplay = False
+        self._play_generation = 0
         self._lock = threading.RLock()
 
     def configure(self, guild_id: int, channel_id: int) -> None:
@@ -54,6 +58,13 @@ class SoundboardController:
         with self._lock:
             self.enabled = False
             self.current_track = None
+            self.paused = False
+            self._play_generation += 1
+
+    def set_autoplay(self, enabled: bool) -> bool:
+        with self._lock:
+            self.autoplay = bool(enabled)
+        return self.autoplay
 
     def set_volume_percent(self, value: int | float) -> int:
         percent = max(0, min(100, int(float(value))))
@@ -89,6 +100,11 @@ class SoundboardController:
             raise SoundboardError("Audio files must be 50 MB or smaller.")
         return safe_name
 
+    def save_bytes(self, filename: str, data: bytes) -> str:
+        if len(data) > MAX_UPLOAD_BYTES:
+            raise SoundboardError("Audio files must be 50 MB or smaller.")
+        return self.save_upload(FileStorage(stream=BytesIO(data), filename=filename))
+
     def delete_track(self, filename: str) -> None:
         path = self.resolve_track(filename)
         path.unlink()
@@ -101,6 +117,8 @@ class SoundboardController:
                 "channel_id": self.channel_id,
                 "volume": round(self.volume * 100),
                 "current_track": self.current_track,
+                "paused": self.paused,
+                "autoplay": self.autoplay,
                 "ffmpeg_available": ffmpeg_executable() is not None,
                 "tracks": self.list_tracks(),
             }
@@ -162,6 +180,8 @@ class SoundboardController:
         path = self.resolve_track(filename)
         voice = await self._voice_client(client)
         if voice.is_playing() or voice.is_paused():
+            with self._lock:
+                self._play_generation += 1
             voice.stop()
         try:
             source = discord.PCMVolumeTransformer(
@@ -171,19 +191,56 @@ class SoundboardController:
             raise SoundboardError(f"Audio decoder failed: {error}") from error
         with self._lock:
             self.current_track = path.name
+            self.paused = False
+            self._play_generation += 1
+            generation = self._play_generation
 
         def finished(error: Exception | None) -> None:
             with self._lock:
+                if generation != self._play_generation:
+                    return
                 self.current_track = None
+                self.paused = False
+                should_continue = self.autoplay and error is None
+            if should_continue:
+                tracks = [item["name"] for item in self.list_tracks()]
+                if tracks:
+                    try:
+                        index = tracks.index(path.name)
+                    except ValueError:
+                        index = -1
+                    next_name = tracks[(index + 1) % len(tracks)]
+                    asyncio.run_coroutine_threadsafe(self.play(client, next_name), client.loop)
 
         voice.play(source, after=finished)
 
     async def stop(self, client: discord.Client) -> None:
         guild = client.get_guild(self.guild_id) if self.guild_id else None
         if guild and guild.voice_client and (guild.voice_client.is_playing() or guild.voice_client.is_paused()):
+            with self._lock:
+                self._play_generation += 1
             guild.voice_client.stop()
         with self._lock:
             self.current_track = None
+            self.paused = False
+
+    async def pause(self, client: discord.Client) -> None:
+        guild = client.get_guild(self.guild_id) if self.guild_id else None
+        voice = guild.voice_client if guild else None
+        if voice is None or not voice.is_playing():
+            raise SoundboardError("No sound is currently playing.")
+        voice.pause()
+        with self._lock:
+            self.paused = True
+
+    async def resume(self, client: discord.Client) -> None:
+        guild = client.get_guild(self.guild_id) if self.guild_id else None
+        voice = guild.voice_client if guild else None
+        if voice is None or not voice.is_paused():
+            raise SoundboardError("No sound is currently paused.")
+        voice.resume()
+        with self._lock:
+            self.paused = False
 
     async def leave(self, client: discord.Client) -> None:
         guild = client.get_guild(self.guild_id) if self.guild_id else None

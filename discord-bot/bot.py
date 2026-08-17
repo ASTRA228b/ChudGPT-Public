@@ -78,7 +78,7 @@ class Settings:
     google_translate_api_key: str | None
     soundboard_dir: Path
     soundboard_host: str
-    soundboard_owner_user_id: int
+    soundboard_admin_user_ids: frozenset[int]
 
     @classmethod
     def from_environment(cls) -> "Settings":
@@ -97,8 +97,11 @@ class Settings:
             google_translate_api_key=os.getenv("GOOGLE_TRANSLATE_API_KEY", "").strip() or None,
             soundboard_dir=Path(os.getenv("CHUDGPT_SOUNDBOARD_DIR", "soundboard_audio")),
             soundboard_host=os.getenv("SOUNDBOARD_HOST", "127.0.0.1").strip() or "127.0.0.1",
-            soundboard_owner_user_id=int(
-                os.getenv("CHUDGPT_SOUNDBOARD_OWNER_ID", "1386115817325727854")
+            soundboard_admin_user_ids=frozenset(
+                int(value.strip()) for value in os.getenv(
+                    "CHUDGPT_SOUNDBOARD_ADMIN_IDS",
+                    "1386115817325727854,1324847616810422402",
+                ).split(",") if value.strip().isdigit()
             ),
         )
 
@@ -699,21 +702,25 @@ def discord_admin_help_page(prefix: str, page: int) -> str:
     return (
         "**ChudGPT owner commands - page 2/2: Playback**\n"
         f"`{prefix} soundboard play <filename>` - play an uploaded sound\n"
+        f"`{prefix} soundboard pause` / `resume` - pause or continue\n"
         f"`{prefix} soundboard stop` - stop the current sound\n"
         f"`{prefix} soundboard volume <0-100>` - set master volume\n"
+        f"`{prefix} soundboard autoplay <on|off>` - play the next listed sound\n"
+        f"`{prefix} soundboard upload` - upload the attached audio file\n"
+        f"`{prefix} soundboard delete <filename>` - delete an uploaded sound\n"
         f"`{prefix} soundboard disable` - stop and leave voice\n"
-        "Only the configured soundboard-owner Discord ID can use these commands."
+        "Only configured soundboard-admin Discord IDs can use these commands."
     )
 
 
 class AdminHelpPaginationView(discord.ui.View):
     """Two-page, owner-only admin command menu."""
 
-    def __init__(self, prefix: str, page: int, owner_id: int, timeout: float = 180.0) -> None:
+    def __init__(self, prefix: str, page: int, admin_ids: frozenset[int], timeout: float = 180.0) -> None:
         super().__init__(timeout=timeout)
         self.prefix = prefix
         self.page = max(1, min(2, page))
-        self.owner_id = owner_id
+        self.admin_ids = admin_ids
         self.message: discord.Message | None = None
         self._refresh()
 
@@ -723,9 +730,9 @@ class AdminHelpPaginationView(discord.ui.View):
         self.next.disabled = self.page == 2
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        if interaction.user.id == self.owner_id:
+        if interaction.user.id in self.admin_ids:
             return True
-        await interaction.response.send_message("This owner menu belongs to Astra.", ephemeral=True)
+        await interaction.response.send_message("This menu is restricted to configured ChudGPT admins.", ephemeral=True)
         return False
 
     async def _show(self, interaction: discord.Interaction, page: int) -> None:
@@ -930,6 +937,24 @@ def create_health_app(state: dict[str, Any], soundboard: SoundboardController) -
         run_voice(soundboard.stop)
         return jsonify({"ok": True}), 200
 
+    @app.post("/soundboard/api/pause")
+    def soundboard_pause() -> tuple[Any, int]:
+        require_local_control()
+        run_voice(soundboard.pause)
+        return jsonify({"ok": True, "paused": True}), 200
+
+    @app.post("/soundboard/api/resume")
+    def soundboard_resume() -> tuple[Any, int]:
+        require_local_control()
+        run_voice(soundboard.resume)
+        return jsonify({"ok": True, "paused": False}), 200
+
+    @app.post("/soundboard/api/autoplay")
+    def soundboard_autoplay() -> tuple[Any, int]:
+        require_local_control()
+        enabled = bool((request.get_json(silent=True) or {}).get("enabled", False))
+        return jsonify({"ok": True, "autoplay": soundboard.set_autoplay(enabled)}), 200
+
     @app.delete("/soundboard/api/tracks/<path:filename>")
     def soundboard_delete(filename: str) -> tuple[Any, int]:
         require_local_control()
@@ -952,7 +977,7 @@ async def handle_soundboard_command(
     message: discord.Message,
     client: discord.Client,
     soundboard: SoundboardController,
-    developer_user_id: int | None,
+    admin_user_ids: frozenset[int],
     port: int,
 ) -> str | None:
     """Handle owner-only Discord soundboard commands."""
@@ -961,8 +986,8 @@ async def handle_soundboard_command(
     match = re.fullmatch(r"(?:soundboard|sb)(?:\s+(.*))?", normalized, re.I | re.S)
     if not match and not direct_voice:
         return None
-    if developer_user_id is None or message.author.id != developer_user_id:
-        return "Only Astra, the ChudGPT bot owner, can control the soundboard."
+    if message.author.id not in admin_user_ids:
+        return "Only configured ChudGPT soundboard admins can control the soundboard."
     action = direct_voice.group(1) if direct_voice else (match.group(1) or "status").strip()
     lowered = action.lower()
     if lowered in {"enable", "join"}:
@@ -988,6 +1013,26 @@ async def handle_soundboard_command(
     if lowered == "stop":
         await soundboard.stop(client)
         return "Soundboard playback stopped."
+    if lowered == "pause":
+        try:
+            await soundboard.pause(client)
+        except SoundboardError as error:
+            return f"Soundboard could not pause: {error}"
+        return "Soundboard playback paused."
+    if lowered in {"resume", "unpause"}:
+        try:
+            await soundboard.resume(client)
+        except SoundboardError as error:
+            return f"Soundboard could not resume: {error}"
+        return "Soundboard playback resumed."
+    autoplay_match = re.fullmatch(r"autoplay(?:\s+(on|off|enable|disable))?", lowered)
+    if autoplay_match:
+        requested = autoplay_match.group(1)
+        if requested is None:
+            return f"Soundboard autoplay is {'on' if soundboard.snapshot()['autoplay'] else 'off'}."
+        enabled = requested in {"on", "enable"}
+        soundboard.set_autoplay(enabled)
+        return f"Soundboard autoplay is now {'on' if enabled else 'off'}."
     volume_match = re.fullmatch(r"volume\s+(\d{1,3})", lowered)
     if volume_match:
         volume = soundboard.set_volume_percent(int(volume_match.group(1)))
@@ -1002,13 +1047,30 @@ async def handle_soundboard_command(
     if lowered in {"list", "sounds"}:
         names = [track["name"] for track in soundboard.list_tracks()]
         return "Sounds: " + (", ".join(names) if names else "none uploaded yet")
+    delete_match = re.fullmatch(r"delete\s+(.+)", action, re.I | re.S)
+    if delete_match:
+        try:
+            soundboard.delete_track(delete_match.group(1).strip())
+        except SoundboardError as error:
+            return f"Soundboard could not delete that: {error}"
+        return f"Deleted **{delete_match.group(1).strip()}**."
+    if lowered == "upload":
+        attachments = list(getattr(message, "attachments", []))
+        if not attachments:
+            return "Attach one audio file to the same message as `!chud soundboard upload`."
+        attachment = attachments[0]
+        try:
+            saved = soundboard.save_bytes(attachment.filename, await attachment.read())
+        except (SoundboardError, discord.HTTPException) as error:
+            return f"Soundboard upload failed: {error}"
+        return f"Uploaded **{saved}**."
     if lowered in {"status", "help", "panel"}:
         snapshot = soundboard.snapshot()
         state_text = "enabled" if snapshot["enabled"] else "disabled"
         return (
             f"Soundboard is **{state_text}** at {snapshot['volume']}% volume with "
             f"{len(snapshot['tracks'])} sound(s). Local panel: <http://127.0.0.1:{port}/soundboard>\n"
-            "Owner commands: `soundboard enable`, `disable`, `stop`, `volume 0-100`, `list`, or `play <filename>`."
+            "Admin commands: `enable`, `disable`, `play`, `pause`, `resume`, `stop`, `volume`, `autoplay`, `upload`, `delete`, or `list`."
         )
     return "Unknown soundboard command. Use `soundboard help`."
 
@@ -1104,14 +1166,14 @@ def main() -> None:
         try:
             admin_help_page = requested_admin_help_page(prompt)
             if admin_help_page is not None:
-                if message.author.id != settings.soundboard_owner_user_id:
+                if message.author.id not in settings.soundboard_admin_user_ids:
                     await message.reply(
                         "Only Astra, the configured ChudGPT owner, can open ADMIN-HELP.",
                         mention_author=False,
                     )
                     return
                 view = AdminHelpPaginationView(
-                    settings.prefix, admin_help_page, settings.soundboard_owner_user_id
+                    settings.prefix, admin_help_page, settings.soundboard_admin_user_ids
                 )
                 view.message = await message.reply(
                     discord_admin_help_page(settings.prefix, admin_help_page),
@@ -1121,7 +1183,7 @@ def main() -> None:
                 )
                 return
             soundboard_reply = await handle_soundboard_command(
-                prompt, message, client, soundboard, settings.soundboard_owner_user_id, settings.port
+                prompt, message, client, soundboard, settings.soundboard_admin_user_ids, settings.port
             )
             if soundboard_reply is not None:
                 await message.reply(soundboard_reply, mention_author=False, allowed_mentions=safe_mentions)

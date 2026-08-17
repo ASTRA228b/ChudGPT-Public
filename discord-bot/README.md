@@ -96,10 +96,10 @@ Other built-in commands:
 
 ## Local soundboard
 
-The Discord controls are locked to user ID `1386115817325727854` by default.
-This can be changed with `CHUDGPT_SOUNDBOARD_OWNER_ID`, but it should remain a
-single trusted owner account. Server administrators do not automatically gain
-soundboard access.
+The Discord controls are locked to user IDs `1386115817325727854` and
+`1324847616810422402` by default. Change the comma-separated
+`CHUDGPT_SOUNDBOARD_ADMIN_IDS` variable to manage that allowlist. Server
+administrators do not automatically gain soundboard access.
 
 1. Install the updated Python requirements. The `discord.py[voice]` extra
    includes PyNaCl and current Discord DAVE voice-protocol support;

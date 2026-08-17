@@ -345,3 +345,5 @@ def test_owner_admin_help_pages() -> None:
     assert "`!chud join`" in discord_admin_help_page("!chud", 1)
     assert "`!chud leave`" in discord_admin_help_page("!chud", 1)
     assert "soundboard volume" in discord_admin_help_page("!chud", 2)
+    assert "soundboard autoplay" in discord_admin_help_page("!chud", 2)
+    assert "soundboard pause" in discord_admin_help_page("!chud", 2)

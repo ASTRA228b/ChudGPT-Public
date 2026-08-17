@@ -14,6 +14,8 @@ def test_soundboard_upload_list_volume_and_delete(tmp_path) -> None:
     assert board.list_tracks()[0]["name"] == "Funny_Sound.wav"
     assert board.set_volume_percent(135) == 100
     assert board.snapshot()["volume"] == 100
+    assert board.set_autoplay(True) is True
+    assert board.snapshot()["autoplay"] is True
     board.delete_track("Funny_Sound.wav")
     assert board.list_tracks() == []
 
