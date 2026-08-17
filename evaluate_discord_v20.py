@@ -5,11 +5,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from public_api_server import PublicModelService
+from public_api_server import PublicModelService, selected_checkpoint
 
 
 def main() -> None:
-    service = PublicModelService(Path("checkpoints/public_v20_final/best.pt"), "cuda")
+    service = PublicModelService(Path(selected_checkpoint()), "cuda")
     session = "discord-v20-held-out"
     context = "server=Astra Lab; channel=ai; speaker=Astra; relationship=ChudGPT developer Astra"
     prompts = (
