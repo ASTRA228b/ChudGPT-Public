@@ -48,12 +48,52 @@ def has_structured_list(text: str) -> bool:
     item_lines = re.findall(r"(?m)^\s*(?:\d+[.)]|[-*â€¢])\s+\S+", text)
     inline_items = re.findall(r"(?:^|\s)\d+[.)]\s+\S+", text)
     tutorial_lead = bool(re.search(
-        r"\b(?:here (?:are|is)|follow)\b.{0,35}\b(?:steps|ways|tips|ideas|instructions)\b|"
+        r"\b(?:here (?:are|is)|follow)\b.{0,35}\b(?:steps|ways|tips|ideas|instructions|reasons|examples)\b|"
         r"\b(?:steps|instructions|ingredients)\s*:",
         text,
         re.I | re.S,
     ))
     return len(item_lines) >= 2 or len(inline_items) >= 3 or tutorial_lead
+
+
+LANGUAGE_MARKERS = {
+    "python": (r"\bpython\b", r"\bdef\s+\w+\s*\(|\bimport\s+\w+"),
+    "csharp": (r"(?:\bcsharp\b|\bunity\b|(?<!\w)c#(?!\w))", r"\busing\s+(?:System|UnityEngine)\b|\b(?:public|private)\s+(?:class|void)\b"),
+    "javascript": (r"\b(?:javascript|js|node(?:\.js)?)\b", r"\b(?:const|let|var)\s+\w+|\bfunction\s+\w+|=>"),
+    "typescript": (r"\b(?:typescript|ts)\b", r"\binterface\s+\w+|:\s*(?:string|number|boolean)\b"),
+    "java": (r"\bjava\b", r"\bpublic\s+static\s+void\s+main\b|\bSystem\.out\.println\b"),
+    "rust": (r"\brust\b", r"\bfn\s+\w+\s*\(|\blet\s+mut\b"),
+    "cpp": (r"(?:\bcpp\b|(?<!\w)c\+\+(?!\w))", r"#include\s*<|\bstd::"),
+}
+
+
+def requested_programming_language(prompt: str) -> str | None:
+    """Return an explicitly requested language without guessing from generic code words."""
+    for language, (prompt_pattern, _) in LANGUAGE_MARKERS.items():
+        if re.search(prompt_pattern, prompt, re.I):
+            return language
+    return None
+
+
+def detected_programming_languages(reply: str) -> set[str]:
+    """Infer languages from code fences and distinctive syntax."""
+    found = {
+        language for language, (_, syntax_pattern) in LANGUAGE_MARKERS.items()
+        if re.search(syntax_pattern, reply, re.I)
+    }
+    fences = {tag.lower() for tag in re.findall(r"```\s*([a-zA-Z+#]+)", reply)}
+    aliases = {"cs": "csharp", "c#": "csharp", "js": "javascript", "ts": "typescript", "py": "python", "c++": "cpp"}
+    found.update(aliases.get(tag, tag) for tag in fences if tag)
+    return found
+
+
+def _sentence_count(text: str) -> int:
+    return len(re.findall(r"[^.!?\n]+[.!?](?:\s|$)", text.strip())) or (1 if text.strip() else 0)
+
+
+def _requested_item_count(prompt: str) -> int | None:
+    match = re.search(r"\b(?:exactly\s+)?(\d+)\s+(?:steps|ways|ideas|examples|tips|reasons|items|things)\b", prompt, re.I)
+    return int(match.group(1)) if match else None
 
 
 def repeated_phrase_constraint(prompt: str) -> tuple[str, int] | None:
@@ -188,6 +228,7 @@ def assess_generated_reply(
     prompt: str,
     reply: str,
     previous_replies: Sequence[str] = (),
+    conversation_context: str = "",
 ) -> tuple[bool, tuple[str, ...]]:
     """Return whether a neural reply is safe and relevant enough to display."""
     reasons: list[str] = []
@@ -224,6 +265,16 @@ def assess_generated_reply(
         reasons.append("broken-code-fence")
     if has_structured_list(stripped) and not requests_structured_response(prompt):
         reasons.append("unrequested-structured-list")
+    requested_items = _requested_item_count(prompt)
+    if requested_items is not None:
+        listed_items = len(re.findall(r"(?m)^\s*(?:\d+[.)]|[-*])\s+\S+", stripped))
+        if listed_items != requested_items:
+            reasons.append("wrong-item-count")
+    if re.search(r"\b(?:one|a single) sentence\b", prompt, re.I) and _sentence_count(stripped) != 1:
+        reasons.append("sentence-count-constraint")
+    if re.search(r"\b(?:answer|respond|reply)\s+(?:only\s+)?(?:yes or no|with yes or no)\b", prompt, re.I):
+        if not re.fullmatch(r"\s*(?:yes|no)[.!]?\s*", stripped, re.I):
+            reasons.append("yes-no-constraint")
     phrase_limit = repeated_phrase_constraint(prompt)
     if phrase_limit and lowered.count(phrase_limit[0].lower()) > phrase_limit[1]:
         reasons.append("phrase-repetition-constraint")
@@ -262,6 +313,16 @@ def assess_generated_reply(
     ))
     if explicit_code_request and not has_code:
         reasons.append("missing-requested-code")
+    requested_language = requested_programming_language(prompt)
+    detected_languages = detected_programming_languages(stripped) if has_code else set()
+    if requested_language and has_code and detected_languages and requested_language not in detected_languages:
+        reasons.append("wrong-programming-language")
+    if len(detected_languages) > 1 and not re.search(r"\b(?:compare|convert|translate|both|multiple)\b", prompt, re.I):
+        reasons.append("mixed-programming-languages")
+    if re.search(r"\b(?:return|output|respond with)\s+(?:only\s+)?(?:the\s+)?(?:complete\s+)?code\b|\bcode only\b", prompt, re.I):
+        outside = re.sub(r"```[\s\S]*?```", "", stripped).strip()
+        if outside:
+            reasons.append("code-only-constraint")
     if classify_intent(prompt).name != "meme" and not has_strong_math_intent(prompt) and re.search(
         r"(?:\$?\d+(?:\.\d+)?\s*(?:[+*/=×÷]|-(?=\s*\d))\s*\$?\d+|"
         r"\b(?:multiply|divide|calculate|equals)\b.{0,50}\d|"
@@ -276,9 +337,23 @@ def assess_generated_reply(
         re.I,
     ):
         reasons.append("unrequested-numeric-expression")
+    if not has_strong_math_intent(prompt) and re.search(r"[$€£]\s*0{2,}\d|\b\d{4}\b", stripped):
+        prompt_numbers = set(re.findall(r"\b\d{4}\b", prompt))
+        reply_numbers = set(re.findall(r"\b\d{4}\b", stripped))
+        if not prompt_numbers or not reply_numbers <= prompt_numbers:
+            reasons.append("unrequested-specific-number")
     trigrams = [tuple(words[index:index + 3]) for index in range(max(0, len(words) - 2))]
     if trigrams and max(Counter(trigrams).values()) >= 3:
         reasons.append("repetition-loop")
+    if len(words) >= 12:
+        bigrams = [tuple(words[index:index + 2]) for index in range(len(words) - 1)]
+        if max(Counter(bigrams).values(), default=0) >= 4 or len(set(words)) / len(words) < 0.38:
+            reasons.append("degenerate-repetition")
+    clauses = [" ".join(_words(part)) for part in re.split(r"[.!?;\n]+", stripped) if len(_words(part)) >= 3]
+    if clauses and max(Counter(clauses).values()) >= 2:
+        reasons.append("repeated-clause")
+    if re.search(r"\b(?:an? )?language model\b.{0,80}\bis (?:an? )?language model\b", lowered):
+        reasons.append("recursive-self-definition")
 
     prompt_words = _content_words(prompt)
     reply_words = _content_words(stripped)
@@ -287,6 +362,9 @@ def assess_generated_reply(
         for phrase in (" i feel ", " i am ", " i'm ", " talk ", " chat ", " hello ", " hi ")
     )
     shared_subject = bool(prompt_words & reply_words)
+    context_words = _content_words(conversation_context)
+    if len(_words(prompt)) <= 4 and conversation_context:
+        shared_subject = shared_subject or bool(context_words & reply_words)
     if classify_intent(prompt).name == "meme":
         # Meme names are often numbers or very short slang (67, F, POV), so
         # the normal four-character content-word filter is too destructive.

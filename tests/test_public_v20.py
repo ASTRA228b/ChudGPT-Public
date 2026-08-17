@@ -459,6 +459,31 @@ def test_quality_gate_rejects_unrequested_numbered_tutorial() -> None:
     assert "unrequested-structured-list" in reasons
 
 
+@pytest.mark.parametrize(
+    ("prompt", "reply", "reason"),
+    [
+        ("write a C# calculator", "```python\ndef add(a, b): return a + b\n```", "wrong-programming-language"),
+        ("answer yes or no: is this valid?", "Yes, and here is a long explanation.", "yes-no-constraint"),
+        ("explain gravity in one sentence", "Gravity attracts mass. It shapes orbits.", "sentence-count-constraint"),
+        ("give exactly 3 ideas", "1. One\n2. Two", "wrong-item-count"),
+        ("hello", "A language model is a language model because a language model predicts language.", "recursive-self-definition"),
+    ],
+)
+def test_general_quality_constraints(prompt: str, reply: str, reason: str) -> None:
+    valid, reasons = assess_generated_reply(prompt, reply)
+    assert not valid
+    assert reason in reasons
+
+
+def test_short_followup_can_be_relevant_to_conversation_context() -> None:
+    valid, reasons = assess_generated_reply(
+        "why?",
+        "Blue light scatters more strongly through the atmosphere.",
+        conversation_context="The sky looks blue because shorter wavelengths scatter more strongly.",
+    )
+    assert valid, reasons
+
+
 def test_explicit_instruction_request_still_allows_structure() -> None:
     prompt = "give me 5 steps to make a Unity player controller"
     reply = (

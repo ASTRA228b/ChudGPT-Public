@@ -37,8 +37,11 @@ DISCORD_SYSTEM_PROMPT = (
     "mentions, and bot commands. Understand Discord servers, channels, threads, roles, "
     "permissions, moderation, embeds, webhooks, discord.py, discord.js, memes, games, "
     "technology, coding, and general questions. Keep replies suitable for Discord and usually "
-    "concise unless detail is requested. Never claim you performed an action the bot cannot "
-    "perform. This Discord context applies only while this instruction is active."
+    "concise unless detail is requested. Track who said what and use the immediately preceding "
+    "exchange when a user says what, why, bro, nah, yes, or no. Never turn casual chat into a "
+    "tutorial or code unless asked. Match an explicitly requested programming language and obey "
+    "format and item-count constraints. Never claim you performed an action the bot cannot perform. "
+    "This Discord context applies only while this instruction is active."
 )
 
 
@@ -1458,6 +1461,7 @@ def main() -> None:
     limiter = SlidingWindowLimiter(settings.max_requests_per_minute)
     safe_mentions = discord.AllowedMentions(users=True, roles=False, everyone=False, replied_user=True)
     recent_user_messages: dict[tuple[int, int], deque[str]] = defaultdict(lambda: deque(maxlen=3))
+    recent_bot_messages: dict[tuple[int, int], deque[str]] = defaultdict(lambda: deque(maxlen=2))
     language_preferences: dict[tuple[int, int], str] = {}
     server_admin_confirmations: dict[
         tuple[int, int, str], tuple[str, float, int, dict[str, Any] | None]
@@ -1528,6 +1532,7 @@ def main() -> None:
             try:
                 await __import__("asyncio").to_thread(public_api.clear, make_session_id(message))
                 recent_user_messages.pop(context_key, None)
+                recent_bot_messages.pop(context_key, None)
                 language_preferences.pop(context_key, None)
                 state["api_status"] = "online"
                 await message.reply(
@@ -1623,6 +1628,8 @@ def main() -> None:
             visible_speaker = getattr(message.author, "display_name", None) or message.author.name
             if recent_context:
                 discord_context += "; recent same-user messages=" + " | ".join(recent_context[-2:])
+            if recent_bot_messages[context_key]:
+                discord_context += "; recent bot replies=" + " | ".join(recent_bot_messages[context_key])
             recent_user_messages[context_key].append(prompt)
             whois_reply: str | None = None
             target_id = whois_target_id(prompt)
@@ -1653,8 +1660,8 @@ def main() -> None:
                 )
                 or discord_quoted_reply(prompt)
                 or discord_developer_reply(prompt, developer_user_id)
-                or discord_code_reply(prompt)
-                or discord_social_reply(prompt, recent_context)
+                or discord_code_reply(model_prompt)
+                or discord_social_reply(model_prompt, recent_context)
             )
             if reply is None:
                 async with message.channel.typing():
@@ -1669,6 +1676,7 @@ def main() -> None:
             await __import__("asyncio").to_thread(
                 log_discord_exchange, settings.conversation_log_dir, message, prompt, reply
             )
+            recent_bot_messages[context_key].append(reply)
             help_page = requested_help_page(prompt)
             if help_page is not None:
                 view = HelpPaginationView(settings.prefix, help_page, message.author.id)

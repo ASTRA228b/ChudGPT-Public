@@ -47,8 +47,11 @@ DISCORD_BOT_INSTRUCTION = (
     "mentions, and bot commands. Understand Discord servers, channels, threads, roles, "
     "permissions, moderation, embeds, webhooks, discord.py, discord.js, memes, games, "
     "technology, coding, and general questions. Keep replies suitable for Discord and usually "
-    "concise unless detail is requested. Never claim you performed an action the bot cannot "
-    "perform. This Discord context applies only while this instruction is active."
+    "concise unless detail is requested. Track who said what and use the immediately preceding "
+    "exchange when a user says what, why, bro, nah, yes, or no. Never turn casual chat into a "
+    "tutorial or code unless asked. Match an explicitly requested programming language and obey "
+    "format and item-count constraints. Never claim you performed an action the bot cannot perform. "
+    "This Discord context applies only while this instruction is active."
 )
 DISCORD_SYSTEM_PROMPT = DEFAULT_SYSTEM_PROMPT + " " + DISCORD_BOT_INSTRUCTION
 
@@ -282,7 +285,7 @@ class PublicModelService:
                 temperature=attempt_temperature,
                 top_k=top_k,
                 top_p=top_p,
-                repetition_penalty=1.1,
+                repetition_penalty=1.16,
                 eos_token_id=self.eos_id,
             )[0, len(prompt_ids):].tolist()
             reply = self.tokenizer.decode(output, skip_special_tokens=True).strip()
@@ -291,31 +294,21 @@ class PublicModelService:
         if candidates:
             prompt = current_message
             previous_replies = [turn["content"] for turn in history if turn["role"] == "assistant"]
-            valid = [candidate for candidate in candidates if assess_generated_reply(prompt, candidate, previous_replies)[0]]
+            previous_user = next((turn["content"] for turn in reversed(history[:-1]) if turn["role"] == "user"), "")
+            previous_assistant = previous_replies[-1] if previous_replies else ""
+            conversation_context = f"{previous_user} {previous_assistant}".strip()
+            valid = [candidate for candidate in candidates if assess_generated_reply(
+                prompt, candidate, previous_replies, conversation_context
+            )[0]]
             if valid:
                 return max(valid, key=lambda reply: score_generated_reply(prompt, reply) + self._candidate_score(prompt, reply))
-            previous_assistant = previous_replies[-1] if previous_replies else ""
             if previous_assistant and re.fullmatch(
                 r"\s*(?:what|what\?|huh|bro(?: what)?|why|what are you talking about)[?!.]*\s*",
                 prompt,
                 re.I,
             ):
-                return "Yeah, my last reply did not make sense there. Let me reset - what did you want me to clarify?"
-            non_list_candidates = [
-                candidate for candidate in candidates
-                if (structured_request or not has_structured_list(candidate))
-                and "generic-uncertainty-fallback" not in assess_generated_reply(
-                    prompt, candidate, previous_replies
-                )[1]
-            ]
-            if non_list_candidates:
-                return max(
-                    non_list_candidates,
-                    key=lambda reply: score_generated_reply(prompt, reply) + self._candidate_score(prompt, reply),
-                )
-            # Do not replace unknown input with canned uncertainty. Draw fresh,
-            # higher-entropy neural text and return the first non-fallback
-            # generation, even if its content is characteristically strange.
+                return "Yeah, that last answer wandered off. I was responding to your previous message, but I clearly missed it."
+            # Draw fresh candidates, but never bypass the complete quality gate.
             for retry in range(8):
                 output = generate(
                     self.model,
@@ -324,13 +317,13 @@ class PublicModelService:
                     temperature=min(1.35, max(0.88, temperature) + retry * 0.05),
                     top_k=80,
                     top_p=0.95,
-                    repetition_penalty=1.08,
+                    repetition_penalty=1.18,
                     eos_token_id=self.eos_id,
                 )[0, len(prompt_ids):].tolist()
                 retry_reply = self.tokenizer.decode(output, skip_special_tokens=True).strip()
-                if retry_reply and "generic-uncertainty-fallback" not in assess_generated_reply(
-                    prompt, retry_reply, previous_replies
-                )[1]:
+                if retry_reply and assess_generated_reply(
+                    prompt, retry_reply, previous_replies, conversation_context
+                )[0]:
                     return retry_reply
             raise RuntimeError("Model repeatedly generated only rejected uncertainty templates")
         raise RuntimeError("Model produced empty output after generation attempts")

@@ -21,6 +21,21 @@ BAD_PATTERNS = (
 )
 
 
+def requests_list(text: str) -> bool:
+    return bool(re.search(r"\b(?:steps?|list|ways|ideas|examples|tips|instructions|tutorial|how to|recipe)\b", text, re.I))
+
+
+def looks_like_unrequested_template(user: str, assistant: str) -> bool:
+    numbered = len(re.findall(r"(?m)^\s*(?:\d+[.)]|[-*])\s+\S+", assistant)) >= 2
+    generic_lead = bool(re.search(r"\b(?:one useful way into|here (?:are|is) (?:some|a few)|the exact joke still depends)\b", assistant, re.I))
+    recursive_model = bool(re.search(r"\blanguage model\b.{0,100}\blanguage model\b", assistant, re.I))
+    wrong_code_topic = "```" in assistant and not re.search(
+        r"\b(?:code|script|program|python|java|javascript|typescript|c#|csharp|c\+\+|rust|sql|html|css|unity|debug)\b",
+        user, re.I,
+    )
+    return generic_lead or recursive_model or wrong_code_topic or (numbered and not requests_list(user))
+
+
 def clean(value: str) -> str | None:
     text = unicodedata.normalize("NFKC", value).replace("\x00", "")
     text = re.sub(r"[ \t]+", " ", text)
@@ -206,6 +221,16 @@ def authored_rows() -> list[dict[str, object]]:
             {"role": "assistant", "content": "Space it is. Planets, stars, spaceflight, or something stranger?"},
         ], "source": "ChudGPT-Public-V20"},
     ])
+    multilingual = [
+        ("Hola, ¿cómo estás?", "¡Hola! Estoy bien y listo para conversar. ¿Cómo estás tú?"),
+        ("¿Qué eres?", "Soy ChudGPT-Public, un pequeño asistente de IA experimental que genera texto y puede equivocarse."),
+        ("Oi, tudo bem?", "Oi! Tudo bem por aqui. Sobre o que você quer conversar?"),
+        ("Qu'est-ce que tu es ?", "Je suis ChudGPT-Public, un petit assistant d'IA expérimental qui peut parfois se tromper."),
+        ("Hallo, wie geht es dir?", "Hallo! Mir geht es gut und ich bin bereit zu helfen. Wie geht es dir?"),
+        ("Привет, как дела?", "Привет! Всё хорошо, я готов общаться. Как у тебя дела?"),
+        ("こんにちは、元気ですか？", "こんにちは！元気です。今日は何について話したいですか？"),
+    ]
+    rows.extend(row(user, answer, "ChudGPT-Public-V20-Multilingual") for user, answer in multilingual)
     return rows
 
 
@@ -235,6 +260,10 @@ def main() -> None:
             rejected["quality"] += 1
             continue
         assistant = next((item["content"] for item in reversed(cleaned) if item["role"] == "assistant"), "")
+        user = next((item["content"] for item in reversed(cleaned) if item["role"] == "user"), "")
+        if looks_like_unrequested_template(user, assistant):
+            rejected["topic-or-template-leak"] += 1
+            continue
         response_key = re.sub(r"\s+", " ", assistant.casefold()).strip()
         conversation_key = hashlib.sha256(json.dumps(cleaned, sort_keys=True).encode()).hexdigest()
         if conversation_key in seen_conversations or response_counts[response_key] >= 2:
@@ -254,7 +283,20 @@ def main() -> None:
     OUTPUT.write_text("\n".join(json.dumps(item, ensure_ascii=False) for item in selected) + "\n", encoding="utf-8")
     authored = [item for item in selected if str(item.get("source", "")).startswith("ChudGPT-Public")]
     reviewed = [item for item in selected if item not in authored]
-    focused = authored + reviewed[:1_600]
+    prose: list[dict[str, object]] = []
+    structured: list[dict[str, object]] = []
+    code: list[dict[str, object]] = []
+    for item in reviewed:
+        messages = item["messages"]
+        user = next(entry["content"] for entry in reversed(messages) if entry["role"] == "user")
+        assistant = next(entry["content"] for entry in reversed(messages) if entry["role"] == "assistant")
+        if "```" in assistant:
+            code.append(item)
+        elif requests_list(user):
+            structured.append(item)
+        else:
+            prose.append(item)
+    focused = authored + prose[:700] + structured[:120] + code[:180]
     focused.sort(key=lambda item: hashlib.sha256(json.dumps(item, sort_keys=True).encode()).hexdigest())
     FOCUSED_OUTPUT.write_text(
         "\n".join(json.dumps(item, ensure_ascii=False) for item in focused) + "\n",
@@ -264,6 +306,7 @@ def main() -> None:
     print(f"Focused V20 rows: {len(focused):,} ({len(authored):,} authored + {len(focused) - len(authored):,} reviewed)")
     print(f"Unique conversations: {len(seen_conversations):,}")
     print(f"Rejected: {dict(rejected)}")
+    print(f"Focused reviewed styles: prose={min(700, len(prose))}, structured={min(120, len(structured))}, code={min(180, len(code))}")
 
 
 if __name__ == "__main__":

@@ -10,7 +10,7 @@ ChudGPT-Public is an independently trained, experimental conversational language
 
 V20 is the current strongest Public serving profile. It combines the independently trained 20,999,184-parameter checkpoint with a local reviewed-response layer, exact decimal and large-integer arithmetic, conservative slang normalization, protected identity/meme facts, multi-candidate neural selection, and a dedicated Discord context mode. It does not call Pro, ChatGPT, or any external model.
 
-The V20 corpus contains 8,914 unique cleaned conversations. Its final focused CUDA tune used 2,241 unique conversations: all 641 Public-authored conversations plus 1,600 reviewed conversations. A first broad V20 attempt was archived after it scored worse; the final candidate was selected only after held-out and stateful Discord tests.
+The current V20 corpus contains 6,862 unique cleaned conversations after removing 2,080 topic/template leaks and 151 malformed or low-quality rows. Its balanced quality tune used 1,669 conversations: 669 Public-authored conversations, 700 reviewed prose conversations, 120 legitimate structured requests, and 180 reviewed code tasks. Earlier V20 checkpoints remain archived and selectable.
 
 It is a small custom model—not ChatGPT and not a frontier model. It can be inaccurate, has no live internet access, and should not be trusted for medical, legal, financial, or safety-critical decisions.
 
@@ -80,7 +80,7 @@ cd /d C:\Users\admin\OneDrive\Documents\ChudGPT\ChudGPT-Public
 start_training.cmd
 ```
 
-That runs data preparation, base pretraining, response-only fine-tuning, and evaluation. Timestamped logs are stored in `reports`. The Public API checkpoint is selected in `serving_config.json`; V20 currently uses `checkpoints/public_v20_final/best.pt`. V8 through V18 and the rejected broad V20 candidate remain archived and selectable.
+That runs data preparation, base pretraining, response-only fine-tuning, and evaluation. Timestamped logs are stored in `reports`. The Public API checkpoint is selected in `serving_config.json`; V20 currently uses `checkpoints/public_v20_quality/best.pt`. The previous V20 checkpoint, V8 through V18, and the rejected broad V20 candidate remain archived and selectable.
 
 The official Discord bot sends a protected Discord-only system instruction plus scoped server, channel, and speaker metadata. It securely treats the Discord application owner as Astra/the developer; `CHUDGPT_DEVELOPER_USER_ID` can explicitly override that account. Its conversations are logged as monthly JSONL files under `D:\ChudGPT-Discord-Logs` by default; set `CHUDGPT_DISCORD_LOG_DIR` to change that location. Tell server members if their bot messages are being logged.
 
