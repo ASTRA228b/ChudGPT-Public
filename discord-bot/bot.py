@@ -79,6 +79,7 @@ class Settings:
     soundboard_dir: Path
     soundboard_host: str
     soundboard_admin_user_ids: frozenset[int]
+    server_backup_dir: Path
 
     @classmethod
     def from_environment(cls) -> "Settings":
@@ -103,6 +104,9 @@ class Settings:
                     "1386115817325727854,1324847616810422402",
                 ).split(",") if value.strip().isdigit()
             ),
+            server_backup_dir=Path(os.getenv(
+                "CHUDGPT_SERVER_BACKUP_DIR", r"D:\ChudGPT-Discord-Server-Files"
+            )),
         )
 
 
@@ -861,6 +865,175 @@ def format_whois_member(member: discord.Member) -> str:
     )
 
 
+SERVER_ADMIN_HELP = """**ChudGPT server administration**
+Server owner or Discord Administrator only.
+
+`{prefix} save channels` - save channel/category names and DM the `.txt` snapshot
+`{prefix} delete all` - create + DM a snapshot, then request confirmation to delete every channel
+`{prefix} rebuild server` - attach a saved `.txt`, then request confirmation to rebuild it
+`{prefix} purge all` - request confirmation to purge every message in this channel
+
+Destructive commands return a one-time confirmation code that expires after 60 seconds. These commands cannot be used in DMs."""
+
+
+def server_admin_action(prompt: str) -> tuple[str, str | None] | None:
+    """Parse the deliberately small guild-administration command surface."""
+    raw = re.sub(r"\s+", " ", prompt.strip()).strip(" .!?")
+    normalized = re.sub(r"\s+", " ", prompt.strip().lower()).strip(" .!?")
+    if raw in {"SERVER", "SERVER HELP", "SERVER COMMANDS"}:
+        return "help", None
+    patterns = {
+        "save": r"(?:server )?save (?:channels|channels and cats|channels & cats)",
+        "delete": r"(?:server )?delete all",
+        "rebuild": r"(?:server )?rebuild(?: server)?|rebuild server",
+        "purge": r"(?:server )?purge all|purge all",
+    }
+    for action, pattern in patterns.items():
+        match = re.fullmatch(rf"(?:{pattern})(?: confirm ([a-z0-9]{{6}}))?", normalized)
+        if match:
+            return action, match.group(1).upper() if match.group(1) else None
+    return None
+
+
+def is_guild_owner_or_admin(message: discord.Message) -> bool:
+    """Trust Discord's guild ownership/Administrator state, never names or roles."""
+    if message.guild is None or not isinstance(message.author, discord.Member):
+        return False
+    return message.author.id == message.guild.owner_id or message.author.guild_permissions.administrator
+
+
+def guild_layout_snapshot(guild: discord.Guild) -> dict[str, Any]:
+    """Capture the category and supported top-level channel layout."""
+    categories = [
+        {"name": category.name, "position": category.position}
+        for category in sorted(guild.categories, key=lambda item: item.position)
+    ]
+    channels: list[dict[str, Any]] = []
+    for channel in sorted(guild.channels, key=lambda item: item.position):
+        if isinstance(channel, discord.CategoryChannel):
+            continue
+        kind = None
+        if isinstance(channel, discord.TextChannel):
+            kind = "text"
+        elif isinstance(channel, discord.VoiceChannel):
+            kind = "voice"
+        elif isinstance(channel, discord.StageChannel):
+            kind = "stage"
+        elif isinstance(channel, discord.ForumChannel):
+            kind = "forum"
+        if kind:
+            channels.append({
+                "name": channel.name,
+                "type": kind,
+                "category": channel.category.name if channel.category else None,
+                "position": channel.position,
+            })
+    return {
+        "format": "ChudGPT Discord channel layout v1",
+        "guild_id": guild.id,
+        "guild_name": guild.name,
+        "saved_at": datetime.now(timezone.utc).isoformat(),
+        "categories": categories,
+        "channels": channels,
+    }
+
+
+def save_guild_layout(guild: discord.Guild, backup_dir: Path) -> Path:
+    """Write a human-readable JSON snapshot with a .txt extension."""
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    path = backup_dir / f"guild_{guild.id}_channels.txt"
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(
+        json.dumps(guild_layout_snapshot(guild), indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    temporary.replace(path)
+    return path
+
+
+def parse_guild_layout(guild: discord.Guild, content: str) -> dict[str, Any]:
+    """Validate snapshot text belonging to this exact guild."""
+    data = json.loads(content)
+    if data.get("format") != "ChudGPT Discord channel layout v1" or data.get("guild_id") != guild.id:
+        raise ValueError("The saved layout is invalid or belongs to another Discord server.")
+    if not isinstance(data.get("categories"), list) or not isinstance(data.get("channels"), list):
+        raise ValueError("The saved layout is missing categories or channels.")
+    return data
+
+
+async def dm_layout_snapshot(member: discord.Member, path: Path, guild_name: str) -> bool:
+    """DM a temporary backup and remove the host copy regardless of delivery."""
+    upload: discord.File | None = None
+    try:
+        upload = discord.File(path, filename=path.name)
+        await member.send(
+            f"Channel/category snapshot for **{guild_name}**.",
+            file=upload,
+        )
+        return True
+    except (discord.Forbidden, discord.HTTPException, OSError):
+        return False
+    finally:
+        if upload is not None:
+            upload.close()
+        try:
+            path.unlink(missing_ok=True)
+        except OSError as error:
+            LOGGER.warning("Could not remove temporary server snapshot %s: %s", path, error)
+
+
+async def rebuild_guild_layout(guild: discord.Guild, data: dict[str, Any]) -> tuple[int, list[str]]:
+    """Recreate saved categories and supported channels, collecting failures."""
+    categories: dict[str, discord.CategoryChannel] = {}
+    failures: list[str] = []
+    created = 0
+    for item in sorted(data["categories"], key=lambda value: value.get("position", 0)):
+        try:
+            category = await guild.create_category(str(item["name"]), reason="ChudGPT server rebuild")
+            categories[category.name] = category
+            created += 1
+        except (KeyError, TypeError, discord.HTTPException) as error:
+            failures.append(f"category {item.get('name', '?')}: {error}")
+    creators = {
+        "text": guild.create_text_channel,
+        "voice": guild.create_voice_channel,
+        "stage": guild.create_stage_channel,
+        "forum": guild.create_forum,
+    }
+    for item in sorted(data["channels"], key=lambda value: value.get("position", 0)):
+        try:
+            creator = creators[str(item["type"])]
+            await creator(
+                str(item["name"]),
+                category=categories.get(item.get("category")),
+                reason="ChudGPT server rebuild",
+            )
+            created += 1
+        except (KeyError, TypeError, discord.HTTPException) as error:
+            failures.append(f"channel {item.get('name', '?')}: {error}")
+    return created, failures
+
+
+async def delete_all_guild_channels(guild: discord.Guild, command_channel_id: int) -> tuple[int, list[str]]:
+    """Delete non-category channels first and the command channel last."""
+    channels = sorted(
+        guild.channels,
+        key=lambda channel: (
+            channel.id == command_channel_id,
+            isinstance(channel, discord.CategoryChannel),
+        ),
+    )
+    deleted = 0
+    failures: list[str] = []
+    for channel in channels:
+        try:
+            await channel.delete(reason="Confirmed ChudGPT Delete All command")
+            deleted += 1
+        except discord.HTTPException as error:
+            failures.append(f"{channel.name}: {error}")
+    return deleted, failures
+
+
 _CONVERSATION_LOG_LOCK = threading.Lock()
 
 
@@ -1099,6 +1272,124 @@ async def handle_soundboard_command(
     return "Unknown soundboard command. Use `soundboard help`."
 
 
+async def handle_server_admin_command(
+    prompt: str,
+    message: discord.Message,
+    prefix: str,
+    backup_dir: Path,
+    confirmations: dict[tuple[int, int, str], tuple[str, float, int, dict[str, Any] | None]],
+) -> str | None:
+    """Handle guild layout and purge commands with permission and confirmation gates."""
+    parsed = server_admin_action(prompt)
+    if parsed is None:
+        return None
+    action, supplied_code = parsed
+    if message.guild is None:
+        return "Server administration commands cannot be used in direct messages."
+    if not is_guild_owner_or_admin(message):
+        return "Only this Discord server's owner or a member with **Administrator** permission can use server administration commands."
+    if action == "help":
+        return SERVER_ADMIN_HELP.format(prefix=prefix)
+
+    guild = message.guild
+    member = message.author
+    assert isinstance(member, discord.Member)
+    key = (guild.id, member.id, action)
+    now = time.monotonic()
+    pending = confirmations.get(key)
+    rebuild_layout: dict[str, Any] | None = None
+
+    if supplied_code is None:
+        if action == "save":
+            path = await __import__("asyncio").to_thread(save_guild_layout, guild, backup_dir)
+            if not await dm_layout_snapshot(member, path, guild.name):
+                return "The snapshot was saved, but I could not DM it to you. Enable DMs from server members and try again."
+            return f"Saved {len(guild.categories)} categories and {len(guild.channels) - len(guild.categories)} channels. I sent `{path.name}` to your DMs."
+        if action == "delete":
+            bot_member = guild.me
+            if bot_member is None or not bot_member.guild_permissions.manage_channels:
+                return "I need the **Manage Channels** permission before Delete All can run."
+            path = await __import__("asyncio").to_thread(save_guild_layout, guild, backup_dir)
+            if not await dm_layout_snapshot(member, path, guild.name):
+                return "Delete All was cancelled because I could not DM you the safety snapshot. Enable DMs and try again."
+        elif action == "rebuild":
+            bot_member = guild.me
+            if bot_member is None or not bot_member.guild_permissions.manage_channels:
+                return "I need the **Manage Channels** permission before Rebuild Server can run."
+            attachments = list(getattr(message, "attachments", []))
+            if not attachments:
+                return (
+                    "Attach the `.txt` snapshot that I previously sent you to the same "
+                    f"message as `{prefix} rebuild server`."
+                )
+            attachment = attachments[0]
+            if not attachment.filename.lower().endswith(".txt"):
+                return "The rebuild snapshot must be the `.txt` file previously sent by ChudGPT."
+            if attachment.size > 1_000_000:
+                return "That snapshot is unexpectedly large; the maximum accepted size is 1 MB."
+            try:
+                payload = (await attachment.read()).decode("utf-8")
+                rebuild_layout = parse_guild_layout(guild, payload)
+            except (UnicodeDecodeError, ValueError, json.JSONDecodeError, discord.HTTPException) as error:
+                return f"The attached layout cannot be used: {error}"
+        elif action == "purge":
+            permissions = message.channel.permissions_for(guild.me) if guild.me is not None else None
+            if permissions is None or not permissions.manage_messages or not permissions.read_message_history:
+                return "I need **Manage Messages** and **Read Message History** in this channel before Purge All can run."
+            if not hasattr(message.channel, "purge"):
+                return "Purge All can only be used in a purgeable server text channel or thread."
+
+        code = secrets.token_hex(3).upper()
+        confirmations[key] = (code, now + 60.0, message.channel.id, rebuild_layout)
+        warning = {
+            "delete": "This will permanently delete every channel and category in the server. A safety snapshot has been sent to your DMs.",
+            "rebuild": "This will create the categories and channels stored in the latest server snapshot.",
+            "purge": "This will permanently delete all messages in the current channel.",
+        }[action]
+        command = {"delete": "delete all", "rebuild": "rebuild server", "purge": "purge all"}[action]
+        return f"⚠️ {warning}\nConfirm within 60 seconds with `{prefix} {command} confirm {code}`."
+
+    if action == "save":
+        return f"Save does not use a confirmation code. Run `{prefix} save channels`."
+    if pending is None or pending[1] < now:
+        confirmations.pop(key, None)
+        command = {"delete": "delete all", "rebuild": "rebuild server", "purge": "purge all"}[action]
+        return f"That confirmation is missing or expired. Run `{prefix} {command}` again to get a new code."
+    expected_code, _expires, original_channel_id, saved_layout = pending
+    if not secrets.compare_digest(supplied_code, expected_code):
+        return "That confirmation code is incorrect. Nothing was changed."
+    if action == "purge" and message.channel.id != original_channel_id:
+        return "Purge confirmation must be completed in the same channel where it was requested."
+    confirmations.pop(key, None)
+
+    if action == "purge":
+        deleted = await message.channel.purge(limit=None, reason="Confirmed ChudGPT Purge All command")
+        return f"Purged {len(deleted)} messages from this channel."
+    if action == "rebuild":
+        if saved_layout is None:
+            return "The pending rebuild snapshot was lost. Attach it again and request a new confirmation code."
+        created, failures = await rebuild_guild_layout(guild, saved_layout)
+        detail = f" {len(failures)} item(s) failed; check the host log." if failures else ""
+        if failures:
+            LOGGER.warning("Server rebuild failures for guild %s: %s", guild.id, failures)
+        return f"Rebuild finished: created {created} categories/channels.{detail}"
+
+    await message.reply(
+        "Delete All confirmed. Deleting server channels now; the final result will be sent to your DMs.",
+        mention_author=False,
+    )
+    deleted, failures = await delete_all_guild_channels(guild, message.channel.id)
+    summary = f"Delete All finished for **{guild.name}**: deleted {deleted} channels/categories."
+    if failures:
+        summary += f" {len(failures)} item(s) could not be deleted."
+        LOGGER.warning("Delete All failures for guild %s: %s", guild.id, failures)
+    try:
+        await member.send(summary)
+    except (discord.Forbidden, discord.HTTPException):
+        LOGGER.warning("Could not DM Delete All result to user %s", member.id)
+    return ""
+
+
 def main() -> None:
     instance_lock = acquire_instance_lock()
     if instance_lock is None:
@@ -1128,6 +1419,9 @@ def main() -> None:
     safe_mentions = discord.AllowedMentions(users=True, roles=False, everyone=False, replied_user=True)
     recent_user_messages: dict[tuple[int, int], deque[str]] = defaultdict(lambda: deque(maxlen=3))
     language_preferences: dict[tuple[int, int], str] = {}
+    server_admin_confirmations: dict[
+        tuple[int, int, str], tuple[str, float, int, dict[str, Any] | None]
+    ] = {}
     developer_id_text = os.getenv("CHUDGPT_DEVELOPER_USER_ID", "").strip()
     developer_user_id = int(developer_id_text) if developer_id_text.isdigit() else None
 
@@ -1150,6 +1444,31 @@ def main() -> None:
     @client.event
     async def on_disconnect() -> None:
         state["discord_ready"] = False
+
+    @client.event
+    async def on_guild_join(guild: discord.Guild) -> None:
+        """Privately onboard the server owner when ChudGPT is added."""
+        owner = guild.owner
+        if owner is None:
+            try:
+                owner = await guild.fetch_member(guild.owner_id)
+            except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+                owner = None
+        if owner is None:
+            LOGGER.warning("Could not resolve owner for newly joined guild %s", guild.id)
+            return
+        try:
+            await owner.send(
+                f"Thanks for adding **ChudGPT** to **{guild.name}**. "
+                f"Use `{settings.prefix} help` for normal commands and uppercase "
+                f"`{settings.prefix} SERVER` for restricted server-owner/Administrator tools."
+            )
+            await owner.send(discord_help_page(settings.prefix, 1))
+            await owner.send(SERVER_ADMIN_HELP.format(prefix=settings.prefix))
+        except discord.Forbidden:
+            LOGGER.info("Guild owner %s has DMs disabled; onboarding DM skipped", owner.id)
+        except discord.HTTPException as error:
+            LOGGER.warning("Could not send onboarding DM for guild %s: %s", guild.id, error)
 
     @client.event
     async def on_message(message: discord.Message) -> None:
@@ -1184,10 +1503,25 @@ def main() -> None:
                     mention_author=False,
                 )
             return
-        if not limiter.allow(message.author.id):
+        if server_admin_action(prompt) is None and not limiter.allow(message.author.id):
             await message.reply("You are sending messages a little too quickly. Try again in about a minute.", mention_author=False)
             return
         try:
+            server_admin_reply = await handle_server_admin_command(
+                prompt,
+                message,
+                settings.prefix,
+                settings.server_backup_dir,
+                server_admin_confirmations,
+            )
+            if server_admin_reply is not None:
+                if server_admin_reply:
+                    await message.reply(
+                        server_admin_reply,
+                        mention_author=False,
+                        allowed_mentions=safe_mentions,
+                    )
+                return
             admin_help_page = requested_admin_help_page(prompt)
             if admin_help_page is not None:
                 if message.author.id not in settings.soundboard_admin_user_ids:

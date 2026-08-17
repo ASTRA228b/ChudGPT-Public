@@ -1,3 +1,8 @@
+from types import SimpleNamespace
+from unittest.mock import MagicMock
+
+import discord
+
 from bot import (
     ChudGPTClient, DISCORD_SYSTEM_PROMPT, GoogleTranslateClient, HelpPaginationView,
     add_recent_context, clean_prompt,
@@ -9,6 +14,8 @@ from bot import (
     malformed_whois_reply, whois_target_id,
     requested_admin_help_page,
     discord_admin_help_page,
+    server_admin_action,
+    is_guild_owner_or_admin,
 )
 
 
@@ -354,3 +361,31 @@ def test_owner_admin_help_pages() -> None:
     assert "soundboard volume" in discord_admin_help_page("!chud", 2)
     assert "soundboard autoplay" in discord_admin_help_page("!chud", 2)
     assert "soundboard pause" in discord_admin_help_page("!chud", 2)
+
+
+def test_server_admin_commands_are_separate_and_confirmation_aware() -> None:
+    assert server_admin_action("SERVER") == ("help", None)
+    assert server_admin_action("server") is None
+    assert server_admin_action("save channels and cats") == ("save", None)
+    assert server_admin_action("delete all") == ("delete", None)
+    assert server_admin_action("delete all confirm A1B2C3") == ("delete", "A1B2C3")
+    assert server_admin_action("rebuild server") == ("rebuild", None)
+    assert server_admin_action("rebuild server confirm abc123") == ("rebuild", "ABC123")
+    assert server_admin_action("purge all") == ("purge", None)
+    assert server_admin_action("purge all confirm 123abc") == ("purge", "123ABC")
+    assert server_admin_action("delete a channel") is None
+
+
+def test_server_admin_security_uses_discord_owner_or_administrator() -> None:
+    member = MagicMock(spec=discord.Member)
+    member.id = 100
+    member.guild_permissions = SimpleNamespace(administrator=False)
+    message = SimpleNamespace(guild=SimpleNamespace(owner_id=100), author=member)
+    assert is_guild_owner_or_admin(message)
+
+    member.id = 200
+    assert not is_guild_owner_or_admin(message)
+    member.guild_permissions = SimpleNamespace(administrator=True)
+    assert is_guild_owner_or_admin(message)
+
+    assert not is_guild_owner_or_admin(SimpleNamespace(guild=None, author=member))

@@ -94,6 +94,33 @@ Other built-in commands:
 !chud ADMIN-HELP               Owner-only interactive admin command menu
 ```
 
+## Server administration
+
+Uppercase `!chud SERVER` displays a separate administration menu. It is not
+listed in normal `!chud help`, and lowercase `!chud server` keeps showing the
+current server/DM location. Server commands rely on Discord's actual guild
+owner ID or **Administrator** permission; names, role names, and the soundboard
+allowlist cannot grant access.
+
+```text
+!chud SERVER                    Show the restricted server command menu
+!chud save channels             Save channel/category names and DM the .txt file
+!chud delete all                Save + DM a backup, then request deletion confirmation
+!chud rebuild server            Attach the saved .txt, then request rebuild confirmation
+!chud purge all                 Request confirmation to purge the current channel
+```
+
+Destructive commands issue a random one-time code that expires after 60
+seconds. Confirm using the exact command shown by the bot. Delete All is
+cancelled if the safety snapshot cannot be DMed. Snapshots are created under
+`D:\ChudGPT-Discord-Server-Files`, sent by DM, and then deleted from the host
+whether delivery succeeds or fails. To rebuild, attach that DMed `.txt` to the
+`!chud rebuild server` message. Set `CHUDGPT_SERVER_BACKUP_DIR` to choose a
+different temporary host directory. The bot needs
+**Manage Channels** for delete/rebuild and **Manage Messages** plus **Read
+Message History** for purge. When first added to a server, it privately DMs the
+server owner the normal and server-administration help.
+
 ## Local soundboard
 
 The Discord controls are locked to user IDs `1386115817325727854` and
