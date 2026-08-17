@@ -1384,6 +1384,22 @@ async def handle_server_admin_command(
         summary += f" {len(failures)} item(s) could not be deleted."
         LOGGER.warning("Delete All failures for guild %s: %s", guild.id, failures)
     try:
+        recovery_channel = await guild.create_text_channel(
+            "chudgpt-rebuild",
+            reason="ChudGPT recovery channel after confirmed Delete All",
+        )
+        await recovery_channel.send(
+            f"<@{guild.owner_id}> the server layout was deleted. Attach the `.txt` snapshot "
+            f"that ChudGPT sent to your DMs and run `{prefix} rebuild server` in this "
+            "channel. ChudGPT will validate the file and require a new confirmation code.",
+            allowed_mentions=discord.AllowedMentions(users=True, roles=False, everyone=False),
+        )
+        summary += f" Recovery instructions were posted in {recovery_channel.mention}."
+    except discord.HTTPException as error:
+        failures.append(f"recovery channel: {error}")
+        summary += " I could not create the recovery channel; use the snapshot from your DMs after creating a channel manually."
+        LOGGER.warning("Could not create recovery channel for guild %s: %s", guild.id, error)
+    try:
         await member.send(summary)
     except (discord.Forbidden, discord.HTTPException):
         LOGGER.warning("Could not DM Delete All result to user %s", member.id)

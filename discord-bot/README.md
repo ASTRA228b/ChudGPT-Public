@@ -115,7 +115,9 @@ seconds. Confirm using the exact command shown by the bot. Delete All is
 cancelled if the safety snapshot cannot be DMed. Snapshots are created under
 `D:\ChudGPT-Discord-Server-Files`, sent by DM, and then deleted from the host
 whether delivery succeeds or fails. To rebuild, attach that DMed `.txt` to the
-`!chud rebuild server` message. Set `CHUDGPT_SERVER_BACKUP_DIR` to choose a
+`!chud rebuild server` message. After Delete All finishes, the bot creates a
+`#chudgpt-rebuild` channel containing these recovery instructions. Set
+`CHUDGPT_SERVER_BACKUP_DIR` to choose a
 different temporary host directory. The bot needs
 **Manage Channels** for delete/rebuild and **Manage Messages** plus **Read
 Message History** for purge. When first added to a server, it privately DMs the
