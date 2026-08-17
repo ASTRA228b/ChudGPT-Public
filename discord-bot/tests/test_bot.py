@@ -342,4 +342,6 @@ def test_owner_admin_help_pages() -> None:
     assert requested_admin_help_page("admin help 2") == 2
     assert requested_admin_help_page("help") is None
     assert "soundboard enable" in discord_admin_help_page("!chud", 1)
+    assert "`!chud join`" in discord_admin_help_page("!chud", 1)
+    assert "`!chud leave`" in discord_admin_help_page("!chud", 1)
     assert "soundboard volume" in discord_admin_help_page("!chud", 2)

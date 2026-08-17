@@ -84,6 +84,8 @@ Other built-in commands:
 !chud translation status               Show whether Google translation is configured
 !chud ping       Test whether the bot is responding
 !chud soundboard enable       Owner only: connect to your current voice channel
+!chud join                    Owner only: direct alias for soundboard enable
+!chud leave                   Owner only: leave voice and disable soundboard
 !chud soundboard status       Owner only: show state and the local panel URL
 !chud soundboard volume 65    Owner only: set volume from 0 to 100
 !chud soundboard play file.mp3

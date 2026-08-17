@@ -689,6 +689,8 @@ def discord_admin_help_page(prefix: str, page: int) -> str:
         return (
             "**ChudGPT owner commands - page 1/2: Setup**\n"
             f"`{prefix} ADMIN-HELP` - open this owner-only menu\n"
+            f"`{prefix} join` - join your current voice channel\n"
+            f"`{prefix} leave` - leave voice and disable the soundboard\n"
             f"`{prefix} soundboard enable` - join your current voice channel\n"
             f"`{prefix} soundboard status` - show state and localhost panel\n"
             f"`{prefix} soundboard list` - list uploaded sounds\n"
@@ -955,12 +957,13 @@ async def handle_soundboard_command(
 ) -> str | None:
     """Handle owner-only Discord soundboard commands."""
     normalized = re.sub(r"\s+", " ", prompt.strip()).strip()
+    direct_voice = re.fullmatch(r"(join|leave)", normalized, re.I)
     match = re.fullmatch(r"(?:soundboard|sb)(?:\s+(.*))?", normalized, re.I | re.S)
-    if not match:
+    if not match and not direct_voice:
         return None
     if developer_user_id is None or message.author.id != developer_user_id:
         return "Only Astra, the ChudGPT bot owner, can control the soundboard."
-    action = (match.group(1) or "status").strip()
+    action = direct_voice.group(1) if direct_voice else (match.group(1) or "status").strip()
     lowered = action.lower()
     if lowered in {"enable", "join"}:
         if message.guild is None:
