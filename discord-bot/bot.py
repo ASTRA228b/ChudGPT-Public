@@ -10,6 +10,7 @@ import re
 import tempfile
 import threading
 import time
+import secrets
 from collections import defaultdict, deque
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -19,8 +20,9 @@ from typing import Any
 import discord
 import requests
 from dotenv import load_dotenv
-from flask import Flask, jsonify
+from flask import Flask, jsonify, render_template, request
 from waitress import serve
+from soundboard import SoundboardController, SoundboardError, submit_to_discord
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO").upper(),
@@ -74,6 +76,9 @@ class Settings:
     max_requests_per_minute: int
     conversation_log_dir: Path
     google_translate_api_key: str | None
+    soundboard_dir: Path
+    soundboard_host: str
+    soundboard_owner_user_id: int
 
     @classmethod
     def from_environment(cls) -> "Settings":
@@ -90,6 +95,11 @@ class Settings:
             max_requests_per_minute=max(1, int(os.getenv("MAX_REQUESTS_PER_MINUTE", "8"))),
             conversation_log_dir=Path(os.getenv("CHUDGPT_DISCORD_LOG_DIR", r"D:\ChudGPT-Discord-Logs")),
             google_translate_api_key=os.getenv("GOOGLE_TRANSLATE_API_KEY", "").strip() or None,
+            soundboard_dir=Path(os.getenv("CHUDGPT_SOUNDBOARD_DIR", "soundboard_audio")),
+            soundboard_host=os.getenv("SOUNDBOARD_HOST", "127.0.0.1").strip() or "127.0.0.1",
+            soundboard_owner_user_id=int(
+                os.getenv("CHUDGPT_SOUNDBOARD_OWNER_ID", "1386115817325727854")
+            ),
         )
 
 
@@ -605,6 +615,7 @@ def discord_help_page(prefix: str, page: int) -> str:
         f"`{prefix} invite` - explain how to invite the bot\n"
         f"`{prefix} say <text>` - repeat ordinary text safely\n"
         f"`{prefix} code <request>` - request code with a clear language and goal"
+        f"\n`{prefix} soundboard` - owner-only local soundboard controls"
     )
 
 
@@ -656,6 +667,83 @@ class HelpPaginationView(discord.ui.View):
     @discord.ui.button(label="Last", style=discord.ButtonStyle.secondary, custom_id="chud_help:last")
     async def last_page(self, interaction: discord.Interaction, _button: discord.ui.Button) -> None:
         await self._show(interaction, 4)
+
+    async def on_timeout(self) -> None:
+        for item in self.children:
+            item.disabled = True
+        if self.message is not None:
+            try:
+                await self.message.edit(view=self)
+            except discord.HTTPException:
+                pass
+
+
+def requested_admin_help_page(prompt: str) -> int | None:
+    match = re.fullmatch(r"\s*(?:admin[- ]help|admin commands?)(?:\s+([12]))?\s*", prompt, re.I)
+    return int(match.group(1) or 1) if match else None
+
+
+def discord_admin_help_page(prefix: str, page: int) -> str:
+    page = max(1, min(2, page))
+    if page == 1:
+        return (
+            "**ChudGPT owner commands - page 1/2: Setup**\n"
+            f"`{prefix} ADMIN-HELP` - open this owner-only menu\n"
+            f"`{prefix} soundboard enable` - join your current voice channel\n"
+            f"`{prefix} soundboard status` - show state and localhost panel\n"
+            f"`{prefix} soundboard list` - list uploaded sounds\n"
+            f"Local panel: <http://127.0.0.1:8080/soundboard>"
+        )
+    return (
+        "**ChudGPT owner commands - page 2/2: Playback**\n"
+        f"`{prefix} soundboard play <filename>` - play an uploaded sound\n"
+        f"`{prefix} soundboard stop` - stop the current sound\n"
+        f"`{prefix} soundboard volume <0-100>` - set master volume\n"
+        f"`{prefix} soundboard disable` - stop and leave voice\n"
+        "Only the configured soundboard-owner Discord ID can use these commands."
+    )
+
+
+class AdminHelpPaginationView(discord.ui.View):
+    """Two-page, owner-only admin command menu."""
+
+    def __init__(self, prefix: str, page: int, owner_id: int, timeout: float = 180.0) -> None:
+        super().__init__(timeout=timeout)
+        self.prefix = prefix
+        self.page = max(1, min(2, page))
+        self.owner_id = owner_id
+        self.message: discord.Message | None = None
+        self._refresh()
+
+    def _refresh(self) -> None:
+        self.previous.disabled = self.page == 1
+        self.counter.label = f"{self.page}/2"
+        self.next.disabled = self.page == 2
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id == self.owner_id:
+            return True
+        await interaction.response.send_message("This owner menu belongs to Astra.", ephemeral=True)
+        return False
+
+    async def _show(self, interaction: discord.Interaction, page: int) -> None:
+        self.page = max(1, min(2, page))
+        self._refresh()
+        await interaction.response.edit_message(
+            content=discord_admin_help_page(self.prefix, self.page), view=self
+        )
+
+    @discord.ui.button(label="Previous", style=discord.ButtonStyle.primary, custom_id="chud_admin:previous")
+    async def previous(self, interaction: discord.Interaction, _button: discord.ui.Button) -> None:
+        await self._show(interaction, self.page - 1)
+
+    @discord.ui.button(label="1/2", style=discord.ButtonStyle.secondary, disabled=True, custom_id="chud_admin:counter")
+    async def counter(self, _interaction: discord.Interaction, _button: discord.ui.Button) -> None:
+        return
+
+    @discord.ui.button(label="Next", style=discord.ButtonStyle.primary, custom_id="chud_admin:next")
+    async def next(self, interaction: discord.Interaction, _button: discord.ui.Button) -> None:
+        await self._show(interaction, self.page + 1)
 
     async def on_timeout(self) -> None:
         for item in self.children:
@@ -763,8 +851,10 @@ def log_discord_exchange(log_dir: Path, message: discord.Message, prompt: str, r
         handle.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 
-def create_health_app(state: dict[str, Any]) -> Flask:
+def create_health_app(state: dict[str, Any], soundboard: SoundboardController) -> Flask:
     app = Flask(__name__)
+    app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024
+    dashboard_token = secrets.token_urlsafe(24)
 
     @app.get("/")
     def index() -> tuple[dict[str, Any], int]:
@@ -781,13 +871,139 @@ def create_health_app(state: dict[str, Any]) -> Flask:
 
     @app.get("/status")
     def status() -> tuple[Any, int]:
-        return jsonify({key: value for key, value in state.items() if key != "token"}), 200
+        public_state = {
+            key: value for key, value in state.items()
+            if key != "token" and isinstance(value, (str, int, float, bool, type(None)))
+        }
+        return jsonify(public_state), 200
+
+    def require_local_control() -> None:
+        if request.remote_addr not in {"127.0.0.1", "::1"}:
+            raise SoundboardError("The soundboard is available only from this computer.")
+        if request.headers.get("X-Soundboard-Token") != dashboard_token:
+            raise SoundboardError("Invalid local soundboard session.")
+
+    def run_voice(action: Any) -> None:
+        loop = state.get("discord_loop")
+        client = state.get("discord_client")
+        if loop is None or client is None or not state.get("discord_ready"):
+            raise SoundboardError("Discord is not connected yet.")
+        submit_to_discord(loop, action(client))
+
+    @app.get("/soundboard")
+    def soundboard_page() -> str:
+        if request.remote_addr not in {"127.0.0.1", "::1"}:
+            return "Local access only", 403
+        return render_template("soundboard.html", soundboard_token=dashboard_token)
+
+    @app.get("/soundboard/api/status")
+    def soundboard_status() -> tuple[Any, int]:
+        require_local_control()
+        return jsonify(soundboard.snapshot()), 200
+
+    @app.post("/soundboard/api/upload")
+    def soundboard_upload() -> tuple[Any, int]:
+        require_local_control()
+        upload = request.files.get("audio")
+        if upload is None:
+            raise SoundboardError("Choose an audio file first.")
+        return jsonify({"ok": True, "name": soundboard.save_upload(upload)}), 201
+
+    @app.post("/soundboard/api/volume")
+    def soundboard_volume() -> tuple[Any, int]:
+        require_local_control()
+        percent = soundboard.set_volume_percent((request.get_json(silent=True) or {}).get("volume", 65))
+        return jsonify({"ok": True, "volume": percent}), 200
+
+    @app.post("/soundboard/api/play")
+    def soundboard_play() -> tuple[Any, int]:
+        require_local_control()
+        filename = str((request.get_json(silent=True) or {}).get("name", ""))
+        run_voice(lambda client: soundboard.play(client, filename))
+        return jsonify({"ok": True, "playing": filename}), 200
+
+    @app.post("/soundboard/api/stop")
+    def soundboard_stop() -> tuple[Any, int]:
+        require_local_control()
+        run_voice(soundboard.stop)
+        return jsonify({"ok": True}), 200
+
+    @app.delete("/soundboard/api/tracks/<path:filename>")
+    def soundboard_delete(filename: str) -> tuple[Any, int]:
+        require_local_control()
+        soundboard.delete_track(filename)
+        return jsonify({"ok": True}), 200
+
+    @app.errorhandler(SoundboardError)
+    def soundboard_error(error: SoundboardError) -> tuple[Any, int]:
+        return jsonify({"error": str(error)}), 400
 
     return app
 
 
-def run_health_server(app: Flask, port: int) -> None:
-    serve(app, host="0.0.0.0", port=port, threads=4)
+def run_health_server(app: Flask, port: int, host: str = "127.0.0.1") -> None:
+    serve(app, host=host, port=port, threads=4)
+
+
+async def handle_soundboard_command(
+    prompt: str,
+    message: discord.Message,
+    client: discord.Client,
+    soundboard: SoundboardController,
+    developer_user_id: int | None,
+    port: int,
+) -> str | None:
+    """Handle owner-only Discord soundboard commands."""
+    normalized = re.sub(r"\s+", " ", prompt.strip()).strip()
+    match = re.fullmatch(r"(?:soundboard|sb)(?:\s+(.*))?", normalized, re.I | re.S)
+    if not match:
+        return None
+    if developer_user_id is None or message.author.id != developer_user_id:
+        return "Only Astra, the ChudGPT bot owner, can control the soundboard."
+    action = (match.group(1) or "status").strip()
+    lowered = action.lower()
+    if lowered in {"enable", "join"}:
+        if message.guild is None:
+            return "Enable the soundboard inside a Discord server, not a DM."
+        voice_state = getattr(message.author, "voice", None)
+        if voice_state is None or voice_state.channel is None:
+            return "Join a voice channel first, then run the enable command again."
+        soundboard.configure(message.guild.id, voice_state.channel.id)
+        try:
+            await soundboard._voice_client(client)
+        except SoundboardError as error:
+            soundboard.disable()
+            return f"Soundboard could not connect: {error}"
+        return f"Soundboard enabled in **{voice_state.channel.name}**. Open <http://127.0.0.1:{port}/soundboard> on the host PC."
+    if lowered in {"disable", "leave"}:
+        await soundboard.leave(client)
+        return "Soundboard disabled and disconnected from voice."
+    if lowered == "stop":
+        await soundboard.stop(client)
+        return "Soundboard playback stopped."
+    volume_match = re.fullmatch(r"volume\s+(\d{1,3})", lowered)
+    if volume_match:
+        volume = soundboard.set_volume_percent(int(volume_match.group(1)))
+        return f"Soundboard volume set to {volume}%."
+    play_match = re.fullmatch(r"play\s+(.+)", action, re.I | re.S)
+    if play_match:
+        try:
+            await soundboard.play(client, play_match.group(1).strip())
+        except SoundboardError as error:
+            return f"Soundboard could not play that: {error}"
+        return f"Playing **{play_match.group(1).strip()}**."
+    if lowered in {"list", "sounds"}:
+        names = [track["name"] for track in soundboard.list_tracks()]
+        return "Sounds: " + (", ".join(names) if names else "none uploaded yet")
+    if lowered in {"status", "help", "panel"}:
+        snapshot = soundboard.snapshot()
+        state_text = "enabled" if snapshot["enabled"] else "disabled"
+        return (
+            f"Soundboard is **{state_text}** at {snapshot['volume']}% volume with "
+            f"{len(snapshot['tracks'])} sound(s). Local panel: <http://127.0.0.1:{port}/soundboard>\n"
+            "Owner commands: `soundboard enable`, `disable`, `stop`, `volume 0-100`, `list`, or `play <filename>`."
+        )
+    return "Unknown soundboard command. Use `soundboard help`."
 
 
 def main() -> None:
@@ -800,12 +1016,18 @@ def main() -> None:
     load_dotenv()
     settings = Settings.from_environment()
     state: dict[str, Any] = {"discord_ready": False, "api_status": "unknown", "started_at": int(time.time())}
-    health_app = create_health_app(state)
-    threading.Thread(target=run_health_server, args=(health_app, settings.port), daemon=True).start()
+    soundboard = SoundboardController(settings.soundboard_dir)
+    health_app = create_health_app(state, soundboard)
+    threading.Thread(
+        target=run_health_server,
+        args=(health_app, settings.port, settings.soundboard_host),
+        daemon=True,
+    ).start()
 
     intents = discord.Intents.default()
     intents.message_content = True
     client = discord.Client(intents=intents)
+    state["discord_client"] = client
     public_api = ChudGPTClient(settings.api_url, settings.request_timeout)
     translator = GoogleTranslateClient(settings.google_translate_api_key)
     limiter = SlidingWindowLimiter(settings.max_requests_per_minute)
@@ -825,6 +1047,7 @@ def main() -> None:
             except discord.DiscordException as error:
                 LOGGER.warning("Could not resolve Discord application owner: %s", error)
         state["discord_ready"] = True
+        state["discord_loop"] = __import__("asyncio").get_running_loop()
         state["bot_user"] = str(client.user)
         state["guild_count"] = len(client.guilds)
         LOGGER.info("Logged in as %s in %d guild(s)", client.user, len(client.guilds))
@@ -871,6 +1094,30 @@ def main() -> None:
             await message.reply("You are sending messages a little too quickly. Try again in about a minute.", mention_author=False)
             return
         try:
+            admin_help_page = requested_admin_help_page(prompt)
+            if admin_help_page is not None:
+                if message.author.id != settings.soundboard_owner_user_id:
+                    await message.reply(
+                        "Only Astra, the configured ChudGPT owner, can open ADMIN-HELP.",
+                        mention_author=False,
+                    )
+                    return
+                view = AdminHelpPaginationView(
+                    settings.prefix, admin_help_page, settings.soundboard_owner_user_id
+                )
+                view.message = await message.reply(
+                    discord_admin_help_page(settings.prefix, admin_help_page),
+                    view=view,
+                    mention_author=False,
+                    allowed_mentions=safe_mentions,
+                )
+                return
+            soundboard_reply = await handle_soundboard_command(
+                prompt, message, client, soundboard, settings.soundboard_owner_user_id, settings.port
+            )
+            if soundboard_reply is not None:
+                await message.reply(soundboard_reply, mention_author=False, allowed_mentions=safe_mentions)
+                return
             recent_context = list(recent_user_messages[context_key])
             model_prompt = prompt
             translation_command = parse_translation_command(prompt)

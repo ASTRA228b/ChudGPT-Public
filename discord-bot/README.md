@@ -16,6 +16,8 @@ with `!chud`. Each Discord user and channel gets an isolated ChudGPT session.
   to the Discord bot. It works in keyless compatible mode by default and uses
   the official Cloud Translation v2 API when a key is configured.
 - Never stores the Discord token in source control.
+- Includes an owner-only Discord voice soundboard with a localhost control panel,
+  upload chooser, sound list, stop control, and master-volume slider.
 
 ## Local setup on Windows
 
@@ -23,7 +25,7 @@ with `!chud`. Each Discord user and channel gets an isolated ChudGPT session.
 2. Enable **Message Content Intent** on the bot's settings page.
 3. Invite it with the `bot` scope and these permissions:
    **View Channels**, **Send Messages**, **Read Message History**, and
-   **Embed Links**.
+   **Embed Links**, **Connect**, and **Speak**.
 4. Open Command Prompt and run:
 
 ```bat
@@ -81,7 +83,31 @@ Other built-in commands:
 !chud translate Japanese hello there   Translate one message
 !chud translation status               Show whether Google translation is configured
 !chud ping       Test whether the bot is responding
+!chud soundboard enable       Owner only: connect to your current voice channel
+!chud soundboard status       Owner only: show state and the local panel URL
+!chud soundboard volume 65    Owner only: set volume from 0 to 100
+!chud soundboard play file.mp3
+!chud soundboard stop
+!chud soundboard disable
+!chud ADMIN-HELP               Owner-only interactive admin command menu
 ```
+
+## Local soundboard
+
+The Discord controls are locked to user ID `1386115817325727854` by default.
+This can be changed with `CHUDGPT_SOUNDBOARD_OWNER_ID`, but it should remain a
+single trusted owner account. Server administrators do not automatically gain
+soundboard access.
+
+1. Install the updated Python requirements. `PyNaCl` enables Discord voice and
+   `imageio-ffmpeg` supplies a local FFmpeg binary automatically.
+2. A system [FFmpeg](https://ffmpeg.org/download.html) on PATH is also supported.
+3. Restart the bot, join a voice channel, and run `!chud soundboard enable`.
+4. On the bot host PC, open <http://127.0.0.1:8080/soundboard>.
+5. Upload an MP3, WAV, OGG, M4A, FLAC, WebM, or AAC file, set the volume, and press Play.
+
+The panel binds to localhost by default and cannot be reached from other devices.
+Uploads are saved under `discord-bot\soundboard_audio` and are limited to 50 MB.
 
 The help response includes **First**, **Previous**, **Next**, and **Last**
 buttons. They edit the original help message instead of posting another copy.

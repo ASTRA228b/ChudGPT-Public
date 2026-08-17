@@ -7,6 +7,8 @@ from bot import (
     parse_translation_command, place_author_mention, resolve_language, split_discord_message,
     requested_help_page,
     whois_target_id,
+    requested_admin_help_page,
+    discord_admin_help_page,
 )
 
 
@@ -333,3 +335,11 @@ def test_help_pagination_view_has_interactive_navigation() -> None:
     assert buttons["chud_help:counter"].label == "2/4"
     assert not buttons["chud_help:previous"].disabled
     assert not buttons["chud_help:next"].disabled
+
+
+def test_owner_admin_help_pages() -> None:
+    assert requested_admin_help_page("ADMIN-HELP") == 1
+    assert requested_admin_help_page("admin help 2") == 2
+    assert requested_admin_help_page("help") is None
+    assert "soundboard enable" in discord_admin_help_page("!chud", 1)
+    assert "soundboard volume" in discord_admin_help_page("!chud", 2)

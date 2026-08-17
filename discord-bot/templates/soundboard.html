@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>ChudGPT Soundboard</title>
+  <style>
+    :root{color-scheme:dark;font-family:Inter,Segoe UI,sans-serif;background:#071018;color:#eef7ff}
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(circle at top,#153044,#071018 48%);padding:24px}
+    main{max-width:900px;margin:auto}.card{background:#0d1a25e8;border:1px solid #29465c;border-radius:18px;padding:22px;margin:16px 0;box-shadow:0 20px 60px #0008}
+    h1{margin:0 0 8px;color:#66e7ff}.muted{color:#91a9ba}.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+    button,.upload{border:0;border-radius:10px;padding:11px 16px;font-weight:700;cursor:pointer;background:#58e2ae;color:#04120d}
+    button.stop{background:#ff718b;color:#20030a}button.delete{background:#273b4a;color:#fff}.track{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:12px;border-top:1px solid #233746}
+    input[type=range]{width:min(420px,70vw);accent-color:#63dbff}input[type=file]{max-width:100%}#notice{min-height:24px;color:#ffd36d}.pill{padding:5px 10px;border-radius:99px;background:#183447}
+    @media(max-width:560px){body{padding:10px}.card{padding:15px}.track{align-items:flex-start;flex-direction:column}.track .row{width:100%}button{flex:1}}
+  </style>
+</head>
+<body><main>
+  <div class="card"><div class="row"><h1>ChudGPT Soundboard</h1><span id="enabled" class="pill">Loading...</span></div>
+    <p class="muted">Local control panel. An administrator must run <code>!chud soundboard enable</code> while connected to Discord voice.</p><div id="notice"></div></div>
+  <div class="card"><h2>Master volume</h2><div class="row"><input id="volume" type="range" min="0" max="100" value="65"><strong id="volumeText">65%</strong><button class="stop" onclick="stopSound()">Stop</button></div></div>
+  <div class="card"><h2>Add a sound</h2><form id="uploadForm" class="row"><input name="audio" type="file" accept="audio/*,.mp3,.wav,.ogg,.m4a,.flac,.webm,.aac" required><button>Upload</button></form><p class="muted">MP3, WAV, OGG, M4A, FLAC, WebM, or AAC; maximum 50 MB.</p></div>
+  <div class="card"><h2>Sounds</h2><div id="tracks"></div></div>
+</main><script>
+const SOUNDBOARD_TOKEN={{ soundboard_token|tojson }};
+const notice=document.querySelector('#notice');
+async function api(path,options={}){options.headers={...(options.headers||{}),'X-Soundboard-Token':SOUNDBOARD_TOKEN};const response=await fetch(path,options);const data=await response.json();if(!response.ok)throw new Error(data.error||'Request failed');return data}
+function say(text,error=false){notice.textContent=text;notice.style.color=error?'#ff8297':'#77efba'}
+async function refresh(){try{const data=await api('/soundboard/api/status');document.querySelector('#enabled').textContent=data.enabled?'Enabled':'Disabled';document.querySelector('#volume').value=data.volume;document.querySelector('#volumeText').textContent=data.volume+'%';const box=document.querySelector('#tracks');box.innerHTML='';for(const track of data.tracks){const row=document.createElement('div');row.className='track';const name=document.createElement('span');name.textContent=track.name;const controls=document.createElement('div');controls.className='row';const play=document.createElement('button');play.textContent=data.current_track===track.name?'Playing':'Play';play.onclick=()=>playSound(track.name);const del=document.createElement('button');del.className='delete';del.textContent='Delete';del.onclick=()=>deleteSound(track.name);controls.append(play,del);row.append(name,controls);box.append(row)}if(!data.tracks.length)box.textContent='No sounds uploaded yet.'}catch(e){say(e.message,true)}}
+async function playSound(name){try{await api('/soundboard/api/play',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})});say('Playing '+name);refresh()}catch(e){say(e.message,true)}}
+async function stopSound(){try{await api('/soundboard/api/stop',{method:'POST'});say('Playback stopped.');refresh()}catch(e){say(e.message,true)}}
+async function deleteSound(name){if(!confirm('Delete '+name+'?'))return;try{await api('/soundboard/api/tracks/'+encodeURIComponent(name),{method:'DELETE'});say('Deleted '+name);refresh()}catch(e){say(e.message,true)}}
+document.querySelector('#volume').addEventListener('input',e=>document.querySelector('#volumeText').textContent=e.target.value+'%');
+document.querySelector('#volume').addEventListener('change',async e=>{try{await api('/soundboard/api/volume',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({volume:e.target.value})});say('Volume updated.')}catch(x){say(x.message,true)}});
+document.querySelector('#uploadForm').addEventListener('submit',async e=>{e.preventDefault();try{const data=await api('/soundboard/api/upload',{method:'POST',body:new FormData(e.target)});say('Uploaded '+data.name);e.target.reset();refresh()}catch(x){say(x.message,true)}});refresh();setInterval(refresh,4000);
+</script></body></html>
