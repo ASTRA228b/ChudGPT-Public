@@ -975,8 +975,12 @@ async def handle_soundboard_command(
         try:
             await soundboard._voice_client(client)
         except SoundboardError as error:
-            soundboard.disable()
-            return f"Soundboard could not connect: {error}"
+            LOGGER.warning("Owner soundboard voice connection failed: %s", error)
+            return (
+                f"Soundboard could not connect: {error} "
+                "I stopped after one attempt instead of repeatedly joining and leaving. "
+                "The selected channel is still saved, so you can run `!chud join` to retry."
+            )
         return f"Soundboard enabled in **{voice_state.channel.name}**. Open <http://127.0.0.1:{port}/soundboard> on the host PC."
     if lowered in {"disable", "leave"}:
         await soundboard.leave(client)

@@ -117,12 +117,22 @@ class SoundboardController:
         if not isinstance(channel, (discord.VoiceChannel, discord.StageChannel)):
             raise SoundboardError("The configured voice channel no longer exists.")
         voice = guild.voice_client
+        if voice is not None and not voice.is_connected():
+            try:
+                await voice.disconnect(force=True)
+            finally:
+                voice = None
         try:
             if voice is None:
-                voice = await channel.connect(timeout=15.0, reconnect=True)
+                # A reconnecting voice handshake can visibly join/leave several
+                # times when Discord UDP is unavailable. Attempt exactly once;
+                # the owner can retry after correcting the connection.
+                voice = await channel.connect(
+                    timeout=20.0, reconnect=False, self_deaf=True, self_mute=False
+                )
             elif voice.channel.id != channel.id:
                 await voice.move_to(channel)
-        except (discord.ClientException, RuntimeError, asyncio.TimeoutError) as error:
+        except (discord.ClientException, discord.ConnectionClosed, RuntimeError, asyncio.TimeoutError) as error:
             raise SoundboardError(f"Discord voice connection failed: {error}") from error
         return voice
 
