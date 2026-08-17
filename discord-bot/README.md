@@ -101,7 +101,8 @@ This can be changed with `CHUDGPT_SOUNDBOARD_OWNER_ID`, but it should remain a
 single trusted owner account. Server administrators do not automatically gain
 soundboard access.
 
-1. Install the updated Python requirements. `PyNaCl` enables Discord voice and
+1. Install the updated Python requirements. The `discord.py[voice]` extra
+   includes PyNaCl and current Discord DAVE voice-protocol support;
    `imageio-ffmpeg` supplies a local FFmpeg binary automatically.
 2. A system [FFmpeg](https://ffmpeg.org/download.html) on PATH is also supported.
 3. Restart the bot, join a voice channel, and run `!chud soundboard enable`.

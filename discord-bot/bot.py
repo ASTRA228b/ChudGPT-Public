@@ -1033,6 +1033,7 @@ def main() -> None:
 
     intents = discord.Intents.default()
     intents.message_content = True
+    intents.voice_states = True
     client = discord.Client(intents=intents)
     state["discord_client"] = client
     public_api = ChudGPTClient(settings.api_url, settings.request_timeout)
