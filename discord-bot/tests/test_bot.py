@@ -6,7 +6,7 @@ from bot import (
     discord_help_page, discord_social_reply, is_memory_clear_request, make_session_id,
     parse_translation_command, place_author_mention, resolve_language, split_discord_message,
     requested_help_page,
-    whois_target_id,
+    malformed_whois_reply, whois_target_id,
     requested_admin_help_page,
     discord_admin_help_page,
 )
@@ -297,7 +297,14 @@ def test_discord_bot_commands_are_useful_and_stay_v20() -> None:
     assert "Pong" in (discord_command_reply("ping", "!chud", "online", "Astra", "Test Server") or "")
     assert whois_target_id("whois 1538701049794400266") == 1538701049794400266
     assert whois_target_id("whois <@!1538701049794400266>") == 1538701049794400266
+    assert whois_target_id("who is 1538701049794400266") == 1538701049794400266
+    assert whois_target_id("userid 1538701049794400266") == 1538701049794400266
+    assert whois_target_id("user id <@1538701049794400266>") == 1538701049794400266
+    assert whois_target_id("whosis 1538701049794400266") == 1538701049794400266
     assert whois_target_id("who is Astra") is None
+    malformed = malformed_whois_reply("whois 153210568114936", "!chud") or ""
+    assert "complete Discord user ID" in malformed
+    assert "!chud whois <ID>" in malformed
     dm_who = discord_command_reply("whoami", "!chud", "online", "Astra", "a private Discord DM", []) or ""
     assert "private Discord DM" in dm_who and "no named roles" in dm_who
 

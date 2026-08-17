@@ -816,10 +816,34 @@ def discord_command_reply(
     return None
 
 
+_WHOIS_COMMAND = re.compile(
+    r"\s*(?:who\s+is|whois|whosis|user\s*id|userid)\s+"
+    r"(?:<@!?)?(\d{17,22})>?\s*",
+    re.I,
+)
+
+
 def whois_target_id(prompt: str) -> int | None:
-    """Extract a Discord member ID from a dedicated whois command."""
-    match = re.fullmatch(r"\s*whois\s+(?:<@!?)?(\d{15,22})>?\s*", prompt, re.I)
+    """Extract a member ID from the supported Discord lookup command forms."""
+    match = _WHOIS_COMMAND.fullmatch(prompt)
     return int(match.group(1)) if match else None
+
+
+def malformed_whois_reply(prompt: str, prefix: str) -> str | None:
+    """Explain malformed lookup commands instead of sending them to the model."""
+    normalized = re.sub(r"\s+", " ", prompt.strip().lower())
+    match = re.fullmatch(
+        r"(?:who\s+is|whois|whosis|user\s*id|userid)\s+(?:<@!?)?(\d+)>?",
+        normalized,
+    )
+    if match is None or whois_target_id(prompt) is not None:
+        return None
+    supplied = match.group(1)
+    return (
+        f"`{supplied}` does not look like a complete Discord user ID. "
+        f"Right-click the member, choose **Copy User ID**, then use "
+        f"`{prefix} whois <ID>`."
+    )
 
 
 def format_whois_member(member: discord.Member) -> str:
@@ -1245,6 +1269,8 @@ def main() -> None:
                         if member is not None
                         else f"I couldn't find a member with ID `{target_id}` in this server."
                     )
+            if whois_reply is None:
+                whois_reply = malformed_whois_reply(prompt, settings.prefix)
             reply = (
                 whois_reply
                 or discord_command_reply(
