@@ -116,6 +116,24 @@ class SoundboardController:
         channel = guild.get_channel(channel_id)
         if not isinstance(channel, (discord.VoiceChannel, discord.StageChannel)):
             raise SoundboardError("The configured voice channel no longer exists.")
+        bot_member = guild.me
+        if bot_member is None:
+            raise SoundboardError("Discord did not provide the bot's server member record.")
+        permissions = channel.permissions_for(bot_member)
+        missing_permissions = [
+            label for allowed, label in (
+                (permissions.view_channel, "View Channel"),
+                (permissions.connect, "Connect"),
+                (permissions.speak, "Speak"),
+            )
+            if not allowed
+        ]
+        if missing_permissions:
+            raise SoundboardError(
+                "The bot is missing these permissions in that voice channel: "
+                + ", ".join(missing_permissions)
+                + ". Update the ChudGPT bot role or the channel permission overrides."
+            )
         voice = guild.voice_client
         if voice is not None and not voice.is_connected():
             try:
@@ -133,7 +151,8 @@ class SoundboardController:
             elif voice.channel.id != channel.id:
                 await voice.move_to(channel)
         except (discord.ClientException, discord.ConnectionClosed, RuntimeError, asyncio.TimeoutError) as error:
-            raise SoundboardError(f"Discord voice connection failed: {error}") from error
+            detail = str(error).strip() or type(error).__name__
+            raise SoundboardError(f"Discord voice connection failed ({type(error).__name__}): {detail}") from error
         return voice
 
     async def play(self, client: discord.Client, filename: str) -> None:
