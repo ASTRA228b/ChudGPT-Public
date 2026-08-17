@@ -141,7 +141,9 @@ administrators do not automatically gain soundboard access.
 5. Upload an MP3, WAV, OGG, M4A, FLAC, WebM, or AAC file, set the volume, and press Play.
 
 The panel binds to localhost by default and cannot be reached from other devices.
-Uploads are saved under `discord-bot\soundboard_audio` and are limited to 50 MB.
+Uploads are saved under `D:\ChudGPT-Bot-Sounds` by default and are limited to
+50 MB. Override this location with the `CHUDGPT_SOUNDBOARD_DIR` environment
+variable if the bot is moved to another computer.
 
 The help response includes **First**, **Previous**, **Next**, and **Last**
 buttons. They edit the original help message instead of posting another copy.

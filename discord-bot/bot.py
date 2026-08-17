@@ -96,7 +96,9 @@ class Settings:
             max_requests_per_minute=max(1, int(os.getenv("MAX_REQUESTS_PER_MINUTE", "8"))),
             conversation_log_dir=Path(os.getenv("CHUDGPT_DISCORD_LOG_DIR", r"D:\ChudGPT-Discord-Logs")),
             google_translate_api_key=os.getenv("GOOGLE_TRANSLATE_API_KEY", "").strip() or None,
-            soundboard_dir=Path(os.getenv("CHUDGPT_SOUNDBOARD_DIR", "soundboard_audio")),
+            soundboard_dir=Path(os.getenv(
+                "CHUDGPT_SOUNDBOARD_DIR", r"D:\ChudGPT-Bot-Sounds"
+            )),
             soundboard_host=os.getenv("SOUNDBOARD_HOST", "127.0.0.1").strip() or "127.0.0.1",
             soundboard_admin_user_ids=frozenset(
                 int(value.strip()) for value in os.getenv(
