@@ -230,7 +230,36 @@ def test_chat_falls_back_to_local_cuda_api(monkeypatch) -> None:
 
     monkeypatch.setattr(client.http, "post", fake_post)
     assert client.chat("hello", "session") == "Local CUDA reply"
-    assert called == ["https://public.example/api/chat", "http://127.0.0.1:8010/api/chat"]
+    assert called == ["http://127.0.0.1:8010/api/chat"]
+
+
+def test_chat_retries_local_503_before_public_failover(monkeypatch) -> None:
+    client = ChudGPTClient("https://public.example/api/chat", 10)
+    called = []
+
+    class Response:
+        def __init__(self, ok: bool) -> None:
+            self.ok = ok
+
+        def raise_for_status(self) -> None:
+            if not self.ok:
+                import requests
+                raise requests.HTTPError("503")
+
+        def json(self) -> dict[str, str]:
+            return {"reply": "Recovered locally"}
+
+    def fake_post(url, json, timeout):
+        called.append(url)
+        return Response(len(called) >= 2)
+
+    monkeypatch.setattr(client.http, "post", fake_post)
+    monkeypatch.setattr("bot.time.sleep", lambda _seconds: None)
+    assert client.chat("hello", "session") == "Recovered locally"
+    assert called == [
+        "http://127.0.0.1:8010/api/chat",
+        "http://127.0.0.1:8010/api/chat",
+    ]
 
 
 def test_discord_developer_identity_is_stable() -> None:

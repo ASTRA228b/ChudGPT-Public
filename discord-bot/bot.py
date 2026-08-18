@@ -252,18 +252,28 @@ class ChudGPTClient:
             }
         response = None
         errors: list[Exception] = []
-        urls = [self.chat_url]
-        if self.local_chat_url != self.chat_url:
-            urls.append(self.local_chat_url)
+        # This bot runs beside the CUDA server.  Prefer localhost so Discord
+        # traffic does not depend on Vercel + Cloudflare making a round trip
+        # back to the same PC.  The public URL remains the failover endpoint.
+        urls = [self.local_chat_url]
+        if self.chat_url != self.local_chat_url:
+            urls.append(self.chat_url)
         for url in urls:
-            try:
-                response = self.http.post(url, json=payload, timeout=self.timeout)
-                response.raise_for_status()
+            attempts = 2 if url == self.local_chat_url else 1
+            for attempt in range(attempts):
+                try:
+                    response = self.http.post(url, json=payload, timeout=self.timeout)
+                    response.raise_for_status()
+                    break
+                except requests.RequestException as error:
+                    errors.append(error)
+                    response = None
+                    if attempt + 1 < attempts:
+                        LOGGER.warning("Local chat request failed; retrying once (%s)", error)
+                        time.sleep(0.2)
+            if response is not None:
                 break
-            except requests.RequestException as error:
-                errors.append(error)
-                LOGGER.warning("Chat endpoint failed (%s); trying next endpoint", url)
-                response = None
+            LOGGER.warning("Chat endpoint failed (%s); trying next endpoint", url)
         if response is None:
             raise errors[-1] if errors else RuntimeError("No ChudGPT chat endpoint is available.")
         payload: Any = response.json()

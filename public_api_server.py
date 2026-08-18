@@ -308,7 +308,9 @@ class PublicModelService:
                 re.I,
             ):
                 return "Yeah, that last answer wandered off. I was responding to your previous message, but I clearly missed it."
-            # Draw fresh candidates, but never bypass the complete quality gate.
+            # Draw fresh candidates.  A small model can legitimately miss the
+            # complete quality gate several times in a row; that must not turn
+            # an otherwise healthy API request into HTTP 503.
             for retry in range(8):
                 output = generate(
                     self.model,
@@ -325,7 +327,37 @@ class PublicModelService:
                     prompt, retry_reply, previous_replies, conversation_context
                 )[0]:
                     return retry_reply
-            raise RuntimeError("Model repeatedly generated only rejected uncertainty templates")
+                if retry_reply:
+                    candidates.append(retry_reply)
+
+            # The complete gate is intentionally conservative.  If it rejects
+            # every draw, retain its ranking signal but distinguish repairable
+            # relevance/style faults from output that must never be exposed.
+            # This keeps Public generative and available without allowing
+            # prompt/training leaks, malformed text, broken code, or loops.
+            never_expose = {
+                "prompt-leak", "training-data-leak", "replacement-character",
+                "broken-code-fence", "corrupt-fragment", "repetition-loop",
+                "degenerate-repetition", "repeated-clause", "identity-repetition",
+                "broken-identity-grammar", "recursive-self-definition",
+                "unrequested-code-block", "wrong-programming-language",
+                "mixed-programming-languages", "code-only-constraint",
+                "unrequested-url", "too-long",
+            }
+            usable: list[str] = []
+            for candidate in candidates:
+                _, reasons = assess_generated_reply(
+                    prompt, candidate, previous_replies, conversation_context
+                )
+                if not (never_expose & set(reasons)):
+                    usable.append(candidate)
+            if usable:
+                return max(
+                    usable,
+                    key=lambda reply: score_generated_reply(prompt, reply)
+                    + self._candidate_score(prompt, reply),
+                )
+            raise RuntimeError("Model produced no displayable output after generation attempts")
         raise RuntimeError("Model produced empty output after generation attempts")
 
     @staticmethod
