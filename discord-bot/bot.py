@@ -736,11 +736,29 @@ class HelpPaginationView(discord.ui.View):
                 pass
 
 
-def soundboard_list_pages(reply: str) -> list[str]:
-    """Turn a potentially huge sound list into labeled Discord-safe pages."""
-    chunks = split_discord_message(reply, limit=1_750) or ["Sounds: none uploaded yet"]
-    total = len(chunks)
-    return [f"**Soundboard sounds - page {index}/{total}**\n{chunk}" for index, chunk in enumerate(chunks, 1)]
+def soundboard_list_pages(track_names: list[str], content_limit: int = 1_750) -> list[str]:
+    """Pack complete track names into labeled pages without splitting a filename."""
+    if not track_names:
+        return ["**Soundboard sounds - page 1/1**\nSounds: none uploaded yet"]
+    content_pages: list[list[str]] = []
+    current: list[str] = []
+    current_length = 0
+    for index, name in enumerate(track_names, 1):
+        line = f"{index}. {name}"
+        added_length = len(line) + (1 if current else 0)
+        if current and current_length + added_length > content_limit:
+            content_pages.append(current)
+            current = []
+            current_length = 0
+        current.append(line)
+        current_length += len(line) + (1 if current_length else 0)
+    if current:
+        content_pages.append(current)
+    total = len(content_pages)
+    return [
+        f"**Soundboard sounds - page {index}/{total}**\n" + "\n".join(lines)
+        for index, lines in enumerate(content_pages, 1)
+    ]
 
 
 class SoundboardListPaginationView(discord.ui.View):
@@ -1711,7 +1729,9 @@ def main() -> None:
             )
             if soundboard_reply is not None:
                 if re.fullmatch(r"(?:soundboard|sb)\s+(?:list|sounds)", prompt.strip(), re.I):
-                    pages = soundboard_list_pages(soundboard_reply)
+                    pages = soundboard_list_pages([
+                        track["name"] for track in soundboard.list_tracks()
+                    ])
                     view = SoundboardListPaginationView(pages, message.author.id)
                     view.message = await message.reply(
                         pages[0], view=view, mention_author=False, allowed_mentions=safe_mentions

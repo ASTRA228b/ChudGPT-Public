@@ -196,11 +196,15 @@ def test_large_soundboard_list_splits_below_discord_limit() -> None:
 def test_large_soundboard_list_has_interactive_pages() -> None:
     import asyncio
 
-    reply = "Sounds: " + ", ".join(f"uploaded_sound_{index:03d}.mp3" for index in range(180))
-    pages = soundboard_list_pages(reply)
+    names = [f"uploaded_sound_{index:03d}.mp3" for index in range(180)]
+    names.insert(95, "Sobreviver e Seguir.mp3")
+    pages = soundboard_list_pages(names)
     assert len(pages) >= 2
     assert all(len(page) < 2_000 for page in pages)
     assert "page 1/" in pages[0]
+    matching_pages = [page for page in pages if "Sobreviver" in page or "Seguir.mp3" in page]
+    assert len(matching_pages) == 1
+    assert "Sobreviver e Seguir.mp3" in matching_pages[0]
 
     async def make_view() -> SoundboardListPaginationView:
         return SoundboardListPaginationView(pages, requester_id=123)
