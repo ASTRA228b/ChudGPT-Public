@@ -5,7 +5,7 @@ import discord
 
 from bot import (
     BUILT_IN_BOT_ADMIN_IDS, ChudGPTClient, DISCORD_SYSTEM_PROMPT,
-    GoogleTranslateClient, HelpPaginationView,
+    GoogleTranslateClient, HelpPaginationView, SoundboardListPaginationView,
     add_recent_context, clean_prompt,
     acquire_instance_lock,
     discord_code_reply, discord_command_reply, discord_developer_reply, discord_quoted_reply,
@@ -18,6 +18,7 @@ from bot import (
     server_admin_action,
     is_guild_owner_or_admin,
     load_user_blacklist,
+    soundboard_list_pages,
 )
 
 
@@ -180,6 +181,39 @@ def test_message_split_respects_discord_limit() -> None:
     chunks = split_discord_message("word " * 1_000, limit=200)
     assert len(chunks) > 1
     assert all(0 < len(chunk) <= 200 for chunk in chunks)
+
+
+def test_large_soundboard_list_splits_below_discord_limit() -> None:
+    reply = "Sounds: " + ", ".join(f"uploaded_sound_{index:03d}.mp3" for index in range(180))
+    chunks = split_discord_message(reply)
+    assert len(reply) > 2_000
+    assert len(chunks) >= 2
+    assert all(0 < len(chunk) <= 1_900 for chunk in chunks)
+    assert "uploaded_sound_000.mp3" in chunks[0]
+    assert "uploaded_sound_179.mp3" in chunks[-1]
+
+
+def test_large_soundboard_list_has_interactive_pages() -> None:
+    import asyncio
+
+    reply = "Sounds: " + ", ".join(f"uploaded_sound_{index:03d}.mp3" for index in range(180))
+    pages = soundboard_list_pages(reply)
+    assert len(pages) >= 2
+    assert all(len(page) < 2_000 for page in pages)
+    assert "page 1/" in pages[0]
+
+    async def make_view() -> SoundboardListPaginationView:
+        return SoundboardListPaginationView(pages, requester_id=123)
+
+    view = asyncio.run(make_view())
+    buttons = {item.custom_id: item for item in view.children}
+    assert set(buttons) == {
+        "chud_sounds:first", "chud_sounds:previous", "chud_sounds:counter",
+        "chud_sounds:next", "chud_sounds:last",
+    }
+    assert buttons["chud_sounds:counter"].label == f"1/{len(pages)}"
+    assert buttons["chud_sounds:first"].disabled
+    assert not buttons["chud_sounds:next"].disabled
 
 
 def test_clear_uses_matching_public_api_endpoint(monkeypatch) -> None:

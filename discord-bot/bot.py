@@ -736,6 +736,75 @@ class HelpPaginationView(discord.ui.View):
                 pass
 
 
+def soundboard_list_pages(reply: str) -> list[str]:
+    """Turn a potentially huge sound list into labeled Discord-safe pages."""
+    chunks = split_discord_message(reply, limit=1_750) or ["Sounds: none uploaded yet"]
+    total = len(chunks)
+    return [f"**Soundboard sounds - page {index}/{total}**\n{chunk}" for index, chunk in enumerate(chunks, 1)]
+
+
+class SoundboardListPaginationView(discord.ui.View):
+    """Interactive sound-library pages that edit a single Discord message."""
+
+    def __init__(self, pages: list[str], requester_id: int, timeout: float = 180.0) -> None:
+        super().__init__(timeout=timeout)
+        self.pages = pages or ["**Soundboard sounds - page 1/1**\nSounds: none uploaded yet"]
+        self.page = 1
+        self.requester_id = requester_id
+        self.message: discord.Message | None = None
+        self._refresh()
+
+    def _refresh(self) -> None:
+        last = len(self.pages)
+        self.first.disabled = self.page == 1
+        self.previous.disabled = self.page == 1
+        self.counter.label = f"{self.page}/{last}"
+        self.next.disabled = self.page == last
+        self.last.disabled = self.page == last
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id == self.requester_id:
+            return True
+        await interaction.response.send_message(
+            "Run `!chud soundboard list` to open your own sound list.", ephemeral=True
+        )
+        return False
+
+    async def _show(self, interaction: discord.Interaction, page: int) -> None:
+        self.page = max(1, min(len(self.pages), page))
+        self._refresh()
+        await interaction.response.edit_message(content=self.pages[self.page - 1], view=self)
+
+    @discord.ui.button(label="First", style=discord.ButtonStyle.secondary, custom_id="chud_sounds:first")
+    async def first(self, interaction: discord.Interaction, _button: discord.ui.Button) -> None:
+        await self._show(interaction, 1)
+
+    @discord.ui.button(label="Previous", style=discord.ButtonStyle.primary, custom_id="chud_sounds:previous")
+    async def previous(self, interaction: discord.Interaction, _button: discord.ui.Button) -> None:
+        await self._show(interaction, self.page - 1)
+
+    @discord.ui.button(label="1/1", style=discord.ButtonStyle.secondary, disabled=True, custom_id="chud_sounds:counter")
+    async def counter(self, _interaction: discord.Interaction, _button: discord.ui.Button) -> None:
+        return
+
+    @discord.ui.button(label="Next", style=discord.ButtonStyle.primary, custom_id="chud_sounds:next")
+    async def next(self, interaction: discord.Interaction, _button: discord.ui.Button) -> None:
+        await self._show(interaction, self.page + 1)
+
+    @discord.ui.button(label="Last", style=discord.ButtonStyle.secondary, custom_id="chud_sounds:last")
+    async def last(self, interaction: discord.Interaction, _button: discord.ui.Button) -> None:
+        await self._show(interaction, len(self.pages))
+
+    async def on_timeout(self) -> None:
+        for item in self.children:
+            item.disabled = True
+        if self.message is not None:
+            try:
+                await self.message.edit(view=self)
+            except discord.HTTPException:
+                pass
+
+
 def requested_admin_help_page(prompt: str) -> int | None:
     match = re.fullmatch(r"\s*(?:admin[- ]help|admin commands?)(?:\s+([12]))?\s*", prompt, re.I)
     return int(match.group(1) or 1) if match else None
@@ -1641,7 +1710,22 @@ def main() -> None:
                 prompt, message, client, soundboard, settings.soundboard_admin_user_ids, settings.port
             )
             if soundboard_reply is not None:
-                await message.reply(soundboard_reply, mention_author=False, allowed_mentions=safe_mentions)
+                if re.fullmatch(r"(?:soundboard|sb)\s+(?:list|sounds)", prompt.strip(), re.I):
+                    pages = soundboard_list_pages(soundboard_reply)
+                    view = SoundboardListPaginationView(pages, message.author.id)
+                    view.message = await message.reply(
+                        pages[0], view=view, mention_author=False, allowed_mentions=safe_mentions
+                    )
+                else:
+                    # Keep every other unusually long soundboard response safe
+                    # under Discord's hard 2,000-character message limit.
+                    for index, chunk in enumerate(split_discord_message(soundboard_reply)):
+                        if index == 0:
+                            await message.reply(
+                                chunk, mention_author=False, allowed_mentions=safe_mentions
+                            )
+                        else:
+                            await message.channel.send(chunk, allowed_mentions=safe_mentions)
                 return
             recent_context = list(recent_user_messages[context_key])
             model_prompt = prompt
