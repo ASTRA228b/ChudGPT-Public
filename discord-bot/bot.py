@@ -69,6 +69,38 @@ def acquire_instance_lock(path: Path = INSTANCE_LOCK_PATH):
     return handle
 
 
+BUILT_IN_BOT_ADMIN_IDS = frozenset({
+    1386115817325727854,
+    1324847616810422402,
+    1527095004789477377,
+})
+DEFAULT_BLACKLIST_MESSAGE = "You are blacklisted from using ChudGPT."
+
+
+def load_user_blacklist(path: Path) -> tuple[frozenset[int], str]:
+    """Load a hot-reloadable user-ID blacklist without retaining bad state."""
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        LOGGER.warning("Discord blacklist file is missing: %s", path)
+        return frozenset(), DEFAULT_BLACKLIST_MESSAGE
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        LOGGER.warning("Could not read Discord blacklist %s: %s", path, error)
+        return frozenset(), DEFAULT_BLACKLIST_MESSAGE
+
+    raw_ids = payload.get("user_ids", []) if isinstance(payload, dict) else payload
+    raw_message = payload.get("message", DEFAULT_BLACKLIST_MESSAGE) if isinstance(payload, dict) else DEFAULT_BLACKLIST_MESSAGE
+    if not isinstance(raw_ids, list):
+        LOGGER.warning("Discord blacklist user_ids must be a JSON list: %s", path)
+        return frozenset(), DEFAULT_BLACKLIST_MESSAGE
+    user_ids = frozenset(
+        int(value) for value in raw_ids
+        if isinstance(value, int) or (isinstance(value, str) and value.strip().isdigit())
+    )
+    message = raw_message.strip() if isinstance(raw_message, str) else DEFAULT_BLACKLIST_MESSAGE
+    return user_ids, message or DEFAULT_BLACKLIST_MESSAGE
+
+
 @dataclass(frozen=True)
 class Settings:
     discord_token: str
@@ -83,6 +115,7 @@ class Settings:
     soundboard_host: str
     soundboard_admin_user_ids: frozenset[int]
     server_backup_dir: Path
+    blacklist_file: Path
 
     @classmethod
     def from_environment(cls) -> "Settings":
@@ -103,14 +136,17 @@ class Settings:
                 "CHUDGPT_SOUNDBOARD_DIR", r"D:\ChudGPT-Bot-Sounds"
             )),
             soundboard_host=os.getenv("SOUNDBOARD_HOST", "127.0.0.1").strip() or "127.0.0.1",
-            soundboard_admin_user_ids=frozenset(
+            soundboard_admin_user_ids=BUILT_IN_BOT_ADMIN_IDS | frozenset(
                 int(value.strip()) for value in os.getenv(
                     "CHUDGPT_SOUNDBOARD_ADMIN_IDS",
-                    "1386115817325727854,1324847616810422402",
+                    "",
                 ).split(",") if value.strip().isdigit()
             ),
             server_backup_dir=Path(os.getenv(
                 "CHUDGPT_SERVER_BACKUP_DIR", r"D:\ChudGPT-Discord-Server-Files"
+            )),
+            blacklist_file=Path(os.getenv(
+                "CHUDGPT_BLACKLIST_FILE", str(Path(__file__).with_name("blacklist.json"))
             )),
         )
 
@@ -1533,6 +1569,14 @@ def main() -> None:
         if not (is_dm or is_mentioned or uses_prefix):
             if message.content.strip():
                 recent_user_messages[context_key].append(message.content.strip())
+            return
+        blacklisted_ids, blacklist_message = load_user_blacklist(settings.blacklist_file)
+        if message.author.id in blacklisted_ids:
+            await message.reply(
+                blacklist_message,
+                mention_author=False,
+                allowed_mentions=discord.AllowedMentions.none(),
+            )
             return
         prompt = clean_prompt(message.content, client.user.id, settings.prefix)
         if not prompt:

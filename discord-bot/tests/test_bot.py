@@ -4,7 +4,8 @@ from unittest.mock import MagicMock
 import discord
 
 from bot import (
-    ChudGPTClient, DISCORD_SYSTEM_PROMPT, GoogleTranslateClient, HelpPaginationView,
+    BUILT_IN_BOT_ADMIN_IDS, ChudGPTClient, DISCORD_SYSTEM_PROMPT,
+    GoogleTranslateClient, HelpPaginationView,
     add_recent_context, clean_prompt,
     acquire_instance_lock,
     discord_code_reply, discord_command_reply, discord_developer_reply, discord_quoted_reply,
@@ -16,6 +17,7 @@ from bot import (
     discord_admin_help_page,
     server_admin_action,
     is_guild_owner_or_admin,
+    load_user_blacklist,
 )
 
 
@@ -27,6 +29,31 @@ def test_single_instance_lock_rejects_duplicate(tmp_path) -> None:
         assert acquire_instance_lock(lock_path) is None
     finally:
         first.close()
+
+
+def test_blacklist_loads_numeric_ids_and_custom_message(tmp_path) -> None:
+    path = tmp_path / "blacklist.json"
+    path.write_text(
+        '{"user_ids": [123, "456", "not-an-id"], "message": "Access denied."}',
+        encoding="utf-8",
+    )
+    user_ids, message = load_user_blacklist(path)
+    assert user_ids == frozenset({123, 456})
+    assert message == "Access denied."
+
+
+def test_blacklist_missing_or_invalid_file_fails_open_safely(tmp_path) -> None:
+    missing_ids, missing_message = load_user_blacklist(tmp_path / "missing.json")
+    assert missing_ids == frozenset()
+    assert "blacklisted" in missing_message.lower()
+    invalid = tmp_path / "invalid.json"
+    invalid.write_text("not json", encoding="utf-8")
+    invalid_ids, _ = load_user_blacklist(invalid)
+    assert invalid_ids == frozenset()
+
+
+def test_all_requested_bot_admins_are_built_in() -> None:
+    assert {1386115817325727854, 1324847616810422402, 1527095004789477377} <= BUILT_IN_BOT_ADMIN_IDS
 
 
 def test_clean_prompt_removes_mentions_and_prefixes() -> None:

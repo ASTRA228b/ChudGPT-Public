@@ -132,6 +132,24 @@ The Discord controls are locked to user IDs `1386115817325727854` and
 `CHUDGPT_SOUNDBOARD_ADMIN_IDS` variable to manage that allowlist. Server
 administrators do not automatically gain soundboard access.
 
+The built-in bot administrators are `1386115817325727854`,
+`1324847616810422402`, and `1527095004789477377`. Extra IDs supplied through
+`CHUDGPT_SOUNDBOARD_ADMIN_IDS` are added to these built-in administrators.
+
+## User blacklist
+
+Edit `blacklist.json` and add Discord user IDs to its `user_ids` array. The bot
+reloads this file whenever somebody tries to use it, so changing the list does
+not require a restart. A blacklisted user receives the configured `message` and
+cannot use chat, commands, soundboard controls, or server-administration tools.
+
+```json
+{
+  "user_ids": [123456789012345678],
+  "message": "You are blacklisted from using ChudGPT."
+}
+```
+
 1. Install the updated Python requirements. The `discord.py[voice]` extra
    includes PyNaCl and current Discord DAVE voice-protocol support;
    `imageio-ffmpeg` supplies a local FFmpeg binary automatically.
