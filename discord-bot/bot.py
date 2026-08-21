@@ -101,6 +101,25 @@ def load_user_blacklist(path: Path) -> tuple[frozenset[int], str]:
     return user_ids, message or DEFAULT_BLACKLIST_MESSAGE
 
 
+class BlacklistCache:
+    """Hot-reload the blacklist only when its file changes."""
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self._mtime_ns: int | None = None
+        self._value = (frozenset(), DEFAULT_BLACKLIST_MESSAGE)
+
+    def get(self) -> tuple[frozenset[int], str]:
+        try:
+            mtime_ns = self.path.stat().st_mtime_ns
+        except OSError:
+            mtime_ns = None
+        if mtime_ns != self._mtime_ns:
+            self._value = load_user_blacklist(self.path)
+            self._mtime_ns = mtime_ns
+        return self._value
+
+
 @dataclass(frozen=True)
 class Settings:
     discord_token: str
@@ -467,6 +486,21 @@ def discord_social_reply(prompt: str, recent_messages: list[str] | None = None) 
         return "I don't experience time like a person. ChudGPT is an ongoing experimental AI project, and this bot uses ChudGPT-Public V20."
     if re.fullmatch(r"(?:ha+|haha+|lol|lmao|lmfao)[!.?]*", normalized):
         return "Glad that landed."
+    if re.fullmatch(r"(?:no|nah|nope|nuh+ uh+)[!.?]*", normalized):
+        return "Fair enough. What do you want to do instead?"
+    if re.fullmatch(r"(?:yes|yeah|yep|sure|right|bet)[!.?]*", normalized):
+        return "Got it. Keep going."
+    if re.fullmatch(r"(?:bro|bruh|deadass|fr|real)[!.?]*", normalized):
+        return "Yeah, I'm with you. What's up?"
+    if re.fullmatch(r"(?:poop|fart|beans?)[!.?]*", normalized):
+        return "A powerful contribution to the conversation, honestly."
+    if re.fullmatch(r"i(?:'m| am|m) (?:so )?(?:cool|awesome|great|the best)[!.?]*", normalized):
+        return "Confidence detected. I respect it."
+    if re.search(r"\byou(?:'re|re| are|r)?\s*(?:just )?(?:a )?(?:fat|dumb|stupid|chud)\b", normalized):
+        return "Maybe, but I'm still here. What did I get wrong?"
+    love_match = re.fullmatch(r"(?:i love|i like)\s+(.+?)[!.?]*", normalized)
+    if love_match:
+        return f"Nice. What do you like most about {love_match.group(1)}?"
     if re.fullmatch(r"(?:\?|what|huh|what do you mean|what are you talking about)[?.!]*", normalized) and recent_text:
         return "Yeah, my last reply was confusing. Let me reset and answer what you actually meant."
     if re.match(r"^bro\s+what(?:\s|[?!]|$)", normalized) and recent_text:
@@ -671,6 +705,9 @@ def discord_help_page(prefix: str, page: int) -> str:
         f"`{prefix} source` - open the public source repository\n"
         f"`{prefix} gtag` - explain Gorilla Tag knowledge\n"
         f"`{prefix} invite` - explain how to invite the bot\n"
+        f"`{prefix} coinflip` - flip a coin\n"
+        f"`{prefix} roll 2d20` - roll dice\n"
+        f"`{prefix} choose red, blue, green` - pick an option\n"
         f"`{prefix} say <text>` - repeat ordinary text safely\n"
         f"`{prefix} code <request>` - request code with a clear language and goal"
         f"\n`{prefix} soundboard` - owner-only local soundboard controls"
@@ -955,6 +992,23 @@ def discord_command_reply(
         return "I can't change logging from a chat command. Only Astra can change the bot host's logging configuration; avoid sending private information here."
     if normalized in {"ping", "test"}:
         return "Pong - ChudGPT-Public V20 is responding."
+    if normalized in {"coin", "coinflip", "flip", "flip a coin"}:
+        return f"The coin landed on **{secrets.choice(('heads', 'tails'))}**."
+    roll = re.fullmatch(r"roll(?:\s+(\d{1,3}))?(?:d(\d{1,4}))?", normalized)
+    if roll:
+        count = int(roll.group(1) or 1)
+        sides = int(roll.group(2) or 6)
+        if count > 20 or sides < 2 or sides > 10_000:
+            return "Use 1-20 dice with 2-10,000 sides, like `roll 2d20`."
+        values = [secrets.randbelow(sides) + 1 for _ in range(count)]
+        total = f" (total **{sum(values)}**)" if count > 1 else ""
+        return f"🎲 {', '.join(str(value) for value in values)}{total}"
+    choose = re.fullmatch(r"choose\s+(.+)", prompt.strip(), re.I)
+    if choose:
+        options = [item.strip() for item in re.split(r"\s*[|,]\s*", choose.group(1)) if item.strip()]
+        if 2 <= len(options) <= 20:
+            return f"I choose **{secrets.choice(options)}**."
+        return "Give me 2-20 choices separated by commas or `|`."
     return None
 
 
@@ -1592,6 +1646,8 @@ def main() -> None:
     public_api = ChudGPTClient(settings.api_url, settings.request_timeout)
     translator = GoogleTranslateClient(settings.google_translate_api_key)
     limiter = SlidingWindowLimiter(settings.max_requests_per_minute)
+    blacklist_cache = BlacklistCache(settings.blacklist_file)
+    api_semaphore = __import__("asyncio").Semaphore(1)
     safe_mentions = discord.AllowedMentions(users=True, roles=False, everyone=False, replied_user=True)
     recent_user_messages: dict[tuple[int, int], deque[str]] = defaultdict(lambda: deque(maxlen=3))
     recent_bot_messages: dict[tuple[int, int], deque[str]] = defaultdict(lambda: deque(maxlen=2))
@@ -1657,7 +1713,7 @@ def main() -> None:
             if message.content.strip():
                 recent_user_messages[context_key].append(message.content.strip())
             return
-        blacklisted_ids, blacklist_message = load_user_blacklist(settings.blacklist_file)
+        blacklisted_ids, blacklist_message = blacklist_cache.get()
         if message.author.id in blacklisted_ids:
             await message.reply(
                 blacklist_message,
@@ -1823,9 +1879,12 @@ def main() -> None:
             )
             if reply is None:
                 async with message.channel.typing():
-                    reply = await __import__("asyncio").to_thread(
-                        public_api.chat, model_prompt, make_session_id(message), discord_context
-                    )
+                    # Queue generation before HTTP so concurrent Discord traffic does not
+                    # produce avoidable local-model contention and timeout cascades.
+                    async with api_semaphore:
+                        reply = await __import__("asyncio").to_thread(
+                            public_api.chat, model_prompt, make_session_id(message), discord_context
+                        )
             if translator.enabled and response_language and response_language != "en" and not re.search(r"```|<@!?\d+>", reply):
                 reply, _ = await __import__("asyncio").to_thread(
                     translator.translate, reply, response_language, "en"
@@ -1850,11 +1909,17 @@ def main() -> None:
                     # Put the real Discord mention in the visible response. It
                     # is constructed from Discord's author object, never from
                     # generated model text or a guessed account ID.
-                    await message.reply(
-                        place_author_mention(prompt, chunk, message.author.mention),
-                        mention_author=False,
-                        allowed_mentions=safe_mentions,
-                    )
+                    content = place_author_mention(prompt, chunk, message.author.mention)
+                    try:
+                        await message.reply(
+                            content, mention_author=False, allowed_mentions=safe_mentions
+                        )
+                    except discord.HTTPException as error:
+                        # If the triggering message was deleted while the model worked,
+                        # Discord rejects its reply reference. Send normally instead.
+                        if getattr(error, "code", None) != 50035:
+                            raise
+                        await message.channel.send(content, allowed_mentions=safe_mentions)
                 else:
                     await message.channel.send(chunk, allowed_mentions=safe_mentions)
         except requests.Timeout:
