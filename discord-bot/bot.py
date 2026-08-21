@@ -1260,6 +1260,21 @@ def log_discord_exchange(log_dir: Path, message: discord.Message, prompt: str, r
         handle.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 
+def discord_connection_ready(state: dict[str, Any]) -> bool:
+    """Return live gateway readiness and repair stale state after a resume."""
+    client = state.get("discord_client")
+    loop = state.get("discord_loop")
+    if client is not None and loop is not None:
+        try:
+            live = bool(client.is_ready()) and loop.is_running() and not loop.is_closed()
+        except (AttributeError, RuntimeError):
+            live = False
+        if live:
+            state["discord_ready"] = True
+            return True
+    return bool(state.get("discord_ready"))
+
+
 def create_health_app(state: dict[str, Any], soundboard: SoundboardController) -> Flask:
     app = Flask(__name__)
     app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024
@@ -1269,13 +1284,13 @@ def create_health_app(state: dict[str, Any], soundboard: SoundboardController) -
     def index() -> tuple[dict[str, Any], int]:
         return {
             "name": "ChudGPT-Public Discord Bot",
-            "status": "online" if state.get("discord_ready") else "starting",
+            "status": "online" if discord_connection_ready(state) else "starting",
             "usage": "DM the bot, mention it, or use the configured !chud prefix.",
         }, 200
 
     @app.get("/health")
     def health() -> tuple[dict[str, Any], int]:
-        ready = bool(state.get("discord_ready"))
+        ready = discord_connection_ready(state)
         return {"ok": ready, "discord_ready": ready, "api": state.get("api_status", "unknown")}, 200 if ready else 503
 
     @app.get("/status")
@@ -1295,7 +1310,7 @@ def create_health_app(state: dict[str, Any], soundboard: SoundboardController) -
     def run_voice(action: Any) -> None:
         loop = state.get("discord_loop")
         client = state.get("discord_client")
-        if loop is None or client is None or not state.get("discord_ready"):
+        if loop is None or client is None or not discord_connection_ready(state):
             raise SoundboardError("Discord is not connected yet.")
         submit_to_discord(loop, action(client))
 
@@ -1677,6 +1692,13 @@ def main() -> None:
     @client.event
     async def on_disconnect() -> None:
         state["discord_ready"] = False
+
+    @client.event
+    async def on_resumed() -> None:
+        # Discord resumes do not necessarily invoke on_ready again. Restore the
+        # web soundboard's shared readiness flag after a successful resume.
+        state["discord_ready"] = True
+        state["discord_loop"] = __import__("asyncio").get_running_loop()
 
     @client.event
     async def on_guild_join(guild: discord.Guild) -> None:

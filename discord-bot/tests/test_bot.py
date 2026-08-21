@@ -18,6 +18,7 @@ from bot import (
     server_admin_action,
     is_guild_owner_or_admin,
     load_user_blacklist,
+    discord_connection_ready,
     soundboard_list_pages,
 )
 
@@ -30,6 +31,17 @@ def test_single_instance_lock_rejects_duplicate(tmp_path) -> None:
         assert acquire_instance_lock(lock_path) is None
     finally:
         first.close()
+
+
+def test_live_discord_client_repairs_stale_ready_flag() -> None:
+    client = MagicMock()
+    client.is_ready.return_value = True
+    loop = MagicMock()
+    loop.is_running.return_value = True
+    loop.is_closed.return_value = False
+    state = {"discord_ready": False, "discord_client": client, "discord_loop": loop}
+    assert discord_connection_ready(state) is True
+    assert state["discord_ready"] is True
 
 
 def test_blacklist_loads_numeric_ids_and_custom_message(tmp_path) -> None:
