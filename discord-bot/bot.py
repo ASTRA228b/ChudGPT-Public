@@ -1064,7 +1064,7 @@ Server owner or Discord Administrator only.
 `{prefix} delete all` - create + DM a snapshot, then request confirmation to delete every channel
 `{prefix} rebuild server` - attach a saved `.txt`, then request confirmation to rebuild it
 `{prefix} purge all` - request confirmation to purge every message in this channel
-`{prefix} save roles` - persist the server's role configuration
+`{prefix} save roles` - save role configuration and DM the backup
 `{prefix} clear roles` - remove every role ChudGPT can safely remove from members
 `{prefix} delete roles` - permanently delete every role ChudGPT can safely manage
 
@@ -1084,7 +1084,7 @@ def server_admin_action(prompt: str) -> tuple[str, str | None] | None:
         "purge": r"(?:server )?purge all|purge all",
         "save_roles": r"(?:server )?save roles",
         "clear_roles": r"(?:server )?clear roles",
-        "delete_roles": r"(?:server )?delete roles",
+        "delete_roles": r"(?:server )?delete (?:all )?roles",
     }
     for action, pattern in patterns.items():
         match = re.fullmatch(rf"(?:{pattern})(?: confirm ([a-z0-9]{{6}}))?", normalized)
@@ -1174,7 +1174,7 @@ def guild_roles_snapshot(guild: discord.Guild) -> dict[str, Any]:
 
 
 def save_guild_roles(guild: discord.Guild, backup_dir: Path) -> tuple[Path, dict[str, Any]]:
-    """Atomically persist the latest role backup for exactly one guild."""
+    """Atomically stage a per-guild role backup for secure Discord delivery."""
     backup_dir.mkdir(parents=True, exist_ok=True)
     path = backup_dir / f"guild_{guild.id}_roles.json"
     temporary = path.with_suffix(".tmp")
@@ -1293,6 +1293,37 @@ async def dm_layout_snapshot(
             path.unlink(missing_ok=True)
         except OSError as error:
             LOGGER.warning("Could not remove temporary server snapshot %s: %s", path, error)
+
+
+async def dm_role_snapshot(
+    members: list[discord.Member], path: Path, guild_name: str
+) -> frozenset[int]:
+    """DM a role backup to unique recipients and always remove its host copy."""
+    delivered: set[int] = set()
+    try:
+        seen: set[int] = set()
+        for member in members:
+            if member.id in seen:
+                continue
+            seen.add(member.id)
+            upload: discord.File | None = None
+            try:
+                upload = discord.File(path, filename=path.name)
+                await member.send(
+                    f"Role configuration backup for **{guild_name}**.", file=upload
+                )
+                delivered.add(member.id)
+            except (discord.Forbidden, discord.HTTPException, OSError):
+                LOGGER.warning("Could not DM role backup to user %s", member.id)
+            finally:
+                if upload is not None:
+                    upload.close()
+        return frozenset(delivered)
+    finally:
+        try:
+            path.unlink(missing_ok=True)
+        except OSError as error:
+            LOGGER.warning("Could not remove temporary role backup %s: %s", path, error)
 
 
 async def rebuild_guild_layout(guild: discord.Guild, data: dict[str, Any]) -> tuple[int, list[str]]:
@@ -1648,14 +1679,34 @@ async def handle_server_admin_command(
                 save_guild_roles, guild, backup_dir
             )
             saved_at = datetime.fromisoformat(snapshot["saved_at"])
+            delivered = await dm_role_snapshot(snapshot_recipients, path, guild.name)
+            missing = required_snapshot_recipient_ids.difference(delivered)
+            if missing:
+                return (
+                    "The role backup was created and its host copy was deleted, but I could "
+                    "not DM it to both the server owner and invoking administrator. Enable "
+                    "DMs and try again."
+                )
             return (
                 f"Saved {len(snapshot['roles'])} roles for **{guild.name}** at "
-                f"{discord.utils.format_dt(saved_at, 'F')}. Persistent backup: `{path.name}`."
+                f"{discord.utils.format_dt(saved_at, 'F')}. I sent `{path.name}` to the "
+                "server owner and invoking administrator, then deleted the host copy."
             )
         if action in {"clear_roles", "delete_roles"}:
             bot_member = guild.me
             if not bot_has_manage_roles(guild):
                 return f"I need the **Manage Roles** permission before {'Clear Roles' if action == 'clear_roles' else 'Delete Roles'} can run."
+            if action == "delete_roles":
+                path, _snapshot = await __import__("asyncio").to_thread(
+                    save_guild_roles, guild, backup_dir
+                )
+                delivered = await dm_role_snapshot(snapshot_recipients, path, guild.name)
+                if not required_snapshot_recipient_ids.issubset(delivered):
+                    return (
+                        "Delete Roles was cancelled because the safety role backup could not "
+                        "be DMed to both the server owner and invoking administrator. Enable "
+                        "DMs and try again."
+                    )
         if action == "delete":
             bot_member = guild.me
             if bot_member is None or not bot_member.guild_permissions.manage_channels:
@@ -1698,7 +1749,7 @@ async def handle_server_admin_command(
             "rebuild": "This will create the categories and channels stored in the latest server snapshot.",
             "purge": "This will permanently delete all messages in the current channel.",
             "clear_roles": "This will remove every non-managed role below ChudGPT's highest role from every server member. @everyone, managed roles, and roles ChudGPT cannot manage will be skipped.",
-            "delete_roles": "This will permanently delete every non-managed role below ChudGPT's highest role. @everyone, managed roles, and roles ChudGPT cannot manage will be skipped.",
+            "delete_roles": "This will permanently delete every non-managed role below ChudGPT's highest role. A safety role backup has been sent to the server owner and invoking administrator. @everyone, managed roles, and roles ChudGPT cannot manage will be skipped.",
         }[action]
         command = {
             "delete": "delete all", "rebuild": "rebuild server", "purge": "purge all",

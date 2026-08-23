@@ -22,6 +22,7 @@ from bot import (
     role_is_manageable,
     bot_has_manage_roles,
     save_guild_roles,
+    dm_role_snapshot,
     clear_manageable_member_roles,
     delete_manageable_guild_roles,
     soundboard_list_pages,
@@ -499,6 +500,7 @@ def test_server_admin_commands_are_separate_and_confirmation_aware() -> None:
     assert server_admin_action("clear roles") == ("clear_roles", None)
     assert server_admin_action("clear roles confirm 123abc") == ("clear_roles", "123ABC")
     assert server_admin_action("delete roles") == ("delete_roles", None)
+    assert server_admin_action("delete all roles") == ("delete_roles", None)
     assert server_admin_action("delete roles confirm abc123") == ("delete_roles", "ABC123")
     assert server_admin_action("delete a channel") is None
 
@@ -544,7 +546,7 @@ def test_role_hierarchy_managed_and_everyone_rules() -> None:
     assert not bot_has_manage_roles(SimpleNamespace(me=None))
 
 
-def test_role_backup_is_per_guild_and_persists(tmp_path) -> None:
+def test_role_backup_is_per_guild_and_serializable(tmp_path) -> None:
     roles = [_role(1, "@everyone", 0, default=True), _role(2, "Member", 1)]
     guild = SimpleNamespace(id=123, name="Test Guild", roles=roles)
     path, snapshot = save_guild_roles(guild, tmp_path)
@@ -553,8 +555,37 @@ def test_role_backup_is_per_guild_and_persists(tmp_path) -> None:
     loaded = __import__("json").loads(path.read_text(encoding="utf-8"))
     assert loaded["guild_id"] == 123
     assert loaded["roles"][1]["permissions"] == 200
-    # A second process can read the same persistent guild-specific file.
+    # The staged file is complete before Discord delivery begins.
     assert __import__("json").loads(path.read_text(encoding="utf-8"))["format"].endswith("v1")
+
+
+def test_role_backup_is_dmed_then_removed_from_host(tmp_path) -> None:
+    import asyncio
+
+    path = tmp_path / "guild_123_roles.json"
+    path.write_text('{"roles": []}', encoding="utf-8")
+    owner = SimpleNamespace(id=1, send=AsyncMock())
+    admin = SimpleNamespace(id=2, send=AsyncMock())
+    delivered = asyncio.run(dm_role_snapshot([admin, owner], path, "Test Guild"))
+    assert delivered == frozenset({1, 2})
+    assert not path.exists()
+    admin.send.assert_awaited_once()
+    owner.send.assert_awaited_once()
+
+
+def test_failed_role_backup_dm_still_removes_host_copy(tmp_path) -> None:
+    import asyncio
+
+    path = tmp_path / "guild_123_roles.json"
+    path.write_text('{"roles": []}', encoding="utf-8")
+    response = MagicMock(status=403, reason="Forbidden")
+    failed_send = AsyncMock(side_effect=discord.Forbidden(
+        response, {"message": "Cannot send messages to this user", "code": 50007}
+    ))
+    admin = SimpleNamespace(id=2, send=failed_send)
+    delivered = asyncio.run(dm_role_snapshot([admin], path, "Test Guild"))
+    assert delivered == frozenset()
+    assert not path.exists()
 
 
 def test_clear_roles_handles_multiple_roles_and_large_member_sets() -> None:
