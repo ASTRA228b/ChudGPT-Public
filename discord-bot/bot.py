@@ -1066,6 +1066,8 @@ Server owner or Discord Administrator only.
 `{prefix} purge all` - request confirmation to purge every message in this channel
 `{prefix} save everything` - run Save Channels and Save Roles, then DM both backups
 `{prefix} save roles` - save role configuration and DM the backup
+`{prefix} remake roles` - attach a saved role `.json` and restore manageable roles
+`{prefix} rebuild everything` - attach channel and role backups and restore both
 `{prefix} clear roles` - remove every role ChudGPT can safely remove from members
 `{prefix} delete roles` - permanently delete every role ChudGPT can safely manage
 
@@ -1085,6 +1087,8 @@ def server_admin_action(prompt: str) -> tuple[str, str | None] | None:
         "purge": r"(?:server )?purge all|purge all",
         "save_roles": r"(?:server )?save roles",
         "save_everything": r"(?:server )?save everything",
+        "remake_roles": r"(?:server )?(?:remake|rebuild|restore) roles",
+        "rebuild_everything": r"(?:server )?rebuild everything",
         "clear_roles": r"(?:server )?clear roles",
         "delete_roles": r"(?:server )?delete (?:all )?roles",
     }
@@ -1263,6 +1267,77 @@ def parse_guild_layout(guild: discord.Guild, content: str) -> dict[str, Any]:
     if not isinstance(data.get("categories"), list) or not isinstance(data.get("channels"), list):
         raise ValueError("The saved layout is missing categories or channels.")
     return data
+
+
+def parse_guild_roles(guild: discord.Guild, content: str) -> dict[str, Any]:
+    """Validate a role snapshot belonging to this exact Discord guild."""
+    data = json.loads(content)
+    if data.get("format") != "ChudGPT Discord role layout v1" or data.get("guild_id") != guild.id:
+        raise ValueError("The saved role backup is invalid or belongs to another Discord server.")
+    roles = data.get("roles")
+    if not isinstance(roles, list) or len(roles) > 250:
+        raise ValueError("The saved role backup has an invalid role list.")
+    for item in roles:
+        if not isinstance(item, dict) or not isinstance(item.get("name"), str):
+            raise ValueError("The saved role backup contains an invalid role entry.")
+        if len(item["name"]) > 100:
+            raise ValueError("A saved role name is longer than Discord allows.")
+        for field in ("color", "position", "permissions"):
+            if not isinstance(item.get(field), int) or item[field] < 0:
+                raise ValueError(f"A saved role has an invalid {field} value.")
+        for field in ("hoist", "mentionable", "managed", "is_everyone"):
+            if not isinstance(item.get(field), bool):
+                raise ValueError(f"A saved role has an invalid {field} value.")
+    return data
+
+
+async def remake_guild_roles(
+    guild: discord.Guild, data: dict[str, Any], bot_member: discord.Member
+) -> dict[str, int]:
+    """Restore editable role settings and create missing roles without touching members."""
+    existing_by_name: dict[str, list[discord.Role]] = {}
+    for role in guild.roles:
+        existing_by_name.setdefault(role.name, []).append(role)
+    created = updated = skipped = failures = 0
+    restored: list[tuple[discord.Role, int]] = []
+    for item in sorted(data["roles"], key=lambda value: value["position"]):
+        if item["is_everyone"] or item["managed"]:
+            skipped += 1
+            continue
+        candidates = existing_by_name.get(item["name"], [])
+        role = next((candidate for candidate in candidates if role_is_manageable(candidate, bot_member)), None)
+        try:
+            settings = {
+                "name": item["name"],
+                "permissions": discord.Permissions(item["permissions"]),
+                "colour": discord.Colour(item["color"]),
+                "hoist": item["hoist"],
+                "mentionable": item["mentionable"],
+                "reason": "Confirmed ChudGPT Remake Roles command",
+            }
+            if role is None:
+                role = await guild.create_role(**settings)
+                existing_by_name.setdefault(role.name, []).append(role)
+                created += 1
+            else:
+                role = await role.edit(**settings)
+                updated += 1
+            restored.append((role, item["position"]))
+        except (TypeError, ValueError, discord.Forbidden, discord.HTTPException) as error:
+            failures += 1
+            LOGGER.warning("Role restore failed for guild %s role %s: %s", guild.id, item["name"], error)
+        if (created + updated + failures) % 25 == 0:
+            await __import__("asyncio").sleep(0)
+    for role, position in restored:
+        try:
+            await role.edit(
+                position=min(position, max(1, bot_member.top_role.position - 1)),
+                reason="Confirmed ChudGPT role-order restore",
+            )
+        except (TypeError, ValueError, discord.Forbidden, discord.HTTPException) as error:
+            failures += 1
+            LOGGER.warning("Role position restore failed for guild %s role %s: %s", guild.id, role.id, error)
+    return {"created": created, "updated": updated, "skipped": skipped, "failures": failures}
 
 
 async def dm_layout_snapshot(
@@ -1666,7 +1741,7 @@ async def handle_server_admin_command(
     key = (guild.id, member.id, action)
     now = time.monotonic()
     pending = confirmations.get(key)
-    rebuild_layout: dict[str, Any] | None = None
+    rebuild_payload: dict[str, Any] | None = None
 
     if supplied_code is None:
         if action == "save":
@@ -1728,6 +1803,52 @@ async def handle_server_admin_command(
                 f"I sent `{channel_path.name}` and `{role_path.name}` to the server owner "
                 "and invoking administrator, then deleted both host copies."
             )
+        if action in {"remake_roles", "rebuild_everything"}:
+            bot_member = guild.me
+            if not bot_has_manage_roles(guild):
+                return "I need the **Manage Roles** permission before role restoration can run."
+            if action == "rebuild_everything" and (
+                bot_member is None or not bot_member.guild_permissions.manage_channels
+            ):
+                return "I need both **Manage Channels** and **Manage Roles** before Rebuild Everything can run."
+            attachments = list(getattr(message, "attachments", []))
+            expected_count = 2 if action == "rebuild_everything" else 1
+            if len(attachments) != expected_count:
+                if action == "rebuild_everything":
+                    return (
+                        "Attach exactly two files to the same message: the channel `.txt` "
+                        f"and role `.json` backups, then run `{prefix} rebuild everything`."
+                    )
+                return (
+                    "Attach the role `.json` backup that ChudGPT previously sent you to "
+                    f"the same message as `{prefix} remake roles`."
+                )
+            parsed_channels: dict[str, Any] | None = None
+            parsed_roles: dict[str, Any] | None = None
+            try:
+                for attachment in attachments:
+                    if attachment.size > 1_000_000:
+                        raise ValueError(f"{attachment.filename} exceeds the 1 MB backup limit.")
+                    content = (await attachment.read()).decode("utf-8")
+                    decoded = json.loads(content)
+                    backup_format = decoded.get("format") if isinstance(decoded, dict) else None
+                    if backup_format == "ChudGPT Discord channel layout v1":
+                        if parsed_channels is not None:
+                            raise ValueError("Two channel backups were attached; one role backup is missing.")
+                        parsed_channels = parse_guild_layout(guild, content)
+                    elif backup_format == "ChudGPT Discord role layout v1":
+                        if parsed_roles is not None:
+                            raise ValueError("Two role backups were attached; one channel backup is missing.")
+                        parsed_roles = parse_guild_roles(guild, content)
+                    else:
+                        raise ValueError(f"{attachment.filename} is not a ChudGPT server backup.")
+            except (UnicodeDecodeError, ValueError, json.JSONDecodeError, discord.HTTPException) as error:
+                return f"The attached backup cannot be used: {error}"
+            if parsed_roles is None:
+                return "The ChudGPT role `.json` backup is missing."
+            if action == "rebuild_everything" and parsed_channels is None:
+                return "The ChudGPT channel `.txt` backup is missing."
+            rebuild_payload = {"roles": parsed_roles, "channels": parsed_channels}
         if action in {"clear_roles", "delete_roles"}:
             bot_member = guild.me
             if not bot_has_manage_roles(guild):
@@ -1768,7 +1889,7 @@ async def handle_server_admin_command(
                 return "That snapshot is unexpectedly large; the maximum accepted size is 1 MB."
             try:
                 payload = (await attachment.read()).decode("utf-8")
-                rebuild_layout = parse_guild_layout(guild, payload)
+                rebuild_payload = {"channels": parse_guild_layout(guild, payload)}
             except (UnicodeDecodeError, ValueError, json.JSONDecodeError, discord.HTTPException) as error:
                 return f"The attached layout cannot be used: {error}"
         elif action == "purge":
@@ -1779,16 +1900,19 @@ async def handle_server_admin_command(
                 return "Purge All can only be used in a purgeable server text channel or thread."
 
         code = secrets.token_hex(3).upper()
-        confirmations[key] = (code, now + 60.0, message.channel.id, rebuild_layout)
+        confirmations[key] = (code, now + 60.0, message.channel.id, rebuild_payload)
         warning = {
             "delete": "This will permanently delete every channel and category in the server. A safety snapshot has been sent to your DMs.",
             "rebuild": "This will create the categories and channels stored in the latest server snapshot.",
+            "remake_roles": "This will update matching manageable roles and create missing roles from the attached backup. Member role assignments are not changed.",
+            "rebuild_everything": "This will restore manageable role settings and create the categories and channels stored in both attached backups.",
             "purge": "This will permanently delete all messages in the current channel.",
             "clear_roles": "This will remove every non-managed role below ChudGPT's highest role from every server member. @everyone, managed roles, and roles ChudGPT cannot manage will be skipped.",
             "delete_roles": "This will permanently delete every non-managed role below ChudGPT's highest role. A safety role backup has been sent to the server owner and invoking administrator. @everyone, managed roles, and roles ChudGPT cannot manage will be skipped.",
         }[action]
         command = {
             "delete": "delete all", "rebuild": "rebuild server", "purge": "purge all",
+            "remake_roles": "remake roles", "rebuild_everything": "rebuild everything",
             "clear_roles": "clear roles", "delete_roles": "delete roles",
         }[action]
         return f"⚠️ {warning}\nConfirm within 60 seconds with `{prefix} {command} confirm {code}`."
@@ -1804,10 +1928,11 @@ async def handle_server_admin_command(
         confirmations.pop(key, None)
         command = {
             "delete": "delete all", "rebuild": "rebuild server", "purge": "purge all",
+            "remake_roles": "remake roles", "rebuild_everything": "rebuild everything",
             "clear_roles": "clear roles", "delete_roles": "delete roles",
         }[action]
         return f"That confirmation is missing or expired. Run `{prefix} {command}` again to get a new code."
-    expected_code, _expires, original_channel_id, saved_layout = pending
+    expected_code, _expires, original_channel_id, saved_payload = pending
     if not secrets.compare_digest(supplied_code, expected_code):
         return "That confirmation code is incorrect. Nothing was changed."
     if action == "purge" and message.channel.id != original_channel_id:
@@ -1818,13 +1943,38 @@ async def handle_server_admin_command(
         deleted = await message.channel.purge(limit=None, reason="Confirmed ChudGPT Purge All command")
         return f"Purged {len(deleted)} messages from this channel."
     if action == "rebuild":
-        if saved_layout is None:
+        if saved_payload is None or saved_payload.get("channels") is None:
             return "The pending rebuild snapshot was lost. Attach it again and request a new confirmation code."
-        created, failures = await rebuild_guild_layout(guild, saved_layout)
+        created, failures = await rebuild_guild_layout(guild, saved_payload["channels"])
         detail = f" {len(failures)} item(s) failed; check the host log." if failures else ""
         if failures:
             LOGGER.warning("Server rebuild failures for guild %s: %s", guild.id, failures)
         return f"Rebuild finished: created {created} categories/channels.{detail}"
+    if action in {"remake_roles", "rebuild_everything"}:
+        if saved_payload is None or saved_payload.get("roles") is None:
+            return "The pending role backup was lost. Attach it again and request a new confirmation code."
+        bot_member = guild.me
+        if not bot_has_manage_roles(guild) or bot_member is None:
+            return "Role restoration was cancelled because I no longer have **Manage Roles** permission."
+        role_result = await remake_guild_roles(guild, saved_payload["roles"], bot_member)
+        role_summary = (
+            f"roles created: {role_result['created']}; updated: {role_result['updated']}; "
+            f"skipped: {role_result['skipped']}; failed: {role_result['failures']}"
+        )
+        if action == "remake_roles":
+            return f"Remake Roles finished: {role_summary}."
+        if not bot_member.guild_permissions.manage_channels:
+            return f"Roles were restored ({role_summary}), but channels were not rebuilt because I lost **Manage Channels** permission."
+        channel_layout = saved_payload.get("channels")
+        if channel_layout is None:
+            return f"Roles were restored ({role_summary}), but the pending channel backup was lost."
+        created, channel_failures = await rebuild_guild_layout(guild, channel_layout)
+        if channel_failures:
+            LOGGER.warning("Rebuild Everything channel failures for guild %s: %s", guild.id, channel_failures)
+        return (
+            f"Rebuild Everything finished: {role_summary}; created {created} "
+            f"categories/channels; channel failures: {len(channel_failures)}."
+        )
     if action == "clear_roles":
         bot_member = guild.me
         if not bot_has_manage_roles(guild):

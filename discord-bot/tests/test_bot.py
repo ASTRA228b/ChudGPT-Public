@@ -23,6 +23,8 @@ from bot import (
     role_is_manageable,
     bot_has_manage_roles,
     save_guild_roles,
+    parse_guild_roles,
+    remake_guild_roles,
     dm_role_snapshot,
     clear_manageable_member_roles,
     delete_manageable_guild_roles,
@@ -500,6 +502,10 @@ def test_server_admin_commands_are_separate_and_confirmation_aware() -> None:
     assert server_admin_action("save roles") == ("save_roles", None)
     assert server_admin_action("save everything") == ("save_everything", None)
     assert server_admin_action("server save everything") == ("save_everything", None)
+    assert server_admin_action("remake roles") == ("remake_roles", None)
+    assert server_admin_action("restore roles confirm abc123") == ("remake_roles", "ABC123")
+    assert server_admin_action("rebuild everything") == ("rebuild_everything", None)
+    assert server_admin_action("rebuild everything confirm 123abc") == ("rebuild_everything", "123ABC")
     assert server_admin_action("clear roles") == ("clear_roles", None)
     assert server_admin_action("clear roles confirm 123abc") == ("clear_roles", "123ABC")
     assert server_admin_action("delete roles") == ("delete_roles", None)
@@ -512,6 +518,8 @@ def test_server_admin_help_lists_save_everything() -> None:
     rendered = SERVER_ADMIN_HELP.format(prefix="!chud")
     assert "`!chud save everything`" in rendered
     assert "Save Channels and Save Roles" in rendered
+    assert "`!chud remake roles`" in rendered
+    assert "`!chud rebuild everything`" in rendered
 
 
 def test_server_admin_security_uses_discord_owner_or_administrator() -> None:
@@ -566,6 +574,48 @@ def test_role_backup_is_per_guild_and_serializable(tmp_path) -> None:
     assert loaded["roles"][1]["permissions"] == 200
     # The staged file is complete before Discord delivery begins.
     assert __import__("json").loads(path.read_text(encoding="utf-8"))["format"].endswith("v1")
+
+
+def test_role_backup_parser_rejects_another_guild(tmp_path) -> None:
+    roles = [_role(1, "@everyone", 0, default=True), _role(2, "Member", 1)]
+    source = SimpleNamespace(id=123, name="Source", roles=roles)
+    path, _snapshot = save_guild_roles(source, tmp_path)
+    content = path.read_text(encoding="utf-8")
+    assert len(parse_guild_roles(source, content)["roles"]) == 2
+    try:
+        parse_guild_roles(SimpleNamespace(id=999), content)
+    except ValueError as error:
+        assert "another Discord server" in str(error)
+    else:
+        raise AssertionError("A role backup from another guild was accepted")
+
+
+def test_remake_roles_creates_missing_and_skips_protected_roles() -> None:
+    import asyncio
+
+    everyone = _role(1, "@everyone", 0, default=True)
+    managed = _role(2, "Bot Integration", 2, managed=True)
+    created = _role(50, "Member", 1)
+    created.edit = AsyncMock(return_value=created)
+    guild = SimpleNamespace(
+        id=123,
+        roles=[everyone, managed],
+        create_role=AsyncMock(return_value=created),
+    )
+    bot_member = SimpleNamespace(top_role=SimpleNamespace(position=10))
+    data = {
+        "roles": [
+            {"name": "@everyone", "position": 0, "permissions": 0, "color": 0, "hoist": False, "mentionable": False, "managed": False, "is_everyone": True},
+            {"name": "Bot Integration", "position": 2, "permissions": 0, "color": 0, "hoist": False, "mentionable": False, "managed": True, "is_everyone": False},
+            {"name": "Member", "position": 3, "permissions": 1024, "color": 123, "hoist": True, "mentionable": False, "managed": False, "is_everyone": False},
+        ]
+    }
+    result = asyncio.run(remake_guild_roles(guild, data, bot_member))
+    assert result == {"created": 1, "updated": 0, "skipped": 2, "failures": 0}
+    guild.create_role.assert_awaited_once()
+    created.edit.assert_awaited_once_with(
+        position=3, reason="Confirmed ChudGPT role-order restore"
+    )
 
 
 def test_role_backup_is_dmed_then_removed_from_host(tmp_path) -> None:
