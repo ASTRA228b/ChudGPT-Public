@@ -6,6 +6,7 @@ import discord
 from bot import (
     BUILT_IN_BOT_ADMIN_IDS, ChudGPTClient, DISCORD_SYSTEM_PROMPT,
     GoogleTranslateClient, HelpPaginationView, SoundboardListPaginationView,
+    SERVER_ADMIN_HELP,
     add_recent_context, clean_prompt,
     acquire_instance_lock,
     discord_code_reply, discord_command_reply, discord_developer_reply, discord_quoted_reply,
@@ -505,6 +506,12 @@ def test_server_admin_commands_are_separate_and_confirmation_aware() -> None:
     assert server_admin_action("delete all roles") == ("delete_roles", None)
     assert server_admin_action("delete roles confirm abc123") == ("delete_roles", "ABC123")
     assert server_admin_action("delete a channel") is None
+
+
+def test_server_admin_help_lists_save_everything() -> None:
+    rendered = SERVER_ADMIN_HELP.format(prefix="!chud")
+    assert "`!chud save everything`" in rendered
+    assert "Save Channels and Save Roles" in rendered
 
 
 def test_server_admin_security_uses_discord_owner_or_administrator() -> None:

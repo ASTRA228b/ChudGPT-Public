@@ -1064,7 +1064,7 @@ Server owner or Discord Administrator only.
 `{prefix} delete all` - create + DM a snapshot, then request confirmation to delete every channel
 `{prefix} rebuild server` - attach a saved `.txt`, then request confirmation to rebuild it
 `{prefix} purge all` - request confirmation to purge every message in this channel
-`{prefix} save everything` - save and DM both channel and role backups
+`{prefix} save everything` - run Save Channels and Save Roles, then DM both backups
 `{prefix} save roles` - save role configuration and DM the backup
 `{prefix} clear roles` - remove every role ChudGPT can safely remove from members
 `{prefix} delete roles` - permanently delete every role ChudGPT can safely manage
