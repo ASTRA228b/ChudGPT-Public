@@ -1064,6 +1064,7 @@ Server owner or Discord Administrator only.
 `{prefix} delete all` - create + DM a snapshot, then request confirmation to delete every channel
 `{prefix} rebuild server` - attach a saved `.txt`, then request confirmation to rebuild it
 `{prefix} purge all` - request confirmation to purge every message in this channel
+`{prefix} save everything` - save and DM both channel and role backups
 `{prefix} save roles` - save role configuration and DM the backup
 `{prefix} clear roles` - remove every role ChudGPT can safely remove from members
 `{prefix} delete roles` - permanently delete every role ChudGPT can safely manage
@@ -1083,6 +1084,7 @@ def server_admin_action(prompt: str) -> tuple[str, str | None] | None:
         "rebuild": r"(?:server )?rebuild(?: server)?|rebuild server",
         "purge": r"(?:server )?purge all|purge all",
         "save_roles": r"(?:server )?save roles",
+        "save_everything": r"(?:server )?save everything",
         "clear_roles": r"(?:server )?clear roles",
         "delete_roles": r"(?:server )?delete (?:all )?roles",
     }
@@ -1692,6 +1694,40 @@ async def handle_server_admin_command(
                 f"{discord.utils.format_dt(saved_at, 'F')}. I sent `{path.name}` to the "
                 "server owner and invoking administrator, then deleted the host copy."
             )
+        if action == "save_everything":
+            channel_path = await __import__("asyncio").to_thread(
+                save_guild_layout, guild, backup_dir
+            )
+            channel_delivered = await dm_layout_snapshot(
+                snapshot_recipients, channel_path, guild.name
+            )
+            role_path, role_snapshot = await __import__("asyncio").to_thread(
+                save_guild_roles, guild, backup_dir
+            )
+            role_delivered = await dm_role_snapshot(
+                snapshot_recipients, role_path, guild.name
+            )
+            channels_ok = required_snapshot_recipient_ids.issubset(channel_delivered)
+            roles_ok = required_snapshot_recipient_ids.issubset(role_delivered)
+            if not channels_ok or not roles_ok:
+                failed_parts = []
+                if not channels_ok:
+                    failed_parts.append("channel backup")
+                if not roles_ok:
+                    failed_parts.append("role backup")
+                return (
+                    "Save Everything finished, and both host copies were deleted, but the "
+                    f"{ ' and '.join(failed_parts) } could not be DMed to every required "
+                    "recipient. The server owner and invoking administrator should enable "
+                    "DMs and try again."
+                )
+            channel_count = len(guild.channels) - len(guild.categories)
+            return (
+                f"Save Everything finished: saved {len(guild.categories)} categories, "
+                f"{channel_count} channels, and {len(role_snapshot['roles'])} roles. "
+                f"I sent `{channel_path.name}` and `{role_path.name}` to the server owner "
+                "and invoking administrator, then deleted both host copies."
+            )
         if action in {"clear_roles", "delete_roles"}:
             bot_member = guild.me
             if not bot_has_manage_roles(guild):
@@ -1757,8 +1793,12 @@ async def handle_server_admin_command(
         }[action]
         return f"⚠️ {warning}\nConfirm within 60 seconds with `{prefix} {command} confirm {code}`."
 
-    if action in {"save", "save_roles"}:
-        command = "save channels" if action == "save" else "save roles"
+    if action in {"save", "save_roles", "save_everything"}:
+        command = {
+            "save": "save channels",
+            "save_roles": "save roles",
+            "save_everything": "save everything",
+        }[action]
         return f"Save does not use a confirmation code. Run `{prefix} {command}`."
     if pending is None or pending[1] < now:
         confirmations.pop(key, None)

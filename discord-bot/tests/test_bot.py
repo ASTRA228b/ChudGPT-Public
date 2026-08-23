@@ -497,6 +497,8 @@ def test_server_admin_commands_are_separate_and_confirmation_aware() -> None:
     assert server_admin_action("purge all") == ("purge", None)
     assert server_admin_action("purge all confirm 123abc") == ("purge", "123ABC")
     assert server_admin_action("save roles") == ("save_roles", None)
+    assert server_admin_action("save everything") == ("save_everything", None)
+    assert server_admin_action("server save everything") == ("save_everything", None)
     assert server_admin_action("clear roles") == ("clear_roles", None)
     assert server_admin_action("clear roles confirm 123abc") == ("clear_roles", "123ABC")
     assert server_admin_action("delete roles") == ("delete_roles", None)
