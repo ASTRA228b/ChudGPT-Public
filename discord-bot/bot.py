@@ -1064,6 +1064,9 @@ Server owner or Discord Administrator only.
 `{prefix} delete all` - create + DM a snapshot, then request confirmation to delete every channel
 `{prefix} rebuild server` - attach a saved `.txt`, then request confirmation to rebuild it
 `{prefix} purge all` - request confirmation to purge every message in this channel
+`{prefix} save roles` - persist the server's role configuration
+`{prefix} clear roles` - remove every role ChudGPT can safely remove from members
+`{prefix} delete roles` - permanently delete every role ChudGPT can safely manage
 
 Destructive commands return a one-time confirmation code that expires after 60 seconds. These commands cannot be used in DMs."""
 
@@ -1079,6 +1082,9 @@ def server_admin_action(prompt: str) -> tuple[str, str | None] | None:
         "delete": r"(?:server )?delete all",
         "rebuild": r"(?:server )?rebuild(?: server)?|rebuild server",
         "purge": r"(?:server )?purge all|purge all",
+        "save_roles": r"(?:server )?save roles",
+        "clear_roles": r"(?:server )?clear roles",
+        "delete_roles": r"(?:server )?delete roles",
     }
     for action, pattern in patterns.items():
         match = re.fullmatch(rf"(?:{pattern})(?: confirm ([a-z0-9]{{6}}))?", normalized)
@@ -1141,6 +1147,110 @@ def save_guild_layout(guild: discord.Guild, backup_dir: Path) -> Path:
     )
     temporary.replace(path)
     return path
+
+
+def guild_roles_snapshot(guild: discord.Guild) -> dict[str, Any]:
+    """Capture a persistent, per-guild representation of Discord roles."""
+    roles = []
+    for role in sorted(guild.roles, key=lambda item: item.position):
+        roles.append({
+            "id": role.id,
+            "name": role.name,
+            "color": role.color.value,
+            "position": role.position,
+            "hoist": role.hoist,
+            "mentionable": role.mentionable,
+            "permissions": role.permissions.value,
+            "managed": role.managed,
+            "is_everyone": role.is_default(),
+        })
+    return {
+        "format": "ChudGPT Discord role layout v1",
+        "guild_id": guild.id,
+        "guild_name": guild.name,
+        "saved_at": datetime.now(timezone.utc).isoformat(),
+        "roles": roles,
+    }
+
+
+def save_guild_roles(guild: discord.Guild, backup_dir: Path) -> tuple[Path, dict[str, Any]]:
+    """Atomically persist the latest role backup for exactly one guild."""
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    path = backup_dir / f"guild_{guild.id}_roles.json"
+    temporary = path.with_suffix(".tmp")
+    snapshot = guild_roles_snapshot(guild)
+    temporary.write_text(json.dumps(snapshot, indent=2, ensure_ascii=False), encoding="utf-8")
+    temporary.replace(path)
+    return path, snapshot
+
+
+def role_is_manageable(role: discord.Role, bot_member: discord.Member) -> bool:
+    """Apply Discord's immutable, managed, and hierarchy role restrictions."""
+    return not role.is_default() and not role.managed and role.position < bot_member.top_role.position
+
+
+def bot_has_manage_roles(guild: discord.Guild) -> bool:
+    """Check the live bot member instead of trusting the invoking administrator."""
+    return guild.me is not None and guild.me.guild_permissions.manage_roles
+
+
+async def clear_manageable_member_roles(
+    guild: discord.Guild, bot_member: discord.Member
+) -> dict[str, int]:
+    """Remove manageable roles with one bounded update per cached guild member."""
+    if getattr(guild, "large", False) is True:
+        try:
+            await guild.chunk(cache=True)
+        except (discord.ClientException, discord.HTTPException) as error:
+            # Continue safely with Discord's available member cache rather than
+            # aborting midway when the privileged members intent is unavailable.
+            LOGGER.warning("Could not fully chunk large guild %s: %s", guild.id, error)
+    manageable_ids = {
+        role.id for role in guild.roles if role_is_manageable(role, bot_member)
+    }
+    skipped_roles = sum(1 for role in guild.roles if role.id not in manageable_ids)
+    processed = removed = failures = 0
+    for member in list(guild.members):
+        processed += 1
+        roles = [role for role in member.roles if role.id in manageable_ids]
+        if roles:
+            try:
+                # atomic=False performs one member edit instead of one API call per role.
+                await member.remove_roles(
+                    *roles, reason="Confirmed ChudGPT Clear Roles command", atomic=False
+                )
+                removed += len(roles)
+            except (discord.Forbidden, discord.HTTPException) as error:
+                failures += len(roles)
+                LOGGER.warning("Clear Roles failed for guild %s member %s: %s", guild.id, member.id, error)
+        if processed % 25 == 0:
+            await __import__("asyncio").sleep(0)
+    return {
+        "members_processed": processed,
+        "roles_removed": removed,
+        "skipped_roles": skipped_roles,
+        "failures": failures,
+    }
+
+
+async def delete_manageable_guild_roles(
+    guild: discord.Guild, bot_member: discord.Member
+) -> dict[str, int]:
+    """Delete manageable roles individually so partial failures do not abort."""
+    deleted = skipped = failures = 0
+    for role in sorted(guild.roles, key=lambda item: item.position, reverse=True):
+        if not role_is_manageable(role, bot_member):
+            skipped += 1
+            continue
+        try:
+            await role.delete(reason="Confirmed ChudGPT Delete Roles command")
+            deleted += 1
+        except (discord.Forbidden, discord.HTTPException) as error:
+            failures += 1
+            LOGGER.warning("Delete Roles failed for guild %s role %s: %s", guild.id, role.id, error)
+        if (deleted + failures) % 25 == 0:
+            await __import__("asyncio").sleep(0)
+    return {"deleted": deleted, "skipped": skipped, "failures": failures}
 
 
 def parse_guild_layout(guild: discord.Guild, content: str) -> dict[str, Any]:
@@ -1533,6 +1643,19 @@ async def handle_server_admin_command(
             if missing:
                 return "The snapshot was created and its host copy was deleted, but I could not DM it to every required recipient. The server owner and invoking administrator should enable DMs and try again."
             return f"Saved {len(guild.categories)} categories and {len(guild.channels) - len(guild.categories)} channels. I sent `{path.name}` to the server owner and invoking administrator."
+        if action == "save_roles":
+            path, snapshot = await __import__("asyncio").to_thread(
+                save_guild_roles, guild, backup_dir
+            )
+            saved_at = datetime.fromisoformat(snapshot["saved_at"])
+            return (
+                f"Saved {len(snapshot['roles'])} roles for **{guild.name}** at "
+                f"{discord.utils.format_dt(saved_at, 'F')}. Persistent backup: `{path.name}`."
+            )
+        if action in {"clear_roles", "delete_roles"}:
+            bot_member = guild.me
+            if not bot_has_manage_roles(guild):
+                return f"I need the **Manage Roles** permission before {'Clear Roles' if action == 'clear_roles' else 'Delete Roles'} can run."
         if action == "delete":
             bot_member = guild.me
             if bot_member is None or not bot_member.guild_permissions.manage_channels:
@@ -1574,15 +1697,24 @@ async def handle_server_admin_command(
             "delete": "This will permanently delete every channel and category in the server. A safety snapshot has been sent to your DMs.",
             "rebuild": "This will create the categories and channels stored in the latest server snapshot.",
             "purge": "This will permanently delete all messages in the current channel.",
+            "clear_roles": "This will remove every non-managed role below ChudGPT's highest role from every server member. @everyone, managed roles, and roles ChudGPT cannot manage will be skipped.",
+            "delete_roles": "This will permanently delete every non-managed role below ChudGPT's highest role. @everyone, managed roles, and roles ChudGPT cannot manage will be skipped.",
         }[action]
-        command = {"delete": "delete all", "rebuild": "rebuild server", "purge": "purge all"}[action]
+        command = {
+            "delete": "delete all", "rebuild": "rebuild server", "purge": "purge all",
+            "clear_roles": "clear roles", "delete_roles": "delete roles",
+        }[action]
         return f"⚠️ {warning}\nConfirm within 60 seconds with `{prefix} {command} confirm {code}`."
 
-    if action == "save":
-        return f"Save does not use a confirmation code. Run `{prefix} save channels`."
+    if action in {"save", "save_roles"}:
+        command = "save channels" if action == "save" else "save roles"
+        return f"Save does not use a confirmation code. Run `{prefix} {command}`."
     if pending is None or pending[1] < now:
         confirmations.pop(key, None)
-        command = {"delete": "delete all", "rebuild": "rebuild server", "purge": "purge all"}[action]
+        command = {
+            "delete": "delete all", "rebuild": "rebuild server", "purge": "purge all",
+            "clear_roles": "clear roles", "delete_roles": "delete roles",
+        }[action]
         return f"That confirmation is missing or expired. Run `{prefix} {command}` again to get a new code."
     expected_code, _expires, original_channel_id, saved_layout = pending
     if not secrets.compare_digest(supplied_code, expected_code):
@@ -1602,6 +1734,30 @@ async def handle_server_admin_command(
         if failures:
             LOGGER.warning("Server rebuild failures for guild %s: %s", guild.id, failures)
         return f"Rebuild finished: created {created} categories/channels.{detail}"
+    if action == "clear_roles":
+        bot_member = guild.me
+        if not bot_has_manage_roles(guild):
+            return "Clear Roles was cancelled because I no longer have **Manage Roles** permission."
+        assert bot_member is not None
+        result = await clear_manageable_member_roles(guild, bot_member)
+        return (
+            "Clear Roles finished: "
+            f"members processed: {result['members_processed']}; "
+            f"roles removed: {result['roles_removed']}; "
+            f"skipped server roles: {result['skipped_roles']}; "
+            f"failures: {result['failures']}."
+        )
+    if action == "delete_roles":
+        bot_member = guild.me
+        if not bot_has_manage_roles(guild):
+            return "Delete Roles was cancelled because I no longer have **Manage Roles** permission."
+        assert bot_member is not None
+        result = await delete_manageable_guild_roles(guild, bot_member)
+        return (
+            "Delete Roles finished: "
+            f"deleted: {result['deleted']}; skipped: {result['skipped']}; "
+            f"failed: {result['failures']}."
+        )
 
     await message.reply(
         "Delete All confirmed. Deleting server channels now; the final result will be sent to your DMs.",

@@ -1,5 +1,5 @@
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import discord
 
@@ -19,6 +19,11 @@ from bot import (
     is_guild_owner_or_admin,
     load_user_blacklist,
     discord_connection_ready,
+    role_is_manageable,
+    bot_has_manage_roles,
+    save_guild_roles,
+    clear_manageable_member_roles,
+    delete_manageable_guild_roles,
     soundboard_list_pages,
 )
 
@@ -490,6 +495,11 @@ def test_server_admin_commands_are_separate_and_confirmation_aware() -> None:
     assert server_admin_action("rebuild server confirm abc123") == ("rebuild", "ABC123")
     assert server_admin_action("purge all") == ("purge", None)
     assert server_admin_action("purge all confirm 123abc") == ("purge", "123ABC")
+    assert server_admin_action("save roles") == ("save_roles", None)
+    assert server_admin_action("clear roles") == ("clear_roles", None)
+    assert server_admin_action("clear roles confirm 123abc") == ("clear_roles", "123ABC")
+    assert server_admin_action("delete roles") == ("delete_roles", None)
+    assert server_admin_action("delete roles confirm abc123") == ("delete_roles", "ABC123")
     assert server_admin_action("delete a channel") is None
 
 
@@ -506,3 +516,82 @@ def test_server_admin_security_uses_discord_owner_or_administrator() -> None:
     assert is_guild_owner_or_admin(message)
 
     assert not is_guild_owner_or_admin(SimpleNamespace(guild=None, author=member))
+
+
+def _role(role_id: int, name: str, position: int, *, managed: bool = False, default: bool = False):
+    role = MagicMock(spec=discord.Role)
+    role.id = role_id
+    role.name = name
+    role.position = position
+    role.managed = managed
+    role.is_default.return_value = default
+    role.color.value = role_id * 10
+    role.hoist = False
+    role.mentionable = False
+    role.permissions.value = role_id * 100
+    role.delete = AsyncMock()
+    return role
+
+
+def test_role_hierarchy_managed_and_everyone_rules() -> None:
+    bot = SimpleNamespace(top_role=SimpleNamespace(position=10))
+    assert role_is_manageable(_role(1, "Member", 2), bot)
+    assert not role_is_manageable(_role(2, "Integration", 2, managed=True), bot)
+    assert not role_is_manageable(_role(3, "@everyone", 0, default=True), bot)
+    assert not role_is_manageable(_role(4, "Above Bot", 10), bot)
+    assert bot_has_manage_roles(SimpleNamespace(me=SimpleNamespace(guild_permissions=SimpleNamespace(manage_roles=True))))
+    assert not bot_has_manage_roles(SimpleNamespace(me=SimpleNamespace(guild_permissions=SimpleNamespace(manage_roles=False))))
+    assert not bot_has_manage_roles(SimpleNamespace(me=None))
+
+
+def test_role_backup_is_per_guild_and_persists(tmp_path) -> None:
+    roles = [_role(1, "@everyone", 0, default=True), _role(2, "Member", 1)]
+    guild = SimpleNamespace(id=123, name="Test Guild", roles=roles)
+    path, snapshot = save_guild_roles(guild, tmp_path)
+    assert path.name == "guild_123_roles.json"
+    assert path.exists() and len(snapshot["roles"]) == 2
+    loaded = __import__("json").loads(path.read_text(encoding="utf-8"))
+    assert loaded["guild_id"] == 123
+    assert loaded["roles"][1]["permissions"] == 200
+    # A second process can read the same persistent guild-specific file.
+    assert __import__("json").loads(path.read_text(encoding="utf-8"))["format"].endswith("v1")
+
+
+def test_clear_roles_handles_multiple_roles_and_large_member_sets() -> None:
+    import asyncio
+
+    everyone = _role(1, "@everyone", 0, default=True)
+    member_role = _role(2, "Member", 2)
+    extra_role = _role(3, "Extra", 3)
+    managed = _role(4, "Bot", 4, managed=True)
+    bot = SimpleNamespace(top_role=SimpleNamespace(position=10))
+    members = []
+    for index in range(75):
+        member = SimpleNamespace(
+            id=1000 + index,
+            roles=[everyone, member_role, extra_role, managed],
+            remove_roles=AsyncMock(),
+        )
+        members.append(member)
+    guild = SimpleNamespace(id=123, roles=[everyone, member_role, extra_role, managed], members=members, large=False)
+    result = asyncio.run(clear_manageable_member_roles(guild, bot))
+    assert result == {"members_processed": 75, "roles_removed": 150, "skipped_roles": 2, "failures": 0}
+    members[0].remove_roles.assert_awaited_once_with(
+        member_role, extra_role, reason="Confirmed ChudGPT Clear Roles command", atomic=False
+    )
+
+
+def test_delete_roles_continues_after_partial_failure() -> None:
+    import asyncio
+
+    everyone = _role(1, "@everyone", 0, default=True)
+    good = _role(2, "Good", 2)
+    failed = _role(3, "Failed", 3)
+    response = MagicMock(status=403, reason="Forbidden")
+    failed.delete.side_effect = discord.Forbidden(response, {"message": "Missing Permissions", "code": 50013})
+    managed = _role(4, "Managed", 4, managed=True)
+    bot = SimpleNamespace(top_role=SimpleNamespace(position=10))
+    guild = SimpleNamespace(id=123, roles=[everyone, good, failed, managed])
+    result = asyncio.run(delete_manageable_guild_roles(guild, bot))
+    assert result == {"deleted": 1, "skipped": 2, "failures": 1}
+    good.delete.assert_awaited_once()
