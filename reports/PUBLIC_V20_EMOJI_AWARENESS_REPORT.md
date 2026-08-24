@@ -36,9 +36,9 @@ The new examples cover humor, grief, criticism, praise, gratitude, skepticism, e
 
 ## Verification
 
-- Public test suite: 262 passed
+- Public test suite: 268 passed
 - Discord bot test suite: 52 passed (one upstream Python `audioop` deprecation warning)
-- Dedicated emoji tests: 52 passed
+- Dedicated emoji tests: 58 passed
 - Python compile checks: passed
 
 Dedicated regressions cover standard categories, ZWJ families/professions, skin tones, flags, aliases, Discord static/animated custom emoji, ambiguous tone, emoji-only messages, URLs, code, JSON, Markdown, Windows paths, mentions, IDs, numbers, and punctuation.

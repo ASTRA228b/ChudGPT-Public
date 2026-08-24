@@ -206,3 +206,49 @@ def add_emoji_context(text: str, *, include_discord: bool = True) -> str:
 def strip_emoji_context(text: str) -> str:
     """Remove only the private suffix produced by :func:`add_emoji_context`."""
     return re.sub(r"\s+\[emoji context:.*\]\s*$", "", text, flags=re.S).strip()
+
+
+def emoji_semantic_response(text: str, *, include_discord: bool = True) -> str | None:
+    """Answer only high-confidence reaction turns using the full metadata layer.
+
+    This deliberately avoids becoming a general keyword responder. Mixed
+    content with a substantive question still goes through the language model.
+    """
+    matches = emoji_lib.emoji_list(text)
+    custom = list(DISCORD_CUSTOM_RE.finditer(text)) if include_discord else []
+    aliases = [
+        match for match in COLON_ALIAS_RE.finditer(text)
+        if emoji_database().from_alias(match.group("name")) is not None
+    ] if include_discord else []
+    if not matches and not custom and not aliases:
+        return None
+
+    remaining = text
+    for match in reversed(matches):
+        remaining = remaining[:match["match_start"]] + " " + remaining[match["match_end"]:]
+    remaining = DISCORD_CUSTOM_RE.sub(" ", remaining)
+    for match in aliases:
+        remaining = remaining.replace(match.group(0), " ")
+    words = re.findall(r"[A-Za-z0-9']+", remaining)
+    context = _context_hint(text, [match["emoji"] for match in matches])
+    if context and len(words) <= 7:
+        if "sadness, grief" in context:
+            return "That reads as real sadness or grief here. I'm sorry—what happened?"
+        if "humorous" in context:
+            return "That reads like strong laughter or disbelieving humor. What happened?"
+        if "praise" in context:
+            return "That reads as excitement or praise. Nice—what happened?"
+        return f"That reaction reads as {context}. What's the context?"
+
+    # For a pure emoji/custom-emoji turn, describe the visible reaction name
+    # instead of forcing the small neural checkpoint to infer a missing topic.
+    if not words:
+        if custom:
+            names = ", ".join(_plain_name(match.group("name")) for match in custom[:2])
+            return f"That custom emoji reads as a {names} reaction. What's the context?"
+        records = [emoji_database().get(match["emoji"]) for match in matches]
+        records = [record for record in records if record is not None]
+        if records:
+            descriptions = ", ".join(record.usage_hint or record.name for record in records[:2])
+            return f"That reads as {descriptions}. What's the context?"
+    return None

@@ -8,6 +8,7 @@ from chudlm.emoji_awareness import (
     add_emoji_context,
     emoji_annotations,
     emoji_database,
+    emoji_semantic_response,
     strip_emoji_context,
 )
 from chudlm.text_normalization import normalize_user_text
@@ -109,3 +110,22 @@ def test_annotation_is_compact_and_deduplicated() -> None:
     annotations = emoji_annotations("😭😭😭 💀💀 🔥🔥 👍🏽 ❤️ 🇺🇸 🐶", limit=4)
     assert len(annotations) <= 4
     assert len(annotations) == len(set(annotations))
+
+
+@pytest.mark.parametrize(
+    ("message", "expected"),
+    [
+        ("bro what is this 😭💀", "laughter"),
+        ("my dog died 😭", "sadness"),
+        ("this update is amazing 🔥", "praise"),
+        ("👨‍💻", "technologist"),
+        ("<a:chud_spin:987654321>", "chud spin"),
+    ],
+)
+def test_high_confidence_reaction_turns_get_semantic_response(message: str, expected: str) -> None:
+    response = emoji_semantic_response(message)
+    assert response is not None and expected in response.lower()
+
+
+def test_substantive_mixed_question_stays_generative() -> None:
+    assert emoji_semantic_response("Explain how rocket staging works 🚀 in three paragraphs") is None

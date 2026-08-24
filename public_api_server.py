@@ -20,7 +20,12 @@ from pydantic import BaseModel, Field
 from tokenizers import Tokenizer
 
 from chudlm.checkpoint import load_checkpoint
-from chudlm.emoji_awareness import add_emoji_context, emoji_database, strip_emoji_context
+from chudlm.emoji_awareness import (
+    add_emoji_context,
+    emoji_database,
+    emoji_semantic_response,
+    strip_emoji_context,
+)
 from chudlm.generation import generate
 from chudlm.model import ModelConfig, TransformerLM
 from chudlm.prompts import DEFAULT_SYSTEM_PROMPT, build_context_token_ids
@@ -454,6 +459,10 @@ class PublicModelService:
             reliable_reply = self.reliable.answer(normalized_message, generation_history[:-1])
             discord_reply = self._discord_context_reply(normalized_message, discord_context)
             meme_reply = find_meme_fact(normalized_message)
+            emoji_reply = emoji_semantic_response(
+                normalized_message,
+                include_discord=context_mode == "discord",
+            )
             if instruction_reply is not None:
                 reply = instruction_reply
                 self.last_assistance_reason = "exact-user-instruction"
@@ -466,6 +475,9 @@ class PublicModelService:
             elif meme_reply is not None and self._identity_subject(normalized_message) is None:
                 reply = meme_reply
                 self.last_assistance_reason = "reviewed-meme-context"
+            elif emoji_reply is not None:
+                reply = emoji_reply
+                self.last_assistance_reason = "emoji-semantic-context"
             elif reliable_reply is not None:
                 reply = reliable_reply
                 self.last_assistance_reason = "reviewed-local-response"
