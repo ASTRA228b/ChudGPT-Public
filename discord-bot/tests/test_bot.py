@@ -49,6 +49,14 @@ def test_discord_prompt_describes_contextual_emoji_behavior() -> None:
     assert "emoji" in lowered and "skin tones" in lowered and "emoji-only" in lowered
 
 
+def test_discord_prompt_comes_from_shared_protected_instruction() -> None:
+    shared = (
+        __import__("pathlib").Path(__file__).resolve().parents[2]
+        / "discord_bot_instruction.txt"
+    ).read_text(encoding="utf-8").strip()
+    assert DISCORD_SYSTEM_PROMPT == shared
+
+
 def test_single_instance_lock_rejects_duplicate(tmp_path) -> None:
     lock_path = tmp_path / "bot.lock"
     first = acquire_instance_lock(lock_path)
