@@ -78,6 +78,62 @@ def authored_rows() -> list[dict[str, object]]:
     ]
     rows.extend(row(user, answer) for user, answer in casual)
 
+    # Emoji semantics stay deterministic at runtime; this small curriculum
+    # teaches contextual conversational use without flooding a 21M model.
+    emoji_conversations = [
+        ("bro what is this 😭💀", "That looks like pure amused disbelief. What happened?"),
+        ("my dog died 😭", "I am really sorry. Losing a dog hurts, and you do not have to make light of it."),
+        ("CHUDGPT COOKED 🔥🔥🔥", "I will take that as high praise. Glad it worked."),
+        ("ChudGPT is cooked 💀", "Yeah, that sounds like I failed spectacularly. What did I mess up?"),
+        ("I finally fixed the bug 😭🙏", "That is relief in emoji form. Nice work getting it fixed."),
+        ("why did you delete the file 😐", "That neutral face feels deserved. I should not claim to delete files unless the program actually did it."),
+        ("🤨", "Fair skeptical look. What part are you questioning?"),
+        ("👀", "You have my attention. What are we watching?"),
+        ("🗿🍷", "Maximum deadpan sophistication. A very serious reaction to an unserious situation."),
+        ("😭🙏", "That is an intense combination. Are you asking for help, celebrating relief, or both?"),
+        ("Great job 👍🏽", "Thanks! I am glad it helped."),
+        ("Nope 👎", "Got it—that did not work for you. What should I change?"),
+        ("We did it 🙌", "Nice! That is worth celebrating."),
+        ("Thank you 🙏", "You are welcome."),
+        ("I appreciate you ❤️", "That is kind of you. I appreciate the conversation too."),
+        ("That breakup hurt 💔", "I am sorry. Breakups can hurt deeply even when ending things was necessary."),
+        ("pizza tonight? 🍕", "Pizza sounds good. What toppings are you thinking?"),
+        ("My cat is yelling 🐱", "Cats can make an impressive amount of noise. Does it want food, attention, or access to a forbidden door?"),
+        ("It is storming ⛈️", "Stay inside if you can, and keep an eye on local weather alerts."),
+        ("road trip 🚗", "Nice. Do you already have a destination or are you choosing one?"),
+        ("We fly tomorrow ✈️", "Safe travels. It may help to check your departure time and documents tonight."),
+        ("That launch was incredible 🚀", "It really was—rocket launches are a wild mix of precision and raw power."),
+        ("game time 🎮", "What are you playing?"),
+        ("We won the final 🏆", "Congratulations—that is a proper trophy moment."),
+        ("My laptop died 💻", "Is it completely unresponsive, or does it show lights, fans, or an error?"),
+        ("Use a wrench 🔧", "A wrench is the right tool only if the fastener fits; using the wrong size can round it off."),
+        ("Done ✅", "Nice—marked complete."),
+        ("That is wrong ❌", "Thanks for flagging it. Tell me what is wrong and I will correct it."),
+        ("Careful ⚠️", "Understood. What specific risk should we watch for?"),
+        ("facts 💯", "Exactly—strong agreement."),
+        ("🇺🇸", "That is the United States flag. Are you referring to the country, a location, or an event?"),
+        ("🇧🇷 futebol", "Brazil and football—are we talking about the national team, a club, or a player?"),
+        ("👨‍💻", "Developer mode. What are we building or debugging?"),
+        ("👨‍👩‍👧‍👦", "That family emoji can represent a family group. What did you want to discuss about family?"),
+        ("❤️‍🔥", "That usually conveys intense love, passion, or enthusiasm."),
+        ("❤️‍🩹", "That suggests healing after emotional pain. I hope things are getting easier."),
+        (":sob: that was wild", "That reads like dramatic laughter or disbelief here. What happened?"),
+        (":heart: thank you", "You are welcome. Glad I could help."),
+        ("<:chudlaugh:123456789> bro", "That custom emoji name sounds like a Chud-themed laugh reaction. What did I miss?"),
+        ("<a:chudspin:987654321>", "The animated custom emoji name suggests ChudGPT is spinning dramatically. Appropriate."),
+        ("XD", "Glad that made you laugh."),
+        (":/", "That sounds uncertain. What is bothering you about it?"),
+        ("<3", "Sending the good energy back."),
+        ("¯\\_(ツ)_/¯", "Fair enough—sometimes a shrug is the complete answer."),
+        ("A skull marks the danger zone 💀", "Here the skull is literal: it marks danger or death on the map."),
+        ("The pan is on fire 🔥", "Treat that literally: turn off the heat if safe, cover a small grease fire, and never pour water on it."),
+        ("I am crying because I am happy 😭", "Those sound like happy tears. What happened?"),
+        ("👏👏👏", "That reads as applause. Nicely done."),
+        ("🍎🍪", "Apple and cookie—are those snack choices or ingredients?"),
+        ("⚽🎸", "Football and guitar is an unusual combo. Are those your two hobbies?"),
+    ]
+    rows.extend(row(user, answer, "ChudGPT-Public-V20-Emoji") for user, answer in emoji_conversations)
+
     # Sanitized, platform-neutral patterns learned from live Discord usage.
     # These are newly written examples: no usernames, IDs, server metadata,
     # commands, or verbatim private log messages are copied into training.

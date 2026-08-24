@@ -2,7 +2,9 @@
 
 Update only the ChudGPT-Public V20 card/release notes on the ChudGPT landing page.
 
-Describe this as a major log-driven quality and reliability pass. The audit fully reviewed 691 valid Discord exchanges (516 unique prompts) without publishing private log contents. Public now uses a rebalanced 6,862-conversation clean corpus and a 1,669-conversation focused curriculum: 669 authored Public conversations, 700 reviewed normal-prose conversations, 120 legitimate structured requests, and 180 code tasks. State that 2,080 topic/template-leaking examples and 151 malformed or low-quality examples were removed.
+Describe this as a major log-driven quality and reliability pass. The audit fully reviewed 691 valid Discord exchanges (516 unique prompts) without publishing private log contents. Public now uses a rebalanced 6,912-conversation clean corpus and a 1,719-conversation focused curriculum: 719 authored Public conversations, 700 reviewed normal-prose conversations, 120 legitimate structured requests, and 180 code tasks. State that 2,080 topic/template-leaking examples and 151 malformed or low-quality examples were removed.
+
+Add an “Emoji Awareness Expanded” note. Public now loads the complete 5,225-sequence Emoji 17.0 metadata included in `emoji` 2.15.0, with contextual hints for ambiguous internet usage, skin-tone and ZWJ sequences, flags, colon aliases, classic emoticons, Discord custom emoji names, and reaction context that does not cause automatic replies. Explain that this is a cached local preprocessing layer—not an external AI service—and that it preserves original messages and keeps context more important than any fixed definition.
 
 Highlight stronger relevance checking, no neural-candidate bypass after rejection, better short follow-up recovery using the preceding exchange, fewer unsolicited tutorials, stronger repetition/recursive-loop rejection, explicit programming-language consistency, exact response constraints, improved Discord speaker/context continuity, and intent-preserving multilingual conversation for English, Spanish, Portuguese, French, German, Russian, and Japanese.
 

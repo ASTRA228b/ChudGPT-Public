@@ -251,6 +251,8 @@ def assess_generated_reply(
             reasons.append("missing-story-subject")
     if "<system>" in lowered or "<assistant>" in lowered or "you are chudgpt" in lowered:
         reasons.append("prompt-leak")
+    if "[emoji context:" in lowered:
+        reasons.append("emoji-context-leak")
     if re.search(
         r"\b(?:training (?:data|dataset|example|corpus)|dataset row|this prompt|this response|"
         r"assistant response|user prompt|fine[- ]?tuning example)\b",

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import re
 
+from .emoji_awareness import add_emoji_context
+
 EXPANSIONS = {
     "hru": "how are you",
     "wbu": "what about you",
@@ -64,7 +66,7 @@ CORRECTIONS = {
 }
 
 
-def normalize_user_text(text: str) -> str:
+def normalize_user_text(text: str, *, include_emoji_hints: bool = True) -> str:
     """Expand only well-known whole-token shorthand; never rewrite code."""
     if "```" in text or re.search(r"https?://|\b(?:class|def|function|using)\s+\w+", text):
         return text.strip()
@@ -78,4 +80,5 @@ def normalize_user_text(text: str) -> str:
         return replacement
 
     normalized = re.sub(r"\b[A-Za-z']+\b", replace, text.strip())
-    return re.sub(r"\s+", " ", normalized)
+    normalized = re.sub(r"\s+", " ", normalized)
+    return add_emoji_context(normalized) if include_emoji_hints else normalized

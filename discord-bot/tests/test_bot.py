@@ -29,7 +29,24 @@ from bot import (
     clear_manageable_member_roles,
     delete_manageable_guild_roles,
     soundboard_list_pages,
+    discord_reaction_label,
 )
+
+
+def test_discord_reaction_label_preserves_unicode_sequence() -> None:
+    assert discord_reaction_label(discord.PartialEmoji(name="😭")) == "😭"
+
+
+def test_discord_reaction_label_uses_custom_name_without_snowflake() -> None:
+    emoji = discord.PartialEmoji(name="chud_spin", id=123456789, animated=True)
+    label = discord_reaction_label(emoji)
+    assert label == "animated custom emoji: chud_spin"
+    assert "123456789" not in label
+
+
+def test_discord_prompt_describes_contextual_emoji_behavior() -> None:
+    lowered = DISCORD_SYSTEM_PROMPT.lower()
+    assert "emoji" in lowered and "skin tones" in lowered and "emoji-only" in lowered
 
 
 def test_single_instance_lock_rejects_duplicate(tmp_path) -> None:

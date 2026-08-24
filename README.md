@@ -10,7 +10,13 @@ ChudGPT-Public is an independently trained, experimental conversational language
 
 V20 is the current strongest Public serving profile. It combines the independently trained 20,999,184-parameter checkpoint with a local reviewed-response layer, exact decimal and large-integer arithmetic, conservative slang normalization, protected identity/meme facts, multi-candidate neural selection, and a dedicated Discord context mode. It does not call Pro, ChatGPT, or any external model.
 
-The current V20 corpus contains 6,862 unique cleaned conversations after removing 2,080 topic/template leaks and 151 malformed or low-quality rows. Its balanced quality tune used 1,669 conversations: 669 Public-authored conversations, 700 reviewed prose conversations, 120 legitimate structured requests, and 180 reviewed code tasks. Earlier V20 checkpoints remain archived and selectable.
+The current V20 corpus contains 6,912 unique cleaned conversations after removing 2,080 topic/template leaks and 151 malformed or low-quality rows. Its balanced quality tune used 1,719 conversations: 719 Public-authored conversations, 700 reviewed prose conversations, 120 legitimate structured requests, and 180 reviewed code tasks. Earlier V20 checkpoints remain archived and selectable.
+
+### Expanded emoji awareness
+
+Public V20 uses the complete cached metadata shipped by `emoji` 2.15.0: 5,225 Unicode sequences through Emoji 17.0. It recognizes emoji-only messages, multi-codepoint ZWJ sequences, skin-tone variants, flags, common colon aliases, classic emoticons, and Discord static/animated custom emoji names. A compact model-only annotation supplies possible meanings while preserving the original message; surrounding conversation still decides whether `😭`, `💀`, or `🔥` is literal, serious, sarcastic, celebratory, or meme-like. Reactions to recent bot messages are remembered as context for the next turn but do not trigger automatic replies.
+
+This is semantic assistance, not a claim that a 21M-parameter checkpoint perfectly understands every emoji or culture-specific use. Unknown or ambiguous usage remains generative, and context can still be misread.
 
 It is a small custom model—not ChatGPT and not a frontier model. It can be inaccurate, has no live internet access, and should not be trusted for medical, legal, financial, or safety-critical decisions.
 

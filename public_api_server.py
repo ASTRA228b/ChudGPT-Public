@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 from tokenizers import Tokenizer
 
 from chudlm.checkpoint import load_checkpoint
+from chudlm.emoji_awareness import add_emoji_context, emoji_database, strip_emoji_context
 from chudlm.generation import generate
 from chudlm.model import ModelConfig, TransformerLM
 from chudlm.prompts import DEFAULT_SYSTEM_PROMPT, build_context_token_ids
@@ -51,6 +52,11 @@ DISCORD_BOT_INSTRUCTION = (
     "exchange when a user says what, why, bro, nah, yes, or no. Never turn casual chat into a "
     "tutorial or code unless asked. Match an explicitly requested programming language and obey "
     "format and item-count constraints. Never claim you performed an action the bot cannot perform. "
+    "Emojis carry tone and meaning. Use the compact emoji context supplied by the emoji-awareness "
+    "layer, including Unicode sequences, skin tones, flags, named Discord emoji, and custom emoji "
+    "names. Discord slang can make crying or skull emojis humorous, but serious context must win. "
+    "Treat emoji combinations as one reaction when appropriate, accept emoji-only turns, do not "
+    "constantly define emojis, and do not spam emojis in replies. "
     "This Discord context applies only while this instruction is active."
 )
 DISCORD_SYSTEM_PROMPT = DEFAULT_SYSTEM_PROMPT + " " + DISCORD_BOT_INSTRUCTION
@@ -114,6 +120,8 @@ class PublicModelService:
         self.assistance_enabled = assistance_enabled
         self.last_assistance_reason: str | None = None
         self.system_prompt = system_prompt
+        # Build and retain the immutable Unicode metadata once at startup.
+        self.emoji_database = emoji_database()
         self.reliable = PublicReliableResponder(ROOT / "data/public_v20_conversations.jsonl")
 
     @staticmethod
@@ -253,7 +261,7 @@ class PublicModelService:
         system_prompt: str,
     ) -> str:
         """Generate neural candidates and select the least broken relevant reply."""
-        current_message = history[-1]["content"]
+        current_message = strip_emoji_context(history[-1]["content"])
         structured_request = requests_structured_response(current_message)
         conversational = len(re.findall(r"[a-z0-9']+", current_message.lower())) <= 8 and not structured_request
         if conversational:
@@ -294,7 +302,10 @@ class PublicModelService:
         if candidates:
             prompt = current_message
             previous_replies = [turn["content"] for turn in history if turn["role"] == "assistant"]
-            previous_user = next((turn["content"] for turn in reversed(history[:-1]) if turn["role"] == "user"), "")
+            previous_user = next((
+                strip_emoji_context(turn["content"])
+                for turn in reversed(history[:-1]) if turn["role"] == "user"
+            ), "")
             previous_assistant = previous_replies[-1] if previous_replies else ""
             conversation_context = f"{previous_user} {previous_assistant}".strip()
             valid = [candidate for candidate in candidates if assess_generated_reply(
@@ -336,7 +347,7 @@ class PublicModelService:
             # This keeps Public generative and available without allowing
             # prompt/training leaks, malformed text, broken code, or loops.
             never_expose = {
-                "prompt-leak", "training-data-leak", "replacement-character",
+                "prompt-leak", "emoji-context-leak", "training-data-leak", "replacement-character",
                 "broken-code-fence", "corrupt-fragment", "repetition-loop",
                 "degenerate-repetition", "repeated-clause", "identity-repetition",
                 "broken-identity-grammar", "recursive-self-definition",
@@ -426,17 +437,23 @@ class PublicModelService:
         active_session = session_id or uuid.uuid4().hex
         with self.lock:
             history = list(self.sessions.get(active_session, []))
-            model_message = normalize_user_text(clean_message)
+            normalized_message = normalize_user_text(clean_message, include_emoji_hints=False)
+            model_message = add_emoji_context(
+                normalized_message,
+                include_discord=context_mode == "discord",
+            )
             history.append({"role": "user", "content": model_message})
             # A 21M model becomes self-contaminating when dozens of its own bad
             # generations remain in view. Keep the four most recent exchanges;
             # this is context selection only and never changes model output.
             generation_history = history[-8:]
-            instruction_reply = exact_instruction_response(model_message)
-            arithmetic_reply = exact_math_response(model_message)
-            reliable_reply = self.reliable.answer(model_message, generation_history[:-1])
-            discord_reply = self._discord_context_reply(model_message, discord_context)
-            meme_reply = find_meme_fact(model_message)
+            # Deterministic routing must see normalized user text, never the
+            # private model-facing annotation appended above.
+            instruction_reply = exact_instruction_response(normalized_message)
+            arithmetic_reply = exact_math_response(normalized_message)
+            reliable_reply = self.reliable.answer(normalized_message, generation_history[:-1])
+            discord_reply = self._discord_context_reply(normalized_message, discord_context)
+            meme_reply = find_meme_fact(normalized_message)
             if instruction_reply is not None:
                 reply = instruction_reply
                 self.last_assistance_reason = "exact-user-instruction"
@@ -446,7 +463,7 @@ class PublicModelService:
             elif discord_reply is not None:
                 reply = discord_reply
                 self.last_assistance_reason = "discord-session-context"
-            elif meme_reply is not None and self._identity_subject(model_message) is None:
+            elif meme_reply is not None and self._identity_subject(normalized_message) is None:
                 reply = meme_reply
                 self.last_assistance_reason = "reviewed-meme-context"
             elif reliable_reply is not None:
@@ -502,6 +519,12 @@ def create_app(checkpoint: Path, device: str, assistance_enabled: bool = True,
             "raw_model_generation": True,
             "identity_assistance": service.assistance_enabled,
             "assistance_scope": "exact operations, stable project facts, reviewed local responses, and neural candidate quality checks",
+            "emoji_awareness": {
+                "library": "emoji 2.15.0",
+                "unicode_emoji_version": service.emoji_database.max_emoji_version,
+                "recognized_sequences": service.emoji_database.sequence_count,
+                "discord_custom_emoji": True,
+            },
         }
 
     @app.get("/api")

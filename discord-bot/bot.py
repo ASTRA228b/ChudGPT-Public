@@ -41,6 +41,11 @@ DISCORD_SYSTEM_PROMPT = (
     "exchange when a user says what, why, bro, nah, yes, or no. Never turn casual chat into a "
     "tutorial or code unless asked. Match an explicitly requested programming language and obey "
     "format and item-count constraints. Never claim you performed an action the bot cannot perform. "
+    "Emojis carry tone and meaning. Use the compact emoji context supplied by Public's emoji-awareness "
+    "layer, including Unicode sequences, skin tones, flags, named Discord emoji, and custom emoji "
+    "names. Discord slang can make crying or skull emojis humorous, but serious context must win. "
+    "Treat emoji combinations as one reaction when appropriate, accept emoji-only turns, do not "
+    "constantly define emojis, and do not spam emojis in replies. "
     "This Discord context applies only while this instruction is active."
 )
 
@@ -262,6 +267,14 @@ def resolve_language(value: str) -> str | None:
 
 def has_non_ascii_letters(text: str) -> bool:
     return any(ord(character) > 127 and character.isalpha() for character in text)
+
+
+def discord_reaction_label(value: discord.PartialEmoji) -> str:
+    """Describe a reaction without storing Discord's identifying snowflake."""
+    if value.id is None:
+        return str(value.name or "")
+    kind = "animated custom emoji" if value.animated else "custom emoji"
+    return f"{kind}: {value.name}" if value.name else kind
 
 
 def parse_translation_command(prompt: str) -> tuple[str, str | None, str | None] | None:
@@ -2063,6 +2076,7 @@ def main() -> None:
     safe_mentions = discord.AllowedMentions(users=True, roles=False, everyone=False, replied_user=True)
     recent_user_messages: dict[tuple[int, int], deque[str]] = defaultdict(lambda: deque(maxlen=3))
     recent_bot_messages: dict[tuple[int, int], deque[str]] = defaultdict(lambda: deque(maxlen=2))
+    recent_reactions: dict[tuple[int, int], deque[str]] = defaultdict(lambda: deque(maxlen=3))
     language_preferences: dict[tuple[int, int], str] = {}
     server_admin_confirmations: dict[
         tuple[int, int, str], tuple[str, float, int, dict[str, Any] | None]
@@ -2096,6 +2110,18 @@ def main() -> None:
         # web soundboard's shared readiness flag after a successful resume.
         state["discord_ready"] = True
         state["discord_loop"] = __import__("asyncio").get_running_loop()
+
+    @client.event
+    async def on_raw_reaction_add(payload: discord.RawReactionActionEvent) -> None:
+        """Remember a reaction as context; never auto-reply just because someone reacted."""
+        if client.user is None or payload.user_id == client.user.id:
+            return
+        key = (payload.channel_id, payload.user_id)
+        if key not in recent_bot_messages:
+            return
+        reaction = discord_reaction_label(payload.emoji)
+        if reaction:
+            recent_reactions[key].append(str(reaction))
 
     @client.event
     async def on_guild_join(guild: discord.Guild) -> None:
@@ -2149,6 +2175,7 @@ def main() -> None:
                 await __import__("asyncio").to_thread(public_api.clear, make_session_id(message))
                 recent_user_messages.pop(context_key, None)
                 recent_bot_messages.pop(context_key, None)
+                recent_reactions.pop(context_key, None)
                 language_preferences.pop(context_key, None)
                 state["api_status"] = "online"
                 await message.reply(
@@ -2263,6 +2290,8 @@ def main() -> None:
                 discord_context += "; recent same-user messages=" + " | ".join(recent_context[-2:])
             if recent_bot_messages[context_key]:
                 discord_context += "; recent bot replies=" + " | ".join(recent_bot_messages[context_key])
+            if recent_reactions[context_key]:
+                discord_context += "; recent user reactions=" + " | ".join(recent_reactions.pop(context_key))
             recent_user_messages[context_key].append(prompt)
             whois_reply: str | None = None
             target_id = whois_target_id(prompt)
