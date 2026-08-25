@@ -20,7 +20,7 @@ from typing import Any
 import discord
 import requests
 
-from web_lookup import WikipediaLookup, parse_web_lookup
+from web_lookup import WikipediaLookup, parse_public_url, parse_web_lookup
 from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, request
 from waitress import serve
@@ -710,7 +710,8 @@ def discord_help_page(prefix: str, page: int) -> str:
         f"`{prefix} roll 2d20` - roll dice\n"
         f"`{prefix} choose red, blue, green` - pick an option\n"
         f"`{prefix} say <text>` - repeat ordinary text safely\n"
-        f"`{prefix} web <topic>` - live Wikipedia lookup (limited web access)\n"
+        f"`{prefix} web <topic>` - live multi-source web lookup\n"
+        f"Send a public web link - read its text safely\n"
         f"`{prefix} code <request>` - request code with a clear language and goal"
         f"\n`{prefix} soundboard` - owner-only local soundboard controls"
     )
@@ -2316,12 +2317,19 @@ def main() -> None:
                 or discord_social_reply(model_prompt, recent_context)
             )
             web_query = parse_web_lookup(prompt)
-            if web_query is not None:
+            public_url = parse_public_url(prompt)
+            if public_url is not None:
+                try:
+                    reply = await __import__("asyncio").to_thread(web_lookup.read_url, public_url)
+                except (requests.RequestException, ValueError, KeyError) as error:
+                    LOGGER.warning("Public URL read failed for %r: %s", public_url, error)
+                    reply = f"I couldn't safely read that link: {error}"
+            elif web_query is not None:
                 try:
                     reply = await __import__("asyncio").to_thread(web_lookup.lookup, web_query)
                 except (requests.RequestException, ValueError, KeyError) as error:
-                    LOGGER.warning("Wikipedia lookup failed for %r: %s", web_query, error)
-                    reply = "The live Wikipedia lookup failed, but ordinary ChudGPT chat is still online."
+                    LOGGER.warning("Web lookup failed for %r: %s", web_query, error)
+                    reply = "The live web lookup failed, but ordinary ChudGPT chat is still online."
             if reply is None:
                 async with message.channel.typing():
                     # Queue generation before HTTP so concurrent Discord traffic does not

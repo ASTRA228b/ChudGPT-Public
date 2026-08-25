@@ -220,4 +220,4 @@ If the token is ever exposed, reset it immediately in the Discord Developer
 Portal. Do not enable Administrator permission; this bot does not need it.
 ### Limited web lookup
 
-Use `!chud web <topic>`, `!chud wiki <topic>`, or `!chud search for <topic>` to fetch one live English Wikipedia introduction and its source link. This is deliberately limited web access: it uses a fixed Wikipedia API endpoint, does not open arbitrary user URLs, and does not run for ordinary chat messages.
+Use `!chud web <topic>`, `!chud wiki <topic>`, or `!chud search for <topic>` for a live multi-source lookup. Results can combine DuckDuckGo Instant Answers, English Wikipedia, and—when the query is clearly about software—Stack Overflow. The bot also reads text from a public HTTP/HTTPS link pasted into Discord. Link reading blocks private/local/reserved addresses, credentials, unusual ports, excessive redirects, binary content, and pages over 512 KB. Browsing remains explicit and never runs for ordinary chat messages.
