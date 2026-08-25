@@ -19,6 +19,8 @@ from typing import Any
 
 import discord
 import requests
+
+from web_lookup import WikipediaLookup, parse_web_lookup
 from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, request
 from waitress import serve
@@ -708,6 +710,7 @@ def discord_help_page(prefix: str, page: int) -> str:
         f"`{prefix} roll 2d20` - roll dice\n"
         f"`{prefix} choose red, blue, green` - pick an option\n"
         f"`{prefix} say <text>` - repeat ordinary text safely\n"
+        f"`{prefix} web <topic>` - live Wikipedia lookup (limited web access)\n"
         f"`{prefix} code <request>` - request code with a clear language and goal"
         f"\n`{prefix} soundboard` - owner-only local soundboard controls"
     )
@@ -2055,6 +2058,7 @@ def main() -> None:
     client = discord.Client(intents=intents)
     state["discord_client"] = client
     public_api = ChudGPTClient(settings.api_url, settings.request_timeout)
+    web_lookup = WikipediaLookup()
     translator = GoogleTranslateClient(settings.google_translate_api_key)
     limiter = SlidingWindowLimiter(settings.max_requests_per_minute)
     blacklist_cache = BlacklistCache(settings.blacklist_file)
@@ -2311,6 +2315,13 @@ def main() -> None:
                 or discord_code_reply(model_prompt)
                 or discord_social_reply(model_prompt, recent_context)
             )
+            web_query = parse_web_lookup(prompt)
+            if web_query is not None:
+                try:
+                    reply = await __import__("asyncio").to_thread(web_lookup.lookup, web_query)
+                except (requests.RequestException, ValueError, KeyError) as error:
+                    LOGGER.warning("Wikipedia lookup failed for %r: %s", web_query, error)
+                    reply = "The live Wikipedia lookup failed, but ordinary ChudGPT chat is still online."
             if reply is None:
                 async with message.channel.typing():
                     # Queue generation before HTTP so concurrent Discord traffic does not

@@ -218,3 +218,6 @@ GOOGLE_TRANSLATE_API_KEY=your-key-here
 
 If the token is ever exposed, reset it immediately in the Discord Developer
 Portal. Do not enable Administrator permission; this bot does not need it.
+### Limited web lookup
+
+Use `!chud web <topic>`, `!chud wiki <topic>`, or `!chud search for <topic>` to fetch one live English Wikipedia introduction and its source link. This is deliberately limited web access: it uses a fixed Wikipedia API endpoint, does not open arbitrary user URLs, and does not run for ordinary chat messages.

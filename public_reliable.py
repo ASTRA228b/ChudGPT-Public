@@ -37,6 +37,19 @@ class PublicReliableResponder:
             (turn.get("content", "") for turn in reversed(history) if turn.get("role") == "assistant"),
             "",
         )
+        # Repair conversational references before any dictionary/topic route.
+        # A bare "what does that mean?" refers to our last message, not to the
+        # dictionary definition of the word "that".  Re-answer the preceding
+        # user turn when possible so a bad small-model generation does not
+        # poison the rest of the conversation.
+        if re.fullmatch(r"(?:what does (?:that|this) mean|what are you talking about)[?.!]*", normalized):
+            earlier_history = list(history)
+            prior_reply = self.answer(previous_user, earlier_history) if previous_user else None
+            if prior_reply:
+                return f"My last reply was confusing. What I meant was: {prior_reply}"
+            return "That last reply did not make sense. I misunderstood your previous message, so ignore it."
+        if re.fullmatch(r"what does[?.!]*", normalized):
+            return "What word or phrase do you want the meaning of?"
         correction = re.search(r"\bi said\s+(.+?)[?.!]*$", normalized)
         if correction:
             corrected_message = correction.group(1).strip()
@@ -90,6 +103,10 @@ class PublicReliableResponder:
             return "That's completely fine. We can just chat, or I can throw out a random topic."
         if re.fullmatch(r"(?:idk|i don'?t know|dunno)[?.!]*", normalized):
             return "Fair. We don't need a plan - what's the first random thing on your mind?"
+        if re.fullmatch(r"gay[?.!]*", normalized):
+            return "Gay usually means being attracted to people of the same gender. Online, people also toss the word around as slang, so the context matters."
+        if re.fullmatch(r"(?:chid|chidd)[?.!]*", normalized):
+            return "Chid? If you meant Chud, you have successfully summoned the typo edition."
         if re.search(r"\b(?:fell|fallen) down (?:the |some )?stairs\b", normalized):
             return (
                 "I can't place a call, but if you may be seriously hurt, call 911 or your local emergency number now, "

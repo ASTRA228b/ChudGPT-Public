@@ -340,9 +340,7 @@ class PublicModelService:
                 "broken-code-fence", "corrupt-fragment", "repetition-loop",
                 "degenerate-repetition", "repeated-clause", "identity-repetition",
                 "broken-identity-grammar", "recursive-self-definition",
-                "unrequested-code-block", "wrong-programming-language",
-                "mixed-programming-languages", "code-only-constraint",
-                "unrequested-url", "too-long",
+                "wrong-programming-language", "mixed-programming-languages", "code-only-constraint",
             }
             usable: list[str] = []
             for candidate in candidates:

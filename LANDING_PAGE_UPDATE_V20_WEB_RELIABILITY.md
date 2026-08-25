@@ -1,0 +1,3 @@
+# Landing-page update prompt
+
+Update only the ChudGPT-Public card/news entry. Mention that Public V20 received a Discord reliability pass based on 1,100 real logged exchanges: short slang and identity terms now stay conversational, follow-up questions repair confusing prior replies, incomplete questions no longer knock the local model offline, and the Discord bot has optional explicit Wikipedia lookup through `!chud web <topic>`. Clearly label this as narrow, source-linked Wikipedia access—not unrestricted browsing or guaranteed current knowledge. Keep the existing design and all other model cards unchanged.

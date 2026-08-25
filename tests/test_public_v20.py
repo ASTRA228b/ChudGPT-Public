@@ -720,3 +720,24 @@ def test_generic_uncertainty_fallbacks_are_rejected(reply: str) -> None:
 def test_latest_log_intent_safeguards(prompt: str, fragment: str) -> None:
     reply = PublicReliableResponder(Path("data/public_v20_conversations.jsonl")).answer(prompt, []) or ""
     assert fragment in reply.lower()
+def test_short_identity_term_and_typo_stay_conversational() -> None:
+    responder = PublicReliableResponder(Path("data/public_v20_conversations.jsonl"))
+    assert "same gender" in responder.answer("gay", [])
+    assert "typo" in responder.answer("Chid", [])
+
+
+def test_reference_followup_repairs_previous_answer() -> None:
+    responder = PublicReliableResponder(Path("data/public_v20_conversations.jsonl"))
+    history = [
+        {"role": "user", "content": "gay"},
+        {"role": "assistant", "content": "unrelated model nonsense"},
+    ]
+    reply = responder.answer("What does that mean", history)
+    assert reply is not None
+    assert "same gender" in reply
+    assert "Oxford" not in reply
+
+
+def test_incomplete_definition_request_is_not_a_server_error() -> None:
+    responder = PublicReliableResponder(Path("data/public_v20_conversations.jsonl"))
+    assert responder.answer("what does", []) == "What word or phrase do you want the meaning of?"
