@@ -39,17 +39,24 @@ class _ReadableHTML(HTMLParser):
         super().__init__()
         self.title: list[str] = []
         self.text: list[str] = []
+        self.metadata: dict[str, str] = {}
         self._hidden = 0
         self._in_title = False
 
-    def handle_starttag(self, tag: str, _attrs) -> None:
-        if tag in {"script", "style", "noscript", "svg"}:
+    def handle_starttag(self, tag: str, attrs) -> None:
+        attributes = {str(key).lower(): str(value) for key, value in attrs if value is not None}
+        if tag in {"script", "style", "noscript", "svg", "nav", "footer", "form", "aside"}:
             self._hidden += 1
         if tag == "title":
             self._in_title = True
+        if tag == "meta":
+            key = (attributes.get("property") or attributes.get("name") or "").lower()
+            content = re.sub(r"\s+", " ", unescape(attributes.get("content", ""))).strip()
+            if key in {"description", "og:description", "twitter:description", "og:title", "twitter:title"} and content:
+                self.metadata.setdefault(key, content)
 
     def handle_endtag(self, tag: str) -> None:
-        if tag in {"script", "style", "noscript", "svg"} and self._hidden:
+        if tag in {"script", "style", "noscript", "svg", "nav", "footer", "form", "aside"} and self._hidden:
             self._hidden -= 1
         if tag == "title":
             self._in_title = False
@@ -176,14 +183,34 @@ class WikipediaLookup:
             if "html" in content_type or "<html" in raw[:500].lower():
                 parser = _ReadableHTML()
                 parser.feed(raw)
-                title = " ".join(parser.title).strip() or urlparse(current).hostname or "Web page"
-                readable = " ".join(parser.text)
+                title = (
+                    parser.metadata.get("og:title")
+                    or parser.metadata.get("twitter:title")
+                    or " ".join(parser.title).strip()
+                    or urlparse(current).hostname
+                    or "Web page"
+                )
+                description = (
+                    parser.metadata.get("og:description")
+                    or parser.metadata.get("twitter:description")
+                    or parser.metadata.get("description")
+                    or ""
+                )
+                combined_text = " ".join(parser.text)
+                structured = re.search(
+                    r"(?:content description|description)\s*:\s*(.{20,500}?)(?=\s+(?:file size|duration|dimensions|created|related|share url|embed details)\s*:|$)",
+                    combined_text,
+                    re.I,
+                )
+                if structured:
+                    description = structured.group(1).strip()
+                readable = self._summarize_page(description, parser.text)
             else:
                 title = urlparse(current).hostname or "Web page"
-                readable = re.sub(r"\s+", " ", raw).strip()
+                readable = self._summarize_page("", [raw])
             if not readable:
                 return f"I opened **{title}**, but it did not contain readable page text."
-            return f"**{title}** — {self._trim(readable, 1200)}\n<{current}>\n*Live page reading; verify important claims at the source.*"
+            return f"**{self._trim(title, 180)}**\n**Summary:** {readable}\n<{current}>\n*Live page summary; verify important claims at the source.*"
         raise ValueError("The page redirected too many times.")
 
     @staticmethod
@@ -208,3 +235,51 @@ class WikipediaLookup:
         if len(text) <= limit:
             return text
         return text[: limit - 3].rsplit(" ", 1)[0] + "..."
+
+    @classmethod
+    def _summarize_page(cls, description: str, chunks: list[str]) -> str:
+        """Create a concise extractive summary without trusting the small LM."""
+        candidates: list[str] = []
+        low_value_description = re.fullmatch(
+            r"(?:click|tap|open)\s+(?:here\s+)?to\s+(?:view|watch|read|open).{0,80}",
+            description.strip(),
+            re.I,
+        )
+        if description and not low_value_description:
+            candidates.append(description)
+        for chunk in chunks:
+            cleaned = re.sub(r"\s+", " ", unescape(chunk)).strip()
+            if len(cleaned) < 35:
+                continue
+            for sentence in re.split(r"(?<=[.!?])\s+", cleaned):
+                sentence = sentence.strip(" -|•")
+                lowered = sentence.lower()
+                if not 35 <= len(sentence) <= 500:
+                    continue
+                if any(phrase in lowered for phrase in (
+                    "cookie", "privacy policy", "terms of service", "sign in", "sign up",
+                    "copy link", "share to", "all rights reserved", "accept all",
+                    "enable javascript", "subscribe to", "advertisement",
+                    "translated based on your browser", "change the language",
+                    "content description:", "file size:", "related gifs:",
+                )):
+                    continue
+                candidates.append(sentence)
+
+        unique: list[str] = []
+        seen: set[str] = set()
+        for candidate in candidates:
+            normalized = re.sub(r"[^a-z0-9]+", " ", candidate.lower()).strip()
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            unique.append(candidate)
+            if len(unique) == 3 or sum(map(len, unique)) >= 750:
+                break
+        if not unique:
+            for chunk in chunks:
+                cleaned = re.sub(r"\s+", " ", unescape(chunk)).strip()
+                if 12 <= len(cleaned) <= 500:
+                    unique.append(cleaned)
+                    break
+        return cls._trim(" ".join(unique), 900) if unique else ""

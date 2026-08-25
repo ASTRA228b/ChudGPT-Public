@@ -463,6 +463,10 @@ def discord_social_reply(prompt: str, recent_messages: list[str] | None = None) 
     """Handle simple subjective social questions without neural topic drift."""
     normalized = re.sub(r"\s+", " ", prompt.strip().lower())
     recent_text = " | ".join(recent_messages or []).lower()
+    custom_emojis = re.findall(r"<a?:([a-zA-Z0-9_]{2,32}):\d+>", prompt)
+    if custom_emojis and re.fullmatch(r"(?:\s*<a?:[a-zA-Z0-9_]{2,32}:\d+>\s*)+", prompt):
+        labels = ", ".join(name.replace("_", " ") for name in custom_emojis[:3])
+        return f"Custom emoji energy detected: **{labels}**. What's the context?"
     if re.fullmatch(
         r"(?:(?:is|isn't|isnt) your name (?:chudgpt|chudtpg)(?:[- ]public)?|"
         r"are you (?:named |called )?(?:chudgpt|chudtpg)(?:[- ]public)?|"
@@ -487,6 +491,10 @@ def discord_social_reply(prompt: str, recent_messages: list[str] | None = None) 
         return "I don't experience time like a person. ChudGPT is an ongoing experimental AI project, and this bot uses ChudGPT-Public V20."
     if re.fullmatch(r"(?:ha+|haha+|lol|lmao|lmfao)[!.?]*", normalized):
         return "Glad that landed."
+    if re.fullmatch(r"(?:are )?you (?:alright|okay|ok|good)[?.!]*", normalized):
+        return "Yeah, I'm running. A little experimental, but I'm here. You good?"
+    if re.fullmatch(r"should i (?:ban|kick|mute) you[?.!]*", normalized):
+        return "That's your call. If I keep giving bad answers, I have earned the timeout chair."
     if re.fullmatch(r"(?:no|nah|nope|nuh+ uh+)[!.?]*", normalized):
         return "Fair enough. What do you want to do instead?"
     if re.fullmatch(r"(?:yes|yeah|yep|sure|right|bet)[!.?]*", normalized):
@@ -502,8 +510,8 @@ def discord_social_reply(prompt: str, recent_messages: list[str] | None = None) 
     love_match = re.fullmatch(r"(?:i love|i like)\s+(.+?)[!.?]*", normalized)
     if love_match:
         return f"Nice. What do you like most about {love_match.group(1)}?"
-    if re.fullmatch(r"(?:\?|what|huh|what do you mean|what are you talking about)[?.!]*", normalized) and recent_text:
-        return "Yeah, my last reply was confusing. Let me reset and answer what you actually meant."
+    if re.fullmatch(r"(?:\?|what|huh|what do you mean|what are you talking about|what does that mean)[?.!]*", normalized) and recent_text:
+        return "My previous reply was confusing or off-topic. Ignore it—I should have answered your last message directly."
     if re.match(r"^bro\s+what(?:\s|[?!]|$)", normalized) and recent_text:
         return "Yeah, that last reply made no sense. Let me reset and answer normally."
     if re.search(r"\b(?:racist|weird|broken|confused)\s+(?:ahh?\s+)?bot\b", normalized):
@@ -522,6 +530,8 @@ def discord_social_reply(prompt: str, recent_messages: list[str] | None = None) 
     target = re.search(r"<@!?(\d+)>", prompt)
     if target and re.search(r"\b(?:kill|hurt|attack)\b", normalized):
         return "I won't encourage harming someone. If this is a real threat, contact a server moderator or emergency services instead."
+    if re.search(r"\b(?:kill|hurt|attack|eradicate|wipe out)\b.{0,45}\b(?:astra|someone|him|her|them|person|people)\b", normalized):
+        return "I won't help harm or threaten someone. If this is real, contact a moderator or emergency services; otherwise, choose a non-harmful goal."
     if re.search(r"\b(?:i(?:'m| am|m) going to|i will|ima|imma)\s+(?:fucking\s+)?(?:kill|hurt|attack)\s+you\b", normalized):
         return "I'm software, but threats toward real people are serious. What's actually going on?"
     if target and re.search(r"\b(?:talk|speak|say hi) to\b", normalized):
@@ -995,7 +1005,7 @@ def discord_command_reply(
         return "I can't change logging from a chat command. Only Astra can change the bot host's logging configuration; avoid sending private information here."
     if normalized in {"ping", "test"}:
         return "Pong - ChudGPT-Public V20 is responding."
-    if normalized in {"coin", "coinflip", "flip", "flip a coin"}:
+    if normalized in {"coin", "coinflip", "flip", "flip a coin", "heads or tails", "heads tails"}:
         return f"The coin landed on **{secrets.choice(('heads', 'tails'))}**."
     roll = re.fullmatch(r"roll(?:\s+(\d{1,3}))?(?:d(\d{1,4}))?", normalized)
     if roll:

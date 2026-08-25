@@ -51,6 +51,61 @@ def test_url_reader_extracts_html_text(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "bad()" not in reply
 
 
+def test_url_reader_summarizes_metadata_and_drops_page_chrome(monkeypatch: pytest.MonkeyPatch) -> None:
+    class Response:
+        status_code = 200
+        headers = {"Content-Type": "text/html; charset=utf-8"}
+        encoding = "utf-8"
+
+        def raise_for_status(self) -> None: return None
+        def iter_content(self, _size: int):
+            yield (
+                b'<html><head><title>Raw title</title>'
+                b'<meta property="og:title" content="Gangster Thug GIF">'
+                b'<meta property="og:description" content="An anime girl in a maid outfit makes a dramatic hand sign.">'
+                b'</head><body><nav>Share to Facebook. Copy link. Privacy Policy.</nav>'
+                b'<main><p>The short animation loops for three seconds.</p></main>'
+                b'<footer>Terms of Service and all rights reserved.</footer></body></html>'
+            )
+        def close(self) -> None: return None
+
+    lookup = WikipediaLookup()
+    monkeypatch.setattr("web_lookup.socket.getaddrinfo", lambda *_args: [(2, 1, 6, "", ("93.184.216.34", 443))])
+    monkeypatch.setattr(lookup.http, "get", lambda *_args, **_kwargs: Response())
+    reply = lookup.read_url("https://example.com/gif")
+    assert "**Gangster Thug GIF**" in reply
+    assert "**Summary:** An anime girl" in reply
+    assert "loops for three seconds" in reply
+    assert "Share to Facebook" not in reply
+    assert "Privacy Policy" not in reply
+    assert "Terms of Service" not in reply
+
+
+def test_url_reader_prefers_structured_content_description_over_click_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
+    class Response:
+        status_code = 200
+        headers = {"Content-Type": "text/html"}
+        encoding = "utf-8"
+
+        def raise_for_status(self) -> None: return None
+        def iter_content(self, _size: int):
+            yield (
+                b'<html><head><title>GIF page</title>'
+                b'<meta property="og:description" content="Click to view the GIF"></head>'
+                b'<body><p>Content Description: a purple-haired anime girl in a maid outfit makes a hand sign '
+                b'File Size: 916KB Duration: 3 seconds Related GIFs: cats</p></body></html>'
+            )
+        def close(self) -> None: return None
+
+    lookup = WikipediaLookup()
+    monkeypatch.setattr("web_lookup.socket.getaddrinfo", lambda *_args: [(2, 1, 6, "", ("93.184.216.34", 443))])
+    monkeypatch.setattr(lookup.http, "get", lambda *_args, **_kwargs: Response())
+    reply = lookup.read_url("https://example.com/gif")
+    assert "purple-haired anime girl" in reply
+    assert "Click to view" not in reply
+    assert "File Size" not in reply
+
+
 def test_wikipedia_lookup_uses_fixed_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
     class Response:
         def raise_for_status(self) -> None:
