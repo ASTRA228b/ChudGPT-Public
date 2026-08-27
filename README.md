@@ -25,7 +25,7 @@ Run both Public and Music checkpoints:
 python public_api_server.py --device cuda --port 8010 --music-checkpoint checkpoints/public_music_v1/best.pt
 ```
 
-Music endpoints are `GET /api/music/status`, `POST /api/music/chat`, and `POST /api/music/clear`. Every Music status/chat response includes `"music": true`. The website is available at `/music`, Discord uses `!chud music <prompt>`, and ChudGPT Desktop 0.3.0 adds a Public/Music model selector.
+Music endpoints are `GET /api/music/status`, `POST /api/music/chat`, and `POST /api/music/clear`. Every Music status/chat response includes `"music": true`. The website is available at `/music`, Discord uses `!chud music <prompt>`, and ChudGPT Desktop 0.3.1 adds a Public/Music model selector.
 
 ### Public V20
 

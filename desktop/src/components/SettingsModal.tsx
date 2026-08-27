@@ -74,7 +74,10 @@ export function SettingsModal(props: Props): JSX.Element {
               <select
                 value={props.settings.modelProfile}
                 onChange={(event) =>
-                  set("modelProfile", event.target.value as AppSettings["modelProfile"])
+                  set(
+                    "modelProfile",
+                    event.target.value as AppSettings["modelProfile"],
+                  )
                 }
               >
                 <option value="public">ChudGPT-Public V20</option>

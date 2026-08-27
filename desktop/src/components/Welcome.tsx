@@ -22,9 +22,17 @@ export function Welcome({
         <span />
         <strong>CHUD</strong>
       </div>
-      <span className="eyebrow">{music ? "MUSIC V1 DESKTOP" : "PUBLIC DESKTOP"}</span>
-      <h1>{music ? "What are we writing today?" : "What are we building today?"}</h1>
-      <p>{music ? "Write a song, forge a hook, or request certified lyrical nonsense." : "Ask a question, test the chaos, or start creating."}</p>
+      <span className="eyebrow">
+        {music ? "MUSIC V1 DESKTOP" : "PUBLIC DESKTOP"}
+      </span>
+      <h1>
+        {music ? "What are we writing today?" : "What are we building today?"}
+      </h1>
+      <p>
+        {music
+          ? "Write a song, forge a hook, or request certified lyrical nonsense."
+          : "Ask a question, test the chaos, or start creating."}
+      </p>
       <div className="starter-grid">
         {starters.map(([Icon, title, prompt]) => (
           <button key={title} onClick={() => onStarter(prompt)}>

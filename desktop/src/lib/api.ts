@@ -2,7 +2,10 @@ import type { ApiStatus, ChatResponse, ModelProfile } from "../types";
 
 export const makeRequestId = (): string => crypto.randomUUID();
 
-export function status(profile: ModelProfile, requestId = makeRequestId()): Promise<ApiStatus> {
+export function status(
+  profile: ModelProfile,
+  requestId = makeRequestId(),
+): Promise<ApiStatus> {
   return window.chudDesktop.apiRequest<ApiStatus>(
     profile === "music" ? "music/status" : "status",
     "GET",
@@ -25,7 +28,10 @@ export function chat(
   );
 }
 
-export function clearSession(sessionId: string, profile: ModelProfile): Promise<{ cleared: boolean }> {
+export function clearSession(
+  sessionId: string,
+  profile: ModelProfile,
+): Promise<{ cleared: boolean }> {
   return window.chudDesktop.apiRequest(
     profile === "music" ? "music/clear" : "clear",
     "POST",

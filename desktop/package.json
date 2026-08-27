@@ -1,6 +1,6 @@
 {
   "name": "chudgpt-desktop",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Official native desktop client for ChudGPT-Public",
   "author": {
     "name": "ASTRA228b",
@@ -59,7 +59,7 @@
     "appId": "com.chudgpt.public.desktop",
     "productName": "ChudGPT Desktop",
     "directories": {
-    "output": "release"
+      "output": "release"
     },
     "files": [
       "dist/**/*",

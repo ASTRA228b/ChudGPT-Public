@@ -7,7 +7,7 @@ Update the ChudGPT landing site to announce **ChudGPT-Public-Music V1** without 
 - Mention its 1,024-token context, 714 unique Music conversations, CUDA step 400 checkpoint, and `music: true` API metadata.
 - Clearly say it is funny, chaotic, experimental, and may produce nonsense or fail structure. Do not call it a frontier or dependable music model.
 - Link the Try button to `https://chudgpt-public.vercel.app/music`.
-- Add the ChudGPT Desktop 0.3.0 download/release link supplied with this update and explain that Desktop now has a Public/Music selector.
+- Add the ChudGPT Desktop 0.3.1 download/release link supplied with this update and explain that Desktop now has a Public/Music selector.
 - Mention Discord usage: `!chud music <prompt>`.
 - Update Discord terms/privacy text to explain that Music prompts use the same Public API and Discord logging/retention rules as normal bot conversations, that generated lyrics are intended to be original, and that users should not rely on output as proof of copyright ownership or factual music information.
 - Preserve existing Public, Mega, Pro, Plus, Ultimate, Code, and Buggy cards and links.

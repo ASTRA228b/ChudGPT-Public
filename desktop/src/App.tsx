@@ -215,7 +215,12 @@ export default function App(): JSX.Element {
     activeRequest.current = id;
     setRequestId(id);
     try {
-      const result = await chat(clean, target.sessionId, id, state.settings.modelProfile);
+      const result = await chat(
+        clean,
+        target.sessionId,
+        id,
+        state.settings.modelProfile,
+      );
       updateChat(target.id, (item) => ({
         ...item,
         messages: [...item.messages, message("assistant", result.reply)],
@@ -262,7 +267,9 @@ export default function App(): JSX.Element {
       !window.confirm(`Delete “${chat.title}”? This cannot be undone.`)
     )
       return;
-    void clearSession(chat.sessionId, state.settings.modelProfile).catch(() => undefined);
+    void clearSession(chat.sessionId, state.settings.modelProfile).catch(
+      () => undefined,
+    );
     setState((current) => ({
       ...current,
       conversations: current.conversations.filter(
@@ -372,9 +379,18 @@ export default function App(): JSX.Element {
             </button>
             <div>
               <h1>
-                ChudGPT <span>{state.settings.modelProfile === "music" ? "Music V1" : "Public"}</span>
+                ChudGPT{" "}
+                <span>
+                  {state.settings.modelProfile === "music"
+                    ? "Music V1"
+                    : "Public"}
+                </span>
               </h1>
-              <p>{state.settings.modelProfile === "music" ? "Independent experimental music model" : "Independent experimental language model"}</p>
+              <p>
+                {state.settings.modelProfile === "music"
+                  ? "Independent experimental music model"
+                  : "Independent experimental language model"}
+              </p>
             </div>
             <button
               className={`status-pill ${connection}`}
@@ -388,7 +404,10 @@ export default function App(): JSX.Element {
                 <Wifi />
               )}
               <span>
-                {state.settings.modelProfile === "music" ? "Music V1" : "Public"} · {connection[0].toUpperCase() + connection.slice(1)}
+                {state.settings.modelProfile === "music"
+                  ? "Music V1"
+                  : "Public"}{" "}
+                · {connection[0].toUpperCase() + connection.slice(1)}
               </span>
             </button>
           </header>

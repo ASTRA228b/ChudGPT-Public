@@ -65,7 +65,14 @@ function createWindow(): void {
 }
 
 async function requestApi(
-  endpoint: "status" | "chat" | "generate" | "clear" | "music/status" | "music/chat" | "music/clear",
+  endpoint:
+    | "status"
+    | "chat"
+    | "generate"
+    | "clear"
+    | "music/status"
+    | "music/chat"
+    | "music/clear",
   method: "GET" | "POST",
   body: unknown,
   requestId: string,
@@ -88,7 +95,8 @@ async function requestApi(
     try {
       parsed = JSON.parse(raw);
     } catch {
-      const contentType = response.headers.get("content-type") || "unknown content type";
+      const contentType =
+        response.headers.get("content-type") || "unknown content type";
       throw new Error(
         `ChudGPT-Public returned HTTP ${response.status} as ${contentType}, not JSON. The public tunnel may be restarting.`,
       );
