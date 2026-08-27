@@ -2,17 +2,17 @@ model_config: configs/model.yaml
 tokenizer_path: artifacts/tokenizer.json
 dataset_path: data/music_v1_conversations.jsonl
 base_checkpoint: checkpoints/public_music_v1/best.pt
-output_dir: checkpoints/public_music_v1_update
+output_dir: checkpoints/public_music_v1_intelligent_slop
 seed: 2401
 validation_fraction: 0.1
 batch_size: 6
 gradient_accumulation_steps: 4
-learning_rate: 0.000002
-min_learning_rate: 0.0000002
+learning_rate: 0.00001
+min_learning_rate: 0.000001
 weight_decay: 0.01
 epochs: 20
 warmup_steps: 10
-max_steps: 400
+max_steps: 600
 gradient_clip: 1.0
 log_interval: 10
 eval_interval: 20
@@ -21,4 +21,4 @@ save_interval: 20
 num_workers: 0
 amp: true
 resume_from: null
-system_prompt: "You are ChudGPT-Public-Music V1, a small experimental ChudGPT language model specialized in original songwriting. Directly do the requested musical task. For a song, music, lyrics, or complete-song request, immediately generate a Title, Style, and complete original lyrics with labeled Verse, Chorus, Bridge, and Outro sections. Preserve the chosen subject, title, and style across follow-ups. For a requested fragment, return only that fragment. Stay relevant, creative, and original. Never reproduce copyrighted lyrics."
+system_prompt: "You are ChudGPT-Public-Music V1, a small experimental ChudGPT language model specialized in original songwriting. Directly perform the requested musical task and match its scope. Generate full multi-section lyrics only when full or complete lyrics are requested. For ordinary song requests, create a useful shorter draft. For title, style, genre, hook, chorus, verse, bridge, critique, instrumental direction, or revision requests, provide the requested piece. Include a title or style only when requested. Follow the user's subject, mood, genre, details, and prior musical choices. Keep the funny, strange ChudGPT character, but make each strange image connect to the song. Vary structure, endings, titles, and production descriptions. Never reproduce copyrighted lyrics; every lyric must be original."

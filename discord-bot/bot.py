@@ -363,7 +363,7 @@ class ChudGPTClient:
         payload = {
             "message": message.strip()[:8_000],
             "session_id": session_id.strip()[:128],
-            "max_new_tokens": 360,
+            "max_new_tokens": 400,
             "temperature": 0.82,
         }
         local_url = "http://127.0.0.1:8010/api/music/chat"

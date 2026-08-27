@@ -58,8 +58,11 @@ def test_music_dataset_teaches_complete_song_contract_and_followups() -> None:
     assert assistant_text.count("Style:") >= 500
     assert assistant_text.count("[Verse 1]") >= 500
     assert assistant_text.count("[Chorus]") >= 500
-    assert assistant_text.count("[Bridge]") >= 500
-    assert assistant_text.count("[Outro]") >= 500
+    assert assistant_text.count("[Bridge]") >= 400
+    assert assistant_text.count("[Outro]") >= 400
+    assert assistant_text.count("[Intro]") >= 300
+    assert assistant_text.count("[Pre-Chorus]") >= 100
+    assert assistant_text.count("[Instrumental Break]") >= 100
     assert sum(len(record["messages"]) >= 6 for record in records) >= 150
 
 
@@ -133,3 +136,31 @@ def test_decoder_can_delay_eos_without_inserting_answer_text() -> None:
     )
     # Three model-selected non-EOS tokens are followed by the model's EOS.
     assert output.tolist() == [[0, 1, 1, 1, 2]]
+
+
+def test_decoder_blocks_repeated_four_grams_without_inserting_text() -> None:
+    class RepeatModel:
+        class Config:
+            context_length = 32
+
+        config = Config()
+
+        def __call__(self, token_ids: torch.Tensor) -> tuple[torch.Tensor, None]:
+            logits = torch.zeros((1, token_ids.shape[1], 6))
+            preferred = [1, 2, 3, 4][(token_ids.shape[1] - 1) % 4]
+            logits[:, -1, preferred] = 10.0
+            logits[:, -1, 5] = 9.0
+            return logits, None
+
+    output = generate(RepeatModel(), torch.tensor([[0]]), max_new_tokens=9, temperature=0,
+                      no_repeat_ngram_size=4)
+    generated = output.tolist()[0][1:]
+    four_grams = [tuple(generated[index:index + 4]) for index in range(len(generated) - 3)]
+    assert len(four_grams) == len(set(four_grams))
+
+
+def test_music_candidate_score_rejects_degenerate_titles() -> None:
+    bad = "Title: A A A\nStyle: dark pop with soft drums\n\n[Verse]\nNothing waits beside the door."
+    good = "Title: The Quiet Department\nStyle: dark pop with soft drums\n\n[Verse]\nNothing waits beside the door."
+    prompt = "Give me a title and style for a song about nothing"
+    assert MusicModelService._candidate_score(prompt, good) > MusicModelService._candidate_score(prompt, bad)

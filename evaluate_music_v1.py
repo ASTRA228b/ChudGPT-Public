@@ -1,51 +1,85 @@
-"""Generate a small, repeatable quality report for Music V1 checkpoints."""
-
+"""Run a repeatable, non-cherry-picked Music V1 generation benchmark."""
 from __future__ import annotations
 
 import argparse
 import json
+import re
+from collections import Counter
 from pathlib import Path
 
 from public_api_server import MusicModelService
+
+PROMPTS = [
+    "Make a love song",
+    "Write a full dark electronic song about my WiFi dying",
+    "Give me only a title for a funny song about a haunted microwave",
+    "Give me only a musical style for a rainy-night driving song",
+    "Write one chorus about losing a video game at the last second",
+    "Make a short punk song about a shopping cart with one bad wheel",
+    "Write a full dreamy synth-pop song about the last summer night",
+    "Create a weird but coherent folk song about a tax-paying dragon",
+    "Write a bridge for a song about leaving home, no title or style",
+    "Make a complete original song about nothing, but keep one clear idea throughout",
+]
+
+
+def lyric_lines(text: str) -> list[str]:
+    return [re.sub(r"\s+", " ", line.strip().lower()) for line in text.splitlines()
+            if len(re.findall(r"[a-z0-9']+", line.lower())) >= 4 and not line.lstrip().startswith("[")]
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Evaluate ChudGPT-Public-Music V1")
     parser.add_argument("--checkpoint", type=Path, required=True)
     parser.add_argument("--device", choices=["cpu", "cuda"], default="cuda")
+    parser.add_argument("--samples", type=int, default=2)
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
 
     service = MusicModelService(args.checkpoint, args.device)
-    cases = [
-        ["Make a love song"],
-        ["Make music"],
-        ["Write a full dark electronic song about my WiFi dying"],
-        ["Write a full song about nothing"],
-        [
-            "I want a nostalgic synth-pop song about the last summer night",
-            "Write the full original lyrics and keep the style and title",
-            "What style and song name did we choose?",
-        ],
-    ]
-    results: list[dict[str, object]] = []
-    for turns in cases:
-        session_id: str | None = None
-        transcript: list[dict[str, str]] = []
-        for prompt in turns:
-            session_id, reply = service.chat(
-                prompt,
-                session_id,
-                max_new_tokens=420,
-                temperature=0.72,
-            )
-            transcript.extend((
-                {"role": "user", "content": prompt},
-                {"role": "assistant", "content": reply},
-            ))
-        results.append({"turns": transcript})
+    cases: list[dict[str, object]] = []
+    titles: list[str] = []
+    styles: list[str] = []
+    section_signatures: list[tuple[str, ...]] = []
+    all_lines: list[str] = []
+    prompt_overlaps: list[float] = []
+    internal_repeats = 0
+    malformed = 0
+    for case_index, prompt in enumerate(PROMPTS):
+        samples: list[str] = []
+        prompt_words = set(re.findall(r"[a-z]{4,}", prompt.lower()))
+        for sample_index in range(args.samples):
+            _, reply = service.chat(prompt, f"benchmark-{case_index}-{sample_index}", max_new_tokens=420)
+            samples.append(reply)
+            title = re.search(r"(?im)^title\s*:\s*([^\n]+)", reply)
+            style = re.search(r"(?im)^style\s*:\s*([^\n]+)", reply)
+            sections = tuple(re.findall(r"(?m)^\[([^]\n]+)\]", reply))
+            if title:
+                titles.append(title.group(1).strip())
+            if style:
+                styles.append(style.group(1).strip())
+            section_signatures.append(sections)
+            lines = lyric_lines(reply)
+            all_lines.extend(lines)
+            internal_repeats += sum(count - 1 for count in Counter(lines).values() if count > 1)
+            reply_words = set(re.findall(r"[a-z]{4,}", reply.lower()))
+            prompt_overlaps.append(len(prompt_words & reply_words) / max(len(prompt_words), 1))
+            malformed += int(not reply.strip() or bool(re.search(r"(?:\b\w\b\s+){5,}", reply)))
+        cases.append({"prompt": prompt, "samples": samples})
 
-    payload = {"checkpoint": str(args.checkpoint), "cases": results}
+    line_counts = Counter(all_lines)
+    metrics = {
+        "prompts": len(PROMPTS), "samples_per_prompt": args.samples,
+        "outputs": len(PROMPTS) * args.samples,
+        "unique_title_ratio": round(len(set(titles)) / max(len(titles), 1), 3),
+        "unique_style_ratio": round(len(set(styles)) / max(len(styles), 1), 3),
+        "unique_structure_ratio": round(len(set(section_signatures)) / max(len(section_signatures), 1), 3),
+        "mean_prompt_content_overlap": round(sum(prompt_overlaps) / max(len(prompt_overlaps), 1), 3),
+        "internal_repeated_lines": internal_repeats,
+        "cross_output_repeated_lines": sum(count - 1 for count in line_counts.values() if count > 1),
+        "malformed_outputs": malformed,
+    }
+    payload = {"checkpoint": str(args.checkpoint), "metrics": metrics, "cases": cases}
     rendered = json.dumps(payload, indent=2, ensure_ascii=False)
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)

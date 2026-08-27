@@ -8,7 +8,8 @@ import os
 import re
 import threading
 import uuid
-from collections import OrderedDict
+from collections import Counter, OrderedDict
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 
@@ -504,6 +505,10 @@ class MusicModelService(PublicModelService):
         # has no response table, retrieval responder, or canned fallback.
         self.reliable = None
         self.shorten_casual_generation = False
+        self.generation_log_path = Path(
+            os.getenv("CHUDGPT_MUSIC_LOG_PATH", str(ROOT / "reports" / "music_v1_generations.jsonl"))
+        )
+        self.last_music_metadata: dict[str, object] = {}
 
     def chat(
         self,
@@ -541,6 +546,7 @@ class MusicModelService(PublicModelService):
             self.sessions.move_to_end(active_session)
             while len(self.sessions) > MAX_SESSIONS:
                 self.sessions.popitem(last=False)
+            self._log_music_generation(active_session, clean_message, reply)
         self.last_assistance_reason = None
         return active_session, reply
 
@@ -566,6 +572,7 @@ class MusicModelService(PublicModelService):
         )
         previous_title = re.search(r"(?im)^title\s*:\s*([^\n]+)", previous_music)
         previous_style = re.search(r"(?im)^style\s*:\s*([^\n]+)", previous_music)
+        recent_replies = [turn["content"] for turn in history[:-1] if turn["role"] == "assistant"]
         if previous_title or previous_style:
             continuity: list[str] = []
             if previous_title:
@@ -593,14 +600,8 @@ class MusicModelService(PublicModelService):
             )
         )
         minimum_draft_tokens = min(140, requested_tokens - 1) if wants_complete_song else 0
-        profiles = (
-            (max(0.46, temperature - 0.18), 45, 0.84),
-            (max(0.52, temperature - 0.10), 55, 0.88),
-            (max(0.58, temperature - 0.04), 60, 0.90),
-            (max(0.64, temperature), 70, 0.92),
-            (max(0.70, temperature + 0.06), 80, 0.94),
-            (max(0.76, temperature + 0.12), 90, 0.95),
-        )
+        profiles = ((0.52, 45, 0.86), (0.58, 50, 0.88), (0.64, 60, 0.90),
+                    (0.70, 70, 0.92), (0.76, 80, 0.94), (0.82, 90, 0.95))
         candidates: list[str] = []
         for sample_temperature, top_k, top_p in profiles:
             output = generate(
@@ -610,9 +611,10 @@ class MusicModelService(PublicModelService):
                 temperature=sample_temperature,
                 top_k=top_k,
                 top_p=top_p,
-                repetition_penalty=1.12,
+                repetition_penalty=1.16,
                 eos_token_id=self.eos_id,
                 min_new_tokens=minimum_draft_tokens,
+                no_repeat_ngram_size=4,
             )[0, len(prompt_ids):].tolist()
             reply = self.tokenizer.decode(output, skip_special_tokens=True).strip()
             if reply:
@@ -627,9 +629,74 @@ class MusicModelService(PublicModelService):
             if previous_style:
                 style_terms = set(re.findall(r"[a-z]{4,}", previous_style.group(1).lower()))
                 score += min(len(style_terms & set(re.findall(r"[a-z]{4,}", lowered))), 4) * 1.5
+            continuity_request = bool(re.search(r"(?i)\b(?:keep|same|remember|remind|revise|rewrite)\b", current_message))
+            if not continuity_request:
+                candidate_title = re.search(r"(?im)^title\s*:\s*([^\n]+)", reply)
+                candidate_style = re.search(r"(?im)^style\s*:\s*([^\n]+)", reply)
+                for old_reply in recent_replies:
+                    old_title = re.search(r"(?im)^title\s*:\s*([^\n]+)", old_reply)
+                    old_style = re.search(r"(?im)^style\s*:\s*([^\n]+)", old_reply)
+                    if candidate_title and old_title:
+                        score -= 14.0 * self._text_similarity(candidate_title.group(1), old_title.group(1))
+                    if candidate_style and old_style:
+                        score -= 12.0 * self._text_similarity(candidate_style.group(1), old_style.group(1))
+                    old_lines = set(self._lyric_lines(old_reply))
+                    score -= len(old_lines & set(self._lyric_lines(reply))) * 2.5
             return score
+        scored = [(continuity_score(candidate), candidate) for candidate in candidates]
+        selected_score, selected = max(scored, key=lambda item: item[0])
+        title_match = re.search(r"(?im)^title\s*:\s*([^\n]+)", selected)
+        style_match = re.search(r"(?im)^style\s*:\s*([^\n]+)", selected)
+        selected_lines = self._lyric_lines(selected)
+        line_counts = Counter(selected_lines)
+        repeated_line_count = sum(count - 1 for count in line_counts.values() if count > 1)
+        recent_line_overlap = sum(
+            len(set(selected_lines) & set(self._lyric_lines(old_reply)))
+            for old_reply in recent_replies
+        )
+        self.last_music_metadata = {
+            "candidate_count": len(candidates),
+            "selected_score": round(selected_score, 3),
+            "title": title_match.group(1).strip() if title_match else None,
+            "style": style_match.group(1).strip() if style_match else None,
+            "sections": re.findall(r"(?m)^\[([^]\n]+)\]", selected),
+            "output_words": len(re.findall(r"\b\w+\b", selected)),
+            "temperature_profiles": [item[0] for item in profiles],
+            "repetition_penalty": 1.16,
+            "no_repeat_ngram_size": 4,
+            "repeated_line_count": repeated_line_count,
+            "recent_line_overlap": recent_line_overlap,
+            "repetition_detection_triggered": repeated_line_count > 0 or recent_line_overlap > 0,
+        }
+        return selected
 
-        return max(candidates, key=continuity_score)
+    @staticmethod
+    def _lyric_lines(text: str) -> list[str]:
+        return [re.sub(r"\s+", " ", line.strip().lower()) for line in text.splitlines()
+                if len(re.findall(r"[a-z0-9']+", line.lower())) >= 4 and not line.lstrip().startswith("[")]
+
+    @staticmethod
+    def _text_similarity(left: str, right: str) -> float:
+        left_words = set(re.findall(r"[a-z0-9']+", left.lower()))
+        right_words = set(re.findall(r"[a-z0-9']+", right.lower()))
+        return len(left_words & right_words) / max(len(left_words | right_words), 1)
+
+    def _log_music_generation(self, session_id: str, prompt: str, reply: str) -> None:
+        record = {
+            "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+            "session_id": session_id,
+            "prompt": prompt,
+            "reply": reply,
+            "model": MUSIC_MODEL_NAME,
+            "checkpoint": str(self.checkpoint_path),
+            **self.last_music_metadata,
+        }
+        try:
+            self.generation_log_path.parent.mkdir(parents=True, exist_ok=True)
+            with self.generation_log_path.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+        except OSError:
+            pass
 
     @staticmethod
     def _candidate_score(message: str, reply: str) -> float:
@@ -644,6 +711,21 @@ class MusicModelService(PublicModelService):
         asks_choice = bool(re.search(r"\b(?:what|which|remind).*(?:title|name|style|genre)\b", request))
         asks_title = bool(re.search(r"\b(?:title|song name|name (?:the|this|my) song)\b", request))
         asks_style = bool(re.search(r"\b(?:style|genre|sound|production)\b", request))
+        content_words = {word for word in re.findall(r"[a-z]{4,}", request)
+                         if word not in {"write", "make", "song", "music", "lyrics", "full", "complete", "about", "with", "give"}}
+        reply_words = set(re.findall(r"[a-z]{4,}", reply.lower()))
+        score += min(len(content_words & reply_words), 6) * 2.0
+        lines = MusicModelService._lyric_lines(reply)
+        repeated_line_count = sum(count - 2 for count in __import__("collections").Counter(lines).values() if count > 2)
+        score -= repeated_line_count * 5.0
+        title_match = re.search(r"(?im)^title\s*:\s*([^\n]+)", reply)
+        if title_match:
+            title_words = re.findall(r"[a-z0-9]+", title_match.group(1).lower())
+            if not title_words or all(len(word) == 1 for word in title_words) or len(set(title_words)) == 1:
+                score -= 24.0
+        style_match = re.search(r"(?im)^style\s*:\s*([^\n]+)", reply)
+        if style_match and len(re.findall(r"[a-z]+", style_match.group(1).lower())) < 4:
+            score -= 10.0
         if asks_choice:
             score += 6.0 if re.search(r"(?im)^title\s*:", reply) else -4.0
             score += 6.0 if re.search(r"(?im)^style\s*:", reply) else -4.0
