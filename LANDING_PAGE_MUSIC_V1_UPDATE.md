@@ -1,15 +1,18 @@
-# Landing-page update prompt — ChudGPT-Public-Music V1
+# Landing-page update prompt
 
-Update the ChudGPT landing site to announce **ChudGPT-Public-Music V1** without changing or overstating the existing models.
+Update the ChudGPT landing site with the latest ChudGPT-Public-Music V1 information. Preserve the existing visual design and unrelated model cards.
 
-- Add Music V1 to the model library and `/model-guide`.
-- Describe it as a separate, independently fine-tuned 20,999,184-parameter checkpoint for original lyrics, hooks, titles, song concepts, and style ideas.
-- Mention its 1,024-token context, 714 unique Music conversations, CUDA step 400 checkpoint, and `music: true` API metadata.
-- Clearly say it is funny, chaotic, experimental, and may produce nonsense or fail structure. Do not call it a frontier or dependable music model.
-- Link the Try button to `https://chudgpt-public.vercel.app/music`.
-- Add the ChudGPT Desktop 0.3.1 release link, `https://github.com/ASTRA228b/ChudGPT-Public/releases/tag/desktop-v0.3.1`, and explain that Desktop now has a Public/Music selector. The release contains Windows installer/portable, macOS DMG/ZIP, and Linux AppImage builds.
-- Mention Discord usage: `!chud music <prompt>`.
-- Update Discord terms/privacy text to explain that Music prompts use the same Public API and Discord logging/retention rules as normal bot conversations, that generated lyrics are intended to be original, and that users should not rely on output as proof of copyright ownership or factual music information.
-- Preserve existing Public, Mega, Pro, Plus, Ultimate, Code, and Buggy cards and links.
+On the Music V1 card and model guide, explain that:
 
-Use the verified training details and limitations from `reports/MUSIC_V1_REPORT.md`. Do not invent benchmark scores or claim the model writes professional lyrics.
+- Music V1 is a separate 20,999,184-parameter, 1,024-context experimental checkpoint for original songs, lyrics, hooks, titles, genres, and revisions.
+- Its dataset was expanded from 714 to 2,798 unique music conversations, including complete songs, vague prompts, multi-turn revisions, and title/style recall.
+- It received a two-stage CUDA response-only update of 500 plus 400 steps. Held-out validation loss reached 0.7541 after stage one and 0.6448 after stage two.
+- Music output is pure neural generation. It has no canned lyric engine, keyword-answer table, reviewed-response layer, or fallback song text. The server samples and ranks multiple generated drafts.
+- It now gives full-song requests more output room and better preserves generated title/style choices across follow-ups.
+- It is still a tiny, funny, experimental model and can produce nonsense, malformed lyrics, repetition, weak rhymes, or forgotten details. Do not advertise it as equivalent to a large commercial music model.
+- Music remains separate from standard ChudGPT-Public V20 and reports `music: true` through its API.
+
+Keep the primary Music link pointed to:
+https://chudgpt-public.vercel.app/music
+
+If the site has an update log, add an entry dated August 27, 2026 titled `Music V1 Full-Song and Conversation Update` summarizing the corpus, CUDA tuning, pure-generation guarantee, and honest limitations above.

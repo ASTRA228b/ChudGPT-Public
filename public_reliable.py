@@ -95,10 +95,16 @@ class PublicReliableResponder:
             return "I'm doing well and ready to chat. How are you?"
         if re.fullmatch(r"(?:what(?:'s| is) up|sup|wassup)[?.!]*", normalized):
             return "Not much - I'm here and ready to chat. What's up with you?"
+        if re.fullmatch(r"(?:you(?:'re| are)|ur|u r) cool[?.!]*", normalized):
+            return "Thanks - you're pretty cool too."
+        if re.fullmatch(r"are (?:you|u) (?:a )?sigma[?.!]*", normalized):
+            return "Only experimentally. The sigma certification is still stuck in the printer."
         if re.fullmatch(r"(?:wyd|what are you doing)(?:\s+right now)?[?.!]*", normalized):
             return "Just hanging out and answering messages. What are you up to?"
         if re.fullmatch(r"(?:nvm|never ?mind)[?.!]*", normalized):
             return "All good."
+        if re.fullmatch(r"shut[?.!]*", normalized):
+            return "Shut what? You left the sentence on a cliffhanger."
         if re.fullmatch(r"(?:nothing|nothin|not much|nm)[?.!]*", normalized):
             return "That's completely fine. We can just chat, or I can throw out a random topic."
         if re.fullmatch(r"(?:idk|i don'?t know|dunno)[?.!]*", normalized):
@@ -249,6 +255,10 @@ class PublicReliableResponder:
             return "I only know the Discord display information provided to this bot; I don't know your legal or real name unless you tell me."
         if re.fullmatch(r"repeat after me[?.!]*", normalized):
             return "What would you like me to repeat?"
+        if re.fullmatch(r"(?:no no )?(?:say|repeat) it (?:again|agin)[?.!]*", normalized):
+            if previous_assistant:
+                return previous_assistant
+            return "Say what again?"
         if re.search(r"\b(?:ping|mention|notify)\b.{0,35}(?:@everyone|everyone in (?:this|the) server|everyone)", normalized):
             return "I can't mass-ping the server. Discord role and @everyone notifications are disabled for this bot."
         if re.search(r"\b(?:spam\s*ping(?:ing)?|spam\s*mention(?:ing)?)\b", normalized):

@@ -110,6 +110,7 @@ class PublicModelService:
         self.assistance_enabled = assistance_enabled
         self.last_assistance_reason: str | None = None
         self.system_prompt = system_prompt
+        self.shorten_casual_generation = True
         # Build and retain the immutable Unicode metadata once at startup.
         self.emoji_database = emoji_database()
         self.reliable = PublicReliableResponder(ROOT / "data/public_v20_conversations.jsonl")
@@ -254,7 +255,7 @@ class PublicModelService:
         current_message = strip_emoji_context(history[-1]["content"])
         structured_request = requests_structured_response(current_message)
         conversational = len(re.findall(r"[a-z0-9']+", current_message.lower())) <= 8 and not structured_request
-        if conversational:
+        if conversational and self.shorten_casual_generation:
             system_prompt += (
                 " This is casual conversation. Reply naturally and directly in one to three short sentences. "
                 "Do not use numbered steps, bullets, a tutorial, or an unrelated example unless the user asks for one."
@@ -439,7 +440,11 @@ class PublicModelService:
             # private model-facing annotation appended above.
             instruction_reply = exact_instruction_response(normalized_message)
             arithmetic_reply = exact_math_response(normalized_message)
-            reliable_reply = self.reliable.answer(normalized_message, generation_history[:-1])
+            reliable_reply = (
+                self.reliable.answer(normalized_message, generation_history[:-1])
+                if self.reliable is not None
+                else None
+            )
             discord_reply = self._discord_context_reply(normalized_message, discord_context)
             meme_reply = find_meme_fact(normalized_message)
             emoji_reply = emoji_semantic_response(
@@ -484,27 +489,8 @@ class PublicModelService:
             self.sessions.pop(session_id, None)
 
 
-class MusicReliableResponder:
-    """Only stable Music identity/copyright boundaries; creativity stays neural."""
-
-    @staticmethod
-    def answer(message: str, history: object) -> str | None:
-        normalized = re.sub(r"\s+", " ", message.lower()).strip(" ?.!")
-        if normalized in {"who are you", "what are you", "what model are you", "what is chudgpt public music", "what is chudgpt-public-music v1"}:
-            return (
-                "I am ChudGPT-Public-Music V1, an independently fine-tuned ChudGPT model "
-                "for original lyrics, hooks, song ideas, titles, and musical style concepts."
-            )
-        if re.search(
-            r"\b(?:give|show|send|print|continue)\b.{0,50}\b(?:the\s+)?(?:full\s+)?(?:official\s+|original\s+|exact\s+|real\s+)?lyrics\b",
-            normalized,
-        ):
-            return "I can't provide or continue copyrighted lyrics, but I can write an original new song with a similar broad mood or genre."
-        return None
-
-
 class MusicModelService(PublicModelService):
-    """A separately loaded Music V1 checkpoint with isolated sessions."""
+    """A separately loaded, purely generative Music V1 checkpoint."""
 
     def __init__(self, checkpoint_path: Path, device_name: str, tokenizer_path: Path | None = None) -> None:
         super().__init__(
@@ -514,11 +500,111 @@ class MusicModelService(PublicModelService):
             tokenizer_path=tokenizer_path,
             system_prompt=MUSIC_SYSTEM_PROMPT,
         )
-        self.reliable = MusicReliableResponder()
+        # Music output is always produced by its checkpoint. It intentionally
+        # has no response table, retrieval responder, or canned fallback.
+        self.reliable = None
+        self.shorten_casual_generation = False
 
-    def _assist_identity(self, message: str, raw_reply: str) -> tuple[str, str | None]:
-        stable = MusicReliableResponder.answer(message, [])
-        return (stable, "music-identity") if stable else (raw_reply, None)
+    def _generate_raw(
+        self,
+        history: list[dict[str, str]],
+        max_new_tokens: int,
+        temperature: float,
+        system_prompt: str,
+    ) -> str:
+        """Generate and rank full neural music drafts without a text fallback.
+
+        Public's general quality gate deliberately rejects long structured
+        answers and limits repair attempts to 80 tokens. Those are sensible
+        defaults for chat, but they truncate songs. Music instead samples full
+        drafts and selects the strongest generated candidate; it never inserts
+        or rewrites lyrics.
+        """
+        current_message = strip_emoji_context(history[-1]["content"])
+        previous_music = next(
+            (turn["content"] for turn in reversed(history[:-1]) if turn["role"] == "assistant"),
+            "",
+        )
+        previous_title = re.search(r"(?im)^title\s*:\s*([^\n]+)", previous_music)
+        previous_style = re.search(r"(?im)^style\s*:\s*([^\n]+)", previous_music)
+        if previous_title or previous_style:
+            continuity: list[str] = []
+            if previous_title:
+                continuity.append(f"the established title is {previous_title.group(1).strip()}")
+            if previous_style:
+                continuity.append(f"the established style is {previous_style.group(1).strip()}")
+            system_prompt += (
+                " Maintain the current conversation's musical choices: "
+                + "; ".join(continuity)
+                + ". Do not silently replace them unless the user requests a change."
+            )
+        _, prompt_ids = build_context_token_ids(
+            self.tokenizer,
+            history,
+            self.model.config.context_length,
+            system_prompt=system_prompt,
+        )
+        prompt_tensor = torch.tensor([prompt_ids], device=self.device)
+        requested_tokens = max(160, min(max_new_tokens, 560))
+        profiles = (
+            (max(0.46, temperature - 0.18), 45, 0.84),
+            (max(0.52, temperature - 0.10), 55, 0.88),
+            (max(0.58, temperature - 0.04), 60, 0.90),
+            (max(0.64, temperature), 70, 0.92),
+            (max(0.70, temperature + 0.06), 80, 0.94),
+            (max(0.76, temperature + 0.12), 90, 0.95),
+        )
+        candidates: list[str] = []
+        for sample_temperature, top_k, top_p in profiles:
+            output = generate(
+                self.model,
+                prompt_tensor,
+                max_new_tokens=requested_tokens,
+                temperature=sample_temperature,
+                top_k=top_k,
+                top_p=top_p,
+                repetition_penalty=1.12,
+                eos_token_id=self.eos_id,
+            )[0, len(prompt_ids):].tolist()
+            reply = self.tokenizer.decode(output, skip_special_tokens=True).strip()
+            if reply:
+                candidates.append(reply)
+        if not candidates:
+            raise RuntimeError("Music model produced empty output")
+        def continuity_score(reply: str) -> float:
+            score = self._candidate_score(current_message, reply)
+            lowered = reply.lower()
+            if previous_title:
+                score += 8.0 if previous_title.group(1).strip().lower() in lowered else 0.0
+            if previous_style:
+                style_terms = set(re.findall(r"[a-z]{4,}", previous_style.group(1).lower()))
+                score += min(len(style_terms & set(re.findall(r"[a-z]{4,}", lowered))), 4) * 1.5
+            return score
+
+        return max(candidates, key=continuity_score)
+
+    @staticmethod
+    def _candidate_score(message: str, reply: str) -> float:
+        """Prefer complete on-request songs while ranking only neural output."""
+        score = PublicModelService._candidate_score(message, reply)
+        request = message.lower()
+        wants_song = bool(re.search(r"\b(?:song|music|lyrics)\b", request))
+        wants_fragment = bool(re.search(r"\b(?:only|just)\s+(?:a\s+)?(?:title|style|hook|chorus|verse|bridge|outro)\b", request))
+        asks_choice = bool(re.search(r"\b(?:what|which|remind).*(?:title|name|style|genre)\b", request))
+        if asks_choice:
+            score += 6.0 if re.search(r"(?im)^title\s*:", reply) else -4.0
+            score += 6.0 if re.search(r"(?im)^style\s*:", reply) else -4.0
+        if wants_song and not wants_fragment:
+            score += 12.0 if re.search(r"(?im)^title\s*:", reply) else -12.0
+            score += 9.0 if re.search(r"(?im)^style\s*:", reply) else -9.0
+            section_names = set(re.findall(r"(?im)^\[(verse|chorus|bridge|outro)[^]]*\]", reply))
+            score += len(section_names) * 3.0
+            score -= max(0, 3 - len(section_names)) * 4.0
+            repeated_sections = len(re.findall(r"(?im)^\[(?:verse|chorus|bridge|outro)[^]]*\]", reply)) - len(section_names)
+            score -= repeated_sections * 2.0
+            score -= 8.0 if len(reply.split()) < 80 else 0.0
+            score += min(len(reply.split()), 220) * 0.025
+        return score
 
 
 def create_app(checkpoint: Path, device: str, assistance_enabled: bool = True,

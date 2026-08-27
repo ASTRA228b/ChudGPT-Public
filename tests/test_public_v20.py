@@ -741,3 +741,25 @@ def test_reference_followup_repairs_previous_answer() -> None:
 def test_incomplete_definition_request_is_not_a_server_error() -> None:
     responder = PublicReliableResponder(Path("data/public_v20_conversations.jsonl"))
     assert responder.answer("what does", []) == "What word or phrase do you want the meaning of?"
+
+
+@pytest.mark.parametrize(
+    ("prompt", "fragment"),
+    [
+        ("you are cool", "cool too"),
+        ("are you sigma", "sigma"),
+        ("Shut", "shut what"),
+    ],
+)
+def test_august_27_discord_casual_regressions(prompt: str, fragment: str) -> None:
+    responder = PublicReliableResponder(Path("data/public_v20_conversations.jsonl"))
+    assert fragment in (responder.answer(prompt, []) or "").lower()
+
+
+def test_repeat_it_again_uses_recent_assistant_message() -> None:
+    responder = PublicReliableResponder(Path("data/public_v20_conversations.jsonl"))
+    history = [
+        {"role": "user", "content": "say hello"},
+        {"role": "assistant", "content": "Hello there."},
+    ]
+    assert responder.answer("no no say it agin", history) == "Hello there."

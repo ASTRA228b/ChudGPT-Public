@@ -10,7 +10,9 @@ ChudGPT-Public is an independently trained, experimental conversational language
 
 Music V1 is a separate 20,999,184-parameter checkpoint fine-tuned for original lyrics, hooks, titles, song concepts, and musical style ideas. It has isolated conversation sessions and does not replace the standard Public V20 checkpoint. Its personality deliberately permits funny, chaotic, and occasionally nonsensical writing. It remains a very small experimental model: rhyme, factual music knowledge, and instruction following are not dependable.
 
-The reviewed Music corpus contains 714 unique conversations. Its CUDA response-only tune ran for 400 steps and reduced held-out validation loss from 4.2182 at step 20 to 0.9818 at step 400. The checkpoint is generated locally at `checkpoints/public_music_v1/best.pt` and is excluded from Git because of its size.
+The expanded Music corpus contains 2,798 unique conversations, including complete songs, vague real-world requests, genre/title selection, revisions, and multi-turn title/style recall. A two-stage CUDA response-only update ran for 500 then 400 steps; held-out validation loss reached 0.7541 after the first stage and 0.6448 after the continuation. The checkpoint is generated locally at `checkpoints/public_music_v1/best.pt` and is excluded from Git because of its size.
+
+Music serving is deliberately pure generation. It has no canned lyric engine, keyword answer table, reviewed-response layer, or fallback song text. The runtime samples multiple complete neural drafts and ranks those generated drafts for requested structure and conversation continuity. Because this remains a 21M-parameter experiment, outputs can still be malformed, repetitive, or forget details.
 
 Build and train it independently:
 
