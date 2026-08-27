@@ -3,8 +3,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import torch
+
 from music_instructions import MUSIC_MODEL_NAME, MUSIC_SYSTEM_PROMPT
 from public_api_server import MusicModelService
+from chudlm.generation import generate
 
 
 def test_music_identity_and_funny_personality_is_learned_not_hardcoded() -> None:
@@ -82,8 +85,51 @@ One final light survives the haze."""
     assert MusicModelService._candidate_score(prompt, complete) > MusicModelService._candidate_score(prompt, fragment)
 
 
+def test_music_metadata_is_preferred_only_when_requested() -> None:
+    lyrics_only = """[Verse 1]\nWe met beneath the station light.\n\n[Chorus]\nStay with me through the night.\n\n[Bridge]\nThe city fades from view.\n\n[Outro]\nI still come home to you."""
+    with_metadata = "Title: Station Light\nStyle: synth-pop\n\n" + lyrics_only
+    assert MusicModelService._candidate_score("Make a love song", lyrics_only) > MusicModelService._candidate_score(
+        "Make a love song", with_metadata
+    )
+    assert MusicModelService._candidate_score(
+        "Make a love song with a title and synth-pop style", with_metadata
+    ) > MusicModelService._candidate_score("Make a love song with a title and synth-pop style", lyrics_only)
+
+
+def test_music_full_length_is_only_for_explicit_full_requests() -> None:
+    source = (Path(__file__).parents[1] / "public_api_server.py").read_text(encoding="utf-8")
+    assert "wants_complete_song" in source
+    assert "desired_sections = 3 if wants_complete_song else 2" in source
+    assert "minimum_draft_tokens = min(140, requested_tokens - 1) if wants_complete_song else 0" in source
+
+
 def test_music_candidate_ranking_prefers_title_and_style_for_recall() -> None:
     prompt = "What style and song name did we choose?"
     recalled = "Title: Neon Summer\nStyle: nostalgic synth-pop with warm pads."
     unrelated = "Here is a new chorus about a toaster."
     assert MusicModelService._candidate_score(prompt, recalled) > MusicModelService._candidate_score(prompt, unrelated)
+
+
+def test_decoder_can_delay_eos_without_inserting_answer_text() -> None:
+    class EosFirstModel:
+        class Config:
+            context_length = 16
+
+        config = Config()
+
+        def __call__(self, token_ids: torch.Tensor) -> tuple[torch.Tensor, None]:
+            logits = torch.zeros((1, token_ids.shape[1], 4))
+            logits[:, -1, 2] = 10.0  # EOS is always the preferred token.
+            logits[:, -1, 1] = 9.0
+            return logits, None
+
+    output = generate(
+        EosFirstModel(),
+        torch.tensor([[0]]),
+        max_new_tokens=6,
+        temperature=0,
+        eos_token_id=2,
+        min_new_tokens=3,
+    )
+    # Three model-selected non-EOS tokens are followed by the model's EOS.
+    assert output.tolist() == [[0, 1, 1, 1, 2]]

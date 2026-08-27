@@ -15,6 +15,7 @@ def generate(
     top_p: float = 0.9,
     repetition_penalty: float = 1.1,
     eos_token_id: int | None = None,
+    min_new_tokens: int = 0,
 ) -> torch.Tensor:
     if temperature < 0:
         raise ValueError("temperature must be non-negative; use zero for greedy decoding")
@@ -22,10 +23,17 @@ def generate(
         raise ValueError("top_p must be in (0, 1]")
     if repetition_penalty < 1.0:
         raise ValueError("repetition_penalty must be at least 1.0")
-    for _ in range(max_new_tokens):
+    if min_new_tokens < 0 or min_new_tokens > max_new_tokens:
+        raise ValueError("min_new_tokens must be between zero and max_new_tokens")
+    for generated_count in range(max_new_tokens):
         context = token_ids[:, -model.config.context_length :]
         logits, _ = model(context)
         next_logits = logits[:, -1, :]
+        # Song generation can require a meaningful minimum draft length.
+        # Suppressing EOS changes only when sampling stops; it does not insert
+        # template text or supply any answer tokens.
+        if eos_token_id is not None and generated_count < min_new_tokens:
+            next_logits[:, eos_token_id] = -float("inf")
         if repetition_penalty > 1.0:
             for batch_index in range(token_ids.size(0)):
                 used_tokens = torch.unique(token_ids[batch_index])

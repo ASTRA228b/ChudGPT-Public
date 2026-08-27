@@ -16,6 +16,15 @@ Music V1 remains a separate, purely generative 20,999,184-parameter checkpoint. 
 
 ## Changes
 
+- Complete-song decoding now delays only the model's end-of-sequence token for
+  the first 140 generated tokens. This prevents a generated title and style
+  from ending the draft before the lyrics begin. The title, style, sections,
+  and every lyric token remain model-selected; runtime code inserts no lyrics.
+- Title and style metadata are now requested and rewarded only when the user
+  asks for them; ordinary song requests prioritize the generated lyrics.
+- Full-length minimum decoding is enabled only for explicit full/complete-song
+  requests. Ordinary song and fragment requests keep a naturally shorter scope.
+
 - Expanded Music data to **2,798 unique conversations**: 2,518 training and 280 validation.
 - Added varied complete songs, vague requests, title/style recall, revisions, genres, moods, and subjects.
 - Added a Music-only full-length neural sampling path. It samples six drafts and ranks only model-generated text; it never supplies or rewrites lyrics.

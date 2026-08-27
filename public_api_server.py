@@ -585,6 +585,14 @@ class MusicModelService(PublicModelService):
         )
         prompt_tensor = torch.tensor([prompt_ids], device=self.device)
         requested_tokens = max(160, min(max_new_tokens, 560))
+        wants_complete_song = bool(
+            re.search(
+                r"\b(?:(?:full|complete)(?:\s+(?:original|new))?\s+(?:song|lyrics)|(?:song|lyrics)\s+(?:in\s+)?full)\b",
+                current_message,
+                re.I,
+            )
+        )
+        minimum_draft_tokens = min(140, requested_tokens - 1) if wants_complete_song else 0
         profiles = (
             (max(0.46, temperature - 0.18), 45, 0.84),
             (max(0.52, temperature - 0.10), 55, 0.88),
@@ -604,6 +612,7 @@ class MusicModelService(PublicModelService):
                 top_p=top_p,
                 repetition_penalty=1.12,
                 eos_token_id=self.eos_id,
+                min_new_tokens=minimum_draft_tokens,
             )[0, len(prompt_ids):].tolist()
             reply = self.tokenizer.decode(output, skip_special_tokens=True).strip()
             if reply:
@@ -628,20 +637,31 @@ class MusicModelService(PublicModelService):
         score = PublicModelService._candidate_score(message, reply)
         request = message.lower()
         wants_song = bool(re.search(r"\b(?:song|music|lyrics)\b", request))
+        wants_complete_song = bool(
+            re.search(r"\b(?:(?:full|complete)(?:\s+(?:original|new))?\s+(?:song|lyrics)|(?:song|lyrics)\s+(?:in\s+)?full)\b", request)
+        )
         wants_fragment = bool(re.search(r"\b(?:only|just)\s+(?:a\s+)?(?:title|style|hook|chorus|verse|bridge|outro)\b", request))
         asks_choice = bool(re.search(r"\b(?:what|which|remind).*(?:title|name|style|genre)\b", request))
+        asks_title = bool(re.search(r"\b(?:title|song name|name (?:the|this|my) song)\b", request))
+        asks_style = bool(re.search(r"\b(?:style|genre|sound|production)\b", request))
         if asks_choice:
             score += 6.0 if re.search(r"(?im)^title\s*:", reply) else -4.0
             score += 6.0 if re.search(r"(?im)^style\s*:", reply) else -4.0
         if wants_song and not wants_fragment:
-            score += 12.0 if re.search(r"(?im)^title\s*:", reply) else -12.0
-            score += 9.0 if re.search(r"(?im)^style\s*:", reply) else -9.0
+            has_title = bool(re.search(r"(?im)^title\s*:", reply))
+            has_style = bool(re.search(r"(?im)^style\s*:", reply))
+            score += (8.0 if has_title else -8.0) if asks_title else (-3.0 if has_title else 3.0)
+            score += (8.0 if has_style else -8.0) if asks_style else (-3.0 if has_style else 3.0)
             section_names = set(re.findall(r"(?im)^\[(verse|chorus|bridge|outro)[^]]*\]", reply))
             score += len(section_names) * 3.0
-            score -= max(0, 3 - len(section_names)) * 4.0
+            desired_sections = 3 if wants_complete_song else 2
+            score -= max(0, desired_sections - len(section_names)) * 4.0
             repeated_sections = len(re.findall(r"(?im)^\[(?:verse|chorus|bridge|outro)[^]]*\]", reply)) - len(section_names)
             score -= repeated_sections * 2.0
-            score -= 8.0 if len(reply.split()) < 80 else 0.0
+            if wants_complete_song:
+                score -= 8.0 if len(reply.split()) < 80 else 0.0
+            else:
+                score -= 4.0 if len(reply.split()) < 30 else 0.0
             score += min(len(reply.split()), 220) * 0.025
         return score
 

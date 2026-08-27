@@ -18,6 +18,7 @@ def main() -> None:
 
     service = MusicModelService(args.checkpoint, args.device)
     cases = [
+        ["Make a love song"],
         ["Make music"],
         ["Write a full dark electronic song about my WiFi dying"],
         ["Write a full song about nothing"],
