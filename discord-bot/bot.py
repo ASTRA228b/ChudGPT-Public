@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import discord
 import requests
@@ -297,6 +298,18 @@ class ChudGPTClient:
         self.http = requests.Session()
 
     def chat(self, message: str, session_id: str, discord_context: str | None = None) -> str:
+        # Keep these limits below public_api_server.ChatRequest's validation
+        # limits. Discord history can grow quickly (especially after a long
+        # model reply); sending it verbatim used to produce HTTP 422 responses
+        # that the bot incorrectly reported as a server outage.
+        message = message.strip()
+        if len(message) > 8_000:
+            message = message[-8_000:]
+        session_id = session_id.strip()[:128]
+        if discord_context:
+            discord_context = re.sub(r"\s+", " ", discord_context).strip()
+            if len(discord_context) > 980:
+                discord_context = discord_context[:979].rstrip(" ;|") + "…"
         payload = {
                 "message": message,
                 "session_id": session_id,
@@ -324,6 +337,13 @@ class ChudGPTClient:
                 except requests.RequestException as error:
                     errors.append(error)
                     response = None
+                    status = getattr(getattr(error, "response", None), "status_code", None)
+                    if status == 422:
+                        detail = getattr(error.response, "text", "")[:500]
+                        LOGGER.error("Chat request validation failed at %s: %s", url, detail)
+                        # The same schema-invalid payload cannot recover by
+                        # retrying or going through the public proxy.
+                        raise RuntimeError(f"ChudGPT request validation failed: {detail}") from error
                     if attempt + 1 < attempts:
                         LOGGER.warning("Local chat request failed; retrying once (%s)", error)
                         time.sleep(0.2)
@@ -337,6 +357,31 @@ class ChudGPTClient:
         if not isinstance(reply, str) or not reply.strip():
             raise RuntimeError("ChudGPT-Public returned an empty or malformed reply.")
         return reply.strip()
+
+    def music_chat(self, message: str, session_id: str) -> str:
+        """Route Music commands to the separately loaded Music V1 checkpoint."""
+        payload = {
+            "message": message.strip()[:8_000],
+            "session_id": session_id.strip()[:128],
+            "max_new_tokens": 360,
+            "temperature": 0.82,
+        }
+        local_url = "http://127.0.0.1:8010/api/music/chat"
+        public_url = f"{self.chat_url.rsplit('/api/', 1)[0]}/api/music/chat"
+        errors: list[Exception] = []
+        for url in dict.fromkeys((local_url, public_url)):
+            try:
+                response = self.http.post(url, json=payload, timeout=max(self.timeout, 120))
+                response.raise_for_status()
+                data: Any = response.json()
+                reply = data.get("reply") if isinstance(data, dict) else None
+                if isinstance(reply, str) and reply.strip():
+                    return reply.strip()
+                raise RuntimeError("Music V1 returned an empty response")
+            except (requests.RequestException, ValueError, RuntimeError) as error:
+                errors.append(error)
+                LOGGER.warning("Music endpoint failed (%s): %s", url, error)
+        raise errors[-1] if errors else RuntimeError("Music V1 is unavailable")
 
     def clear(self, session_id: str) -> None:
         response = None
@@ -391,6 +436,50 @@ def clean_prompt(content: str, bot_user_id: int | None, prefix: str) -> str:
     if cleaned.lower().startswith(prefix.lower()):
         cleaned = cleaned[len(prefix):].strip()
     return cleaned
+
+
+def discord_attachment_reply(attachments: list[Any]) -> str | None:
+    """Describe Discord uploads without treating expiring CDN media as webpages."""
+    if not attachments:
+        return None
+    attachment = attachments[0]
+    filename = str(getattr(attachment, "filename", "attachment"))
+    content_type = str(getattr(attachment, "content_type", "") or "").lower()
+    suffix = Path(filename).suffix.lower()
+    if content_type == "image/gif" or suffix == ".gif":
+        kind = "GIF"
+    elif content_type.startswith("image/") or suffix in {".png", ".jpg", ".jpeg", ".webp", ".bmp"}:
+        kind = "image"
+    elif content_type.startswith("video/") or suffix in {".mp4", ".mov", ".webm", ".mkv"}:
+        kind = "video"
+    elif content_type.startswith("audio/") or suffix in {".mp3", ".wav", ".ogg", ".m4a", ".flac"}:
+        kind = "audio file"
+    else:
+        kind = "file"
+    description = str(getattr(attachment, "description", "") or "").strip()
+    detail = f" Discord describes it as: **{description}**." if description else ""
+    return (
+        f"I received the {kind} **{filename}**.{detail} "
+        "I can recognize the upload type, but this text-only ChudGPT model cannot inspect its visual or audio contents. "
+        "Tell me what happens in it and I can react or help with it."
+    )
+
+
+def discord_media_url_reply(url: str | None) -> str | None:
+    """Handle bare Discord media links whose signed CDN access can expire."""
+    if not url:
+        return None
+    parsed = urlparse(url)
+    if parsed.hostname not in {"cdn.discordapp.com", "media.discordapp.net"}:
+        return None
+    suffix = Path(parsed.path).suffix.lower()
+    if suffix not in {".gif", ".png", ".jpg", ".jpeg", ".webp", ".bmp", ".mp4", ".mov", ".webm", ".mp3", ".wav", ".ogg"}:
+        return None
+    kind = "GIF" if suffix == ".gif" else "Discord media attachment"
+    return (
+        f"I can tell that is a {kind} link, but Discord's CDN link may expire and this text-only model cannot inspect the media itself. "
+        "Upload it directly and describe what happens in it if you want me to react or help."
+    )
 
 
 def split_discord_message(text: str, limit: int = 1_900) -> list[str]:
@@ -493,6 +582,8 @@ def discord_social_reply(prompt: str, recent_messages: list[str] | None = None) 
         return "Glad that landed."
     if re.fullmatch(r"(?:are )?you (?:alright|okay|ok|good)[?.!]*", normalized):
         return "Yeah, I'm running. A little experimental, but I'm here. You good?"
+    if re.fullmatch(r"(?:hi|hello|hey|yo)(?:\s+(?:mate|bro|chud|chudgpt))?[!.?]*", normalized):
+        return "Hey! What's up?"
     if re.fullmatch(r"should i (?:ban|kick|mute) you[?.!]*", normalized):
         return "That's your call. If I keep giving bad answers, I have earned the timeout chair."
     if re.fullmatch(r"(?:no|nah|nope|nuh+ uh+)[!.?]*", normalized):
@@ -503,6 +594,15 @@ def discord_social_reply(prompt: str, recent_messages: list[str] | None = None) 
         return "Yeah, I'm with you. What's up?"
     if re.fullmatch(r"(?:poop|fart|beans?)[!.?]*", normalized):
         return "A powerful contribution to the conversation, honestly."
+    if re.fullmatch(r"(?:(?:nuggets?|larping|chopped|son|gay)(?:\s+|[!.?]*)){1,4}", normalized):
+        subject = re.split(r"\s+", normalized.strip("!.?"), maxsplit=1)[0]
+        return f"You just dropped **{subject}** into the chat with no warning. What's the story?"
+    if re.fullmatch(r"(?:dumbass|idiot|bozo|clown)[!.?]*", normalized):
+        return "Fair. Did I mess something up, or are we just roasting each other?"
+    if re.fullmatch(r"(?:go |you can |why don'?t you )?f+u+c+k+(?: off)?(?: another| the other)? ai[!.?]*", normalized):
+        return "I'll pass. What did the other AI do?"
+    if re.fullmatch(r"int(?:eger)?[?.!]*", normalized):
+        return "An integer is a whole number with no fractional part, such as -2, 0, or 47."
     if re.fullmatch(r"i(?:'m| am|m) (?:so )?(?:cool|awesome|great|the best)[!.?]*", normalized):
         return "Confidence detected. I respect it."
     if re.search(r"\byou(?:'re|re| are|r)?\s*(?:just )?(?:a )?(?:fat|dumb|stupid|chud)\b", normalized):
@@ -548,6 +648,8 @@ def discord_social_reply(prompt: str, recent_messages: list[str] | None = None) 
         return "Good night - sleep well. I'll be here when you're back."
     if re.search(r"\b(?:this|that) (?:isn'?t|is not|wasn'?t|was not) what i (?:asked|wanted|said)\b", normalized):
         return "You're right - my last answer missed your request. Say it once more and I'll answer that directly."
+    if re.fullmatch(r"(?:so )?(?:do it|answer it|answer me)[!.?]*", normalized) and recent_text:
+        return "You're right—I still owe you the actual answer. Repeat the request once so I don't guess at the missing subject."
     if normalized in {"❤", "❤️", "♥", "♥️"} or (
         normalized.startswith("\u00e2") and len(normalized) <= 12 and "\u00a4" in normalized
     ):
@@ -683,6 +785,7 @@ def discord_help_page(prefix: str, page: int) -> str:
         return (
             f"**ChudGPT commands - page 1/4: Core**\n"
             f"`{prefix} <message>` - chat with Public V20\n"
+            f"`{prefix} music <prompt>` - create with ChudGPT-Public-Music V1\n"
             f"`{prefix} help <1-4>` - open a command page\n"
             f"`{prefix} clear` - clear your memory and language mode\n"
             f"`{prefix} status` - check bot/API status\n"
@@ -995,6 +1098,14 @@ def discord_command_reply(
         return "Astra is ChudGPT's developer and the owner of this Discord bot."
     if normalized in {"source", "source code", "github", "repo", "repository"} or re.fullmatch(r"(?:gimme|give|show|send)(?: me)? (?:your|ur|the) source(?: code)?", normalized):
         return "ChudGPT-Public's source is available at <https://github.com/ASTRA228b/ChudGPT-Public>."
+    if re.fullmatch(r"(?:gimme|give|show|send)(?: me)? (?:your|ur|the) (?:src|repo)", normalized):
+        return "ChudGPT-Public's source is available at <https://github.com/ASTRA228b/ChudGPT-Public>."
+    if re.search(r"\b(?:what|which) (?:data|dataset|information).{0,30}\btrain(?:ed|ing)?\b|\btrain(?:ed|ing)? (?:on|off of)\b", normalized):
+        return (
+            "ChudGPT-Public was trained on the project's cleaned conversation corpus, including "
+            "general chat, explanations, math, and coding examples. Its public repository documents "
+            "the current dataset and training process: <https://github.com/ASTRA228b/ChudGPT-Public>."
+        )
     if normalized in {"capabilities", "features", "what can it do"}:
         return "I can chat, answer general questions, do exact arithmetic, write or explain basic code, discuss Gorilla Tag and Discord, remember recent same-user context, and translate conversations. I'm still a small experimental model and can be wrong."
     if normalized in {"gtag", "gorilla tag", "gorillatag"}:
@@ -2168,9 +2279,12 @@ def main() -> None:
             )
             return
         prompt = clean_prompt(message.content, client.user.id, settings.prefix)
-        if not prompt:
+        attachment_reply = discord_attachment_reply(list(getattr(message, "attachments", [])))
+        if not prompt and attachment_reply is None:
             await message.reply(f"Send a message after `{settings.prefix}` or after mentioning me.", mention_author=False)
             return
+        if not prompt:
+            prompt = "[Discord media attachment]"
         if is_memory_clear_request(prompt):
             try:
                 await __import__("asyncio").to_thread(public_api.clear, make_session_id(message))
@@ -2250,6 +2364,36 @@ def main() -> None:
                         else:
                             await message.channel.send(chunk, allowed_mentions=safe_mentions)
                 return
+            music_match = re.fullmatch(r"music(?:\s+(.+))?", prompt.strip(), re.I | re.S)
+            if music_match:
+                music_prompt = (music_match.group(1) or "").strip()
+                if not music_prompt:
+                    await message.reply(
+                        f"Give Music V1 something to write, for example: `{settings.prefix} music write a chorus about my WiFi dying`.",
+                        mention_author=False,
+                        allowed_mentions=safe_mentions,
+                    )
+                    return
+                async with message.channel.typing():
+                    async with api_semaphore:
+                        music_reply = await __import__("asyncio").to_thread(
+                            public_api.music_chat,
+                            music_prompt,
+                            "music-" + make_session_id(message),
+                        )
+                await __import__("asyncio").to_thread(
+                    log_discord_exchange,
+                    settings.conversation_log_dir,
+                    message,
+                    prompt,
+                    music_reply,
+                )
+                for index, chunk in enumerate(split_discord_message(music_reply)):
+                    if index == 0:
+                        await message.reply(chunk, mention_author=False, allowed_mentions=safe_mentions)
+                    else:
+                        await message.channel.send(chunk, allowed_mentions=safe_mentions)
+                return
             recent_context = list(recent_user_messages[context_key])
             model_prompt = prompt
             translation_command = parse_translation_command(prompt)
@@ -2324,11 +2468,15 @@ def main() -> None:
                 or discord_quoted_reply(prompt)
                 or discord_developer_reply(prompt, developer_user_id)
                 or discord_code_reply(model_prompt)
+                or attachment_reply
                 or discord_social_reply(model_prompt, recent_context)
             )
             web_query = parse_web_lookup(prompt)
             public_url = parse_public_url(prompt)
-            if public_url is not None:
+            media_url_reply = discord_media_url_reply(public_url)
+            if media_url_reply is not None:
+                reply = media_url_reply
+            elif public_url is not None:
                 try:
                     reply = await __import__("asyncio").to_thread(web_lookup.read_url, public_url)
                 except (requests.RequestException, ValueError, KeyError) as error:

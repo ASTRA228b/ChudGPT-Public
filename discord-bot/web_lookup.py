@@ -7,13 +7,14 @@ import ipaddress
 import socket
 from html import unescape
 from html.parser import HTMLParser
-from urllib.parse import quote, urljoin, urlparse
+from urllib.parse import parse_qs, quote, unquote, urljoin, urlparse
 
 import requests
 
 
 WIKIPEDIA_API = "https://en.wikipedia.org/w/api.php"
 DUCKDUCKGO_API = "https://api.duckduckgo.com/"
+DUCKDUCKGO_HTML = "https://html.duckduckgo.com/html/"
 STACKEXCHANGE_API = "https://api.stackexchange.com/2.3/search/advanced"
 USER_AGENT = "ChudGPT-Public/20 Discord lookup (https://github.com/ASTRA228b/ChudGPT-Public)"
 
@@ -69,6 +70,43 @@ class _ReadableHTML(HTMLParser):
             (self.title if self._in_title else self.text).append(cleaned)
 
 
+class _SearchHTML(HTMLParser):
+    """Extract a few ordinary DuckDuckGo results without executing scripts."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.results: list[dict[str, str]] = []
+        self._field: str | None = None
+        self._parts: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs) -> None:
+        attributes = {str(key).lower(): str(value) for key, value in attrs if value is not None}
+        classes = set(attributes.get("class", "").split())
+        if tag == "a" and "result__a" in classes:
+            self.results.append({"title": "", "url": self._clean_url(attributes.get("href", "")), "snippet": ""})
+            self._field, self._parts = "title", []
+        elif self.results and ({"result__snippet", "result__snippet--highlight"} & classes):
+            self._field, self._parts = "snippet", []
+
+    def handle_endtag(self, tag: str) -> None:
+        if self._field and tag in {"a", "div", "span"}:
+            value = re.sub(r"\s+", " ", unescape(" ".join(self._parts))).strip()
+            if self.results and value:
+                self.results[-1][self._field] = value
+            self._field, self._parts = None, []
+
+    def handle_data(self, data: str) -> None:
+        if self._field:
+            self._parts.append(data)
+
+    @staticmethod
+    def _clean_url(value: str) -> str:
+        absolute = urljoin(DUCKDUCKGO_HTML, unescape(value))
+        parsed = urlparse(absolute)
+        redirected = parse_qs(parsed.query).get("uddg", [])
+        return unquote(redirected[0]) if redirected else absolute
+
+
 class WikipediaLookup:
     def __init__(self, timeout: float = 7.0) -> None:
         self.timeout = timeout
@@ -76,6 +114,8 @@ class WikipediaLookup:
         self.http.headers.update({"User-Agent": USER_AGENT})
 
     def lookup(self, query: str) -> str:
+        original_query = query.strip()
+        query = self._expand_query(original_query)
         sections: list[str] = []
         # DuckDuckGo's Instant Answer endpoint adds broader entities and
         # definitions without scraping search-result HTML.
@@ -91,7 +131,7 @@ class WikipediaLookup:
             abstract = re.sub(r"\s+", " ", str(instant_payload.get("AbstractText", ""))).strip()
             abstract_url = str(instant_payload.get("AbstractURL", "")).strip()
             heading = str(instant_payload.get("Heading", query)).strip() or query
-            if abstract:
+            if abstract and self._is_relevant(original_query, heading, abstract):
                 sections.append(f"**{heading}** — {self._trim(abstract, 500)}" + (f"\n<{abstract_url}>" if abstract_url else ""))
         except (requests.RequestException, ValueError, KeyError):
             pass
@@ -118,8 +158,44 @@ class WikipediaLookup:
             title = str(page.get("title", query))
             extract = re.sub(r"\s+", " ", str(page.get("extract", ""))).strip()
             url = str(page.get("fullurl") or f"https://en.wikipedia.org/wiki/{quote(title.replace(' ', '_'))}")
-            if extract and url not in "\n".join(sections):
+            if (
+                extract
+                and self._is_relevant(original_query, title, extract)
+                and url not in "\n".join(sections)
+            ):
                 sections.append(f"**Wikipedia: {title}** — {self._trim(extract, 420)}\n<{url}>")
+
+        # The Instant Answer API intentionally covers only a subset of the
+        # web. Explicit `web/search/lookup` commands may also use DDG's
+        # script-free result page, giving the bot broader public-web reach
+        # without keys, cookies, logins, or arbitrary background browsing.
+        try:
+            search = self.http.get(
+                DUCKDUCKGO_HTML,
+                params={"q": query},
+                timeout=self.timeout,
+                headers={"Accept": "text/html"},
+            )
+            search.raise_for_status()
+            search.encoding = "utf-8"
+            parser = _SearchHTML()
+            parser.feed(getattr(search, "text", ""))
+            existing = "\n".join(sections)
+            for result in parser.results[:5]:
+                title = result.get("title", "").strip()
+                link = result.get("url", "").strip()
+                snippet = result.get("snippet", "").strip()
+                if not title or not link or link in existing:
+                    continue
+                if not urlparse(link).scheme in {"http", "https"}:
+                    continue
+                detail = f" — {self._trim(snippet, 260)}" if snippet else ""
+                sections.append(f"**Web: {self._trim(title, 160)}**{detail}\n<{link}>")
+                existing += "\n" + link
+                if len(sections) >= 4:
+                    break
+        except (requests.RequestException, ValueError):
+            pass
 
         # Stack Overflow is queried only for likely software questions, which
         # gives coding requests relevant live links without polluting normal
@@ -142,7 +218,7 @@ class WikipediaLookup:
                 pass
 
         if not sections:
-            return f"I couldn't find a useful live result for **{query}**. Try a more specific search."
+            return f"I couldn't find a useful live result for **{original_query}**. Try a more specific search."
         return "\n\n".join(sections[:4]) + "\n\n*Live web lookup; sources can change, so verify important claims.*"
 
     def read_url(self, url: str) -> str:
@@ -167,19 +243,19 @@ class WikipediaLookup:
             if not allowed:
                 response.close()
                 return f"I can open the link, but it is `{content_type or 'a binary file'}` rather than a readable text page."
-            declared = int(response.headers.get("Content-Length", "0") or 0)
-            if declared > 524_288:
-                response.close()
-                return "That page is larger than my safe 512 KB reading limit."
             body = bytearray()
+            truncated = False
             for chunk in response.iter_content(16_384):
                 body.extend(chunk)
                 if len(body) > 524_288:
-                    response.close()
-                    return "That page is larger than my safe 512 KB reading limit."
+                    del body[524_288:]
+                    truncated = True
+                    break
             response.close()
-            encoding = response.encoding or "utf-8"
+            charset = re.search(r"charset=([^;\s]+)", response.headers.get("Content-Type", ""), re.I)
+            encoding = charset.group(1).strip('"\'') if charset else "utf-8"
             raw = bytes(body).decode(encoding, errors="replace")
+            raw = self._repair_mojibake(raw)
             if "html" in content_type or "<html" in raw[:500].lower():
                 parser = _ReadableHTML()
                 parser.feed(raw)
@@ -210,7 +286,8 @@ class WikipediaLookup:
                 readable = self._summarize_page("", [raw])
             if not readable:
                 return f"I opened **{title}**, but it did not contain readable page text."
-            return f"**{self._trim(title, 180)}**\n**Summary:** {readable}\n<{current}>\n*Live page summary; verify important claims at the source.*"
+            limit_note = " Read from the first 512 KB." if truncated else ""
+            return f"**{self._trim(title, 180)}**\n**Summary:** {readable}\n<{current}>\n*Live page summary; verify important claims at the source.{limit_note}*"
         raise ValueError("The page redirected too many times.")
 
     @staticmethod
@@ -235,6 +312,48 @@ class WikipediaLookup:
         if len(text) <= limit:
             return text
         return text[: limit - 3].rsplit(" ", 1)[0] + "..."
+
+    @staticmethod
+    def _expand_query(query: str) -> str:
+        """Disambiguate a few broad technical terms without changing intent."""
+        expanded = re.sub(r"\bcsharp\b", "C# programming language", query, flags=re.I)
+        if re.search(r"(?<!\w)c#(?!\w)", expanded, re.I):
+            expanded = re.sub(r"(?<!\w)c#(?!\w)", "C# programming language", expanded, flags=re.I)
+        if re.search(r"\brat\b", query, re.I) and re.search(
+            r"\b(?:coding|computer|cyber|malware|security|hacking)\b", query, re.I
+        ):
+            expanded = "remote access trojan RAT cybersecurity definition"
+        if re.search(r"\bskid\b", query, re.I) and re.search(
+            r"\b(?:word|mean|coding|computer|community|hacking|slang)\b", query, re.I
+        ):
+            expanded = "script kiddie skid computer hacking slang definition"
+        return expanded
+
+    @staticmethod
+    def _is_relevant(query: str, title: str, text: str) -> bool:
+        """Reject obviously wrong entities returned for ambiguous searches."""
+        haystack = f"{title} {text}".lower()
+        lowered = query.lower()
+        if re.search(r"\bcsharp\b|c#", lowered):
+            return any(term in haystack for term in ("c#", "c sharp", "roslyn", ".net compiler"))
+        if re.search(r"\brat\b", lowered) and re.search(r"\b(?:coding|computer|cyber|malware|security|hacking)\b", lowered):
+            return "remote access trojan" in haystack or ("malware" in haystack and "rat" in haystack)
+        if re.search(r"\bskid\b", lowered) and re.search(r"\b(?:word|mean|coding|computer|community|hacking|slang)\b", lowered):
+            return "script kiddie" in haystack or ("hacker" in haystack and "skid" in haystack)
+        words = {
+            word for word in re.findall(r"[a-z0-9]{3,}", lowered)
+            if word not in {"what", "does", "mean", "latest", "features", "about", "word", "search"}
+        }
+        return not words or any(word in haystack for word in words)
+
+    @staticmethod
+    def _repair_mojibake(text: str) -> str:
+        if not any(marker in text for marker in ("â€", "Ã", "ðŸ")):
+            return text
+        try:
+            return text.encode("latin-1").decode("utf-8")
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            return text
 
     @classmethod
     def _summarize_page(cls, description: str, chunks: list[str]) -> str:

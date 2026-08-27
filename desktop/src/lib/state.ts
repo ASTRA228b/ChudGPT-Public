@@ -32,6 +32,7 @@ export const themeNames: readonly ThemeName[] = [
 ];
 
 export const defaultSettings: AppSettings = {
+  modelProfile: "public",
   theme: "neon",
   interfaceScale: 100,
   compactSidebar: false,
@@ -92,6 +93,8 @@ export function normalizeState(value: unknown): PersistedState {
   const settings = { ...defaultSettings, ...(candidate.settings ?? {}) };
   if (!themeNames.includes(settings.theme))
     settings.theme = defaultSettings.theme;
+  if (!["public", "music"].includes(settings.modelProfile))
+    settings.modelProfile = defaultSettings.modelProfile;
   if (!["comfortable", "compact"].includes(settings.density))
     settings.density = defaultSettings.density;
   if (![0, 30, 60, 120, 300].includes(settings.statusPollSeconds))

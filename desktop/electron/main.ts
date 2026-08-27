@@ -65,7 +65,7 @@ function createWindow(): void {
 }
 
 async function requestApi(
-  endpoint: "status" | "chat" | "generate" | "clear",
+  endpoint: "status" | "chat" | "generate" | "clear" | "music/status" | "music/chat" | "music/clear",
   method: "GET" | "POST",
   body: unknown,
   requestId: string,
@@ -74,7 +74,7 @@ async function requestApi(
   requests.set(requestId, controller);
   const timeout = setTimeout(
     () => controller.abort("timeout"),
-    endpoint === "status" ? 12_000 : 90_000,
+    endpoint.endsWith("status") ? 12_000 : 90_000,
   );
   try {
     const response = await fetch(`${API_BASE}/api/${endpoint}`, {

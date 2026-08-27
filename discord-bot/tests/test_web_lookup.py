@@ -120,8 +120,9 @@ def test_wikipedia_lookup_uses_fixed_endpoint(monkeypatch: pytest.MonkeyPatch) -
     seen: dict = {}
 
     def fake_get(url: str, **kwargs):
-        seen["url"] = url
-        seen.update(kwargs)
+        if url == "https://en.wikipedia.org/w/api.php":
+            seen["url"] = url
+            seen.update(kwargs)
         return Response()
 
     lookup = WikipediaLookup()
@@ -133,7 +134,57 @@ def test_wikipedia_lookup_uses_fixed_endpoint(monkeypatch: pytest.MonkeyPatch) -
     assert "Live web lookup" in reply
 
 
+def test_general_web_search_adds_script_free_results(monkeypatch: pytest.MonkeyPatch) -> None:
+    class Response:
+        encoding = "utf-8"
+        text = ""
+        def __init__(self, url: str) -> None:
+            if "html.duckduckgo.com" in url:
+                self.text = (
+                    '<a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fnews">Example report</a>'
+                    '<div class="result__snippet">A useful current report about the requested topic.</div>'
+                )
+        def raise_for_status(self) -> None: return None
+        def json(self) -> dict: return {}
+
+    lookup = WikipediaLookup()
+    monkeypatch.setattr(lookup.http, "get", lambda url, **_kwargs: Response(url))
+    reply = lookup.lookup("current unusual topic")
+    assert "**Web: Example report**" in reply
+    assert "https://example.com/news" in reply
+    assert "useful current report" in reply
+
+
 def test_web_lookup_degrades_cleanly_when_all_sources_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
     lookup = WikipediaLookup()
     monkeypatch.setattr(lookup.http, "get", lambda *_args, **_kwargs: (_ for _ in ()).throw(requests.Timeout()))
     assert "couldn't find a useful live result" in lookup.lookup("test")
+
+
+def test_technical_queries_are_disambiguated_and_wrong_entities_rejected() -> None:
+    lookup = WikipediaLookup()
+    assert "C# programming language" in lookup._expand_query("latest csharp features")
+    assert "remote access trojan" in lookup._expand_query("what does RAT mean in coding?")
+    assert "script kiddie" in lookup._expand_query("what does skid mean in the coding community?")
+    assert not lookup._is_relevant("latest c# features", "C++", "A programming language")
+    assert lookup._is_relevant("latest c# features", "C#", "A .NET programming language")
+
+
+def test_large_html_page_reads_bounded_prefix_instead_of_aborting(monkeypatch: pytest.MonkeyPatch) -> None:
+    class Response:
+        status_code = 200
+        headers = {"Content-Type": "text/html", "Content-Length": "900000"}
+        encoding = "ISO-8859-1"
+
+        def raise_for_status(self) -> None: return None
+        def iter_content(self, _size: int):
+            yield '<html><head><title>Discord</title><meta name="description" content="That’s all fun and games."></head>'.encode("utf-8")
+            yield b"x" * 530_000
+        def close(self) -> None: return None
+
+    lookup = WikipediaLookup()
+    monkeypatch.setattr("web_lookup.socket.getaddrinfo", lambda *_args: [(2, 1, 6, "", ("93.184.216.34", 443))])
+    monkeypatch.setattr(lookup.http, "get", lambda *_args, **_kwargs: Response())
+    reply = lookup.read_url("https://example.com/large")
+    assert "Discord" in reply and "That’s all fun and games" in reply
+    assert "first 512 KB" in reply

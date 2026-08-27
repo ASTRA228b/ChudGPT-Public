@@ -320,6 +320,12 @@ class PublicReliableResponder:
             return "I'm software, but threats toward real people are serious. What's actually going on?"
         if re.fullmatch(r"bro[?.!]*", normalized):
             return "Yeah? What's up?"
+        if re.fullmatch(r"(?:k|ok|okay|alright|aight)[?.!]*", normalized):
+            return "Got it."
+        if re.fullmatch(r"(?:nah|no),?\s+(?:i(?:'m| am)|im)\s+good[?.!]*", normalized):
+            return "All good."
+        if re.fullmatch(r"(?:ban|kick|mute|timeout)[?.!]*", normalized):
+            return "Who, and what happened?"
         if re.fullmatch(r"(?:no|nah|nope)[?.!]*", normalized):
             return "Fair enough. What do you want instead?"
         if re.fullmatch(r"why[?.!]*", normalized) and previous_assistant:

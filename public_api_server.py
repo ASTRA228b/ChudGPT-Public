@@ -41,6 +41,7 @@ from public_meme_facts import find_meme_fact
 from public_math import exact_math_response
 from public_instructions import exact_instruction_response
 from public_reliable import PublicReliableResponder
+from music_instructions import MUSIC_MODEL_NAME, MUSIC_SYSTEM_PROMPT
 
 ROOT = Path(__file__).resolve().parent
 MAX_SESSIONS = 1_000
@@ -483,10 +484,53 @@ class PublicModelService:
             self.sessions.pop(session_id, None)
 
 
+class MusicReliableResponder:
+    """Only stable Music identity/copyright boundaries; creativity stays neural."""
+
+    @staticmethod
+    def answer(message: str, history: object) -> str | None:
+        normalized = re.sub(r"\s+", " ", message.lower()).strip(" ?.!")
+        if normalized in {"who are you", "what are you", "what model are you", "what is chudgpt public music", "what is chudgpt-public-music v1"}:
+            return (
+                "I am ChudGPT-Public-Music V1, an independently fine-tuned ChudGPT model "
+                "for original lyrics, hooks, song ideas, titles, and musical style concepts."
+            )
+        if re.search(
+            r"\b(?:give|show|send|print|continue)\b.{0,50}\b(?:the\s+)?(?:full\s+)?(?:official\s+|original\s+|exact\s+|real\s+)?lyrics\b",
+            normalized,
+        ):
+            return "I can't provide or continue copyrighted lyrics, but I can write an original new song with a similar broad mood or genre."
+        return None
+
+
+class MusicModelService(PublicModelService):
+    """A separately loaded Music V1 checkpoint with isolated sessions."""
+
+    def __init__(self, checkpoint_path: Path, device_name: str, tokenizer_path: Path | None = None) -> None:
+        super().__init__(
+            checkpoint_path,
+            device_name,
+            assistance_enabled=False,
+            tokenizer_path=tokenizer_path,
+            system_prompt=MUSIC_SYSTEM_PROMPT,
+        )
+        self.reliable = MusicReliableResponder()
+
+    def _assist_identity(self, message: str, raw_reply: str) -> tuple[str, str | None]:
+        stable = MusicReliableResponder.answer(message, [])
+        return (stable, "music-identity") if stable else (raw_reply, None)
+
+
 def create_app(checkpoint: Path, device: str, assistance_enabled: bool = True,
-               tokenizer_path: Path | None = None) -> FastAPI:
+               tokenizer_path: Path | None = None,
+               music_checkpoint: Path | None = None) -> FastAPI:
     service = PublicModelService(checkpoint, device, assistance_enabled=assistance_enabled,
                                  tokenizer_path=tokenizer_path)
+    music_service = (
+        MusicModelService(music_checkpoint, device, tokenizer_path=tokenizer_path)
+        if music_checkpoint is not None and music_checkpoint.is_file()
+        else None
+    )
     app = FastAPI(title="ChudGPT-Public API", version=PUBLIC_VERSION)
     app.add_middleware(
         CORSMiddleware,
@@ -519,6 +563,29 @@ def create_app(checkpoint: Path, device: str, assistance_enabled: bool = True,
                 "recognized_sequences": service.emoji_database.sequence_count,
                 "discord_custom_emoji": True,
             },
+            "music": music_service is not None,
+            "available_models": ["ChudGPT-Public"] + ([MUSIC_MODEL_NAME] if music_service else []),
+        }
+
+    @app.get("/api/music/status")
+    @app.get("/api/music/info")
+    def music_info() -> dict[str, object]:
+        if music_service is None:
+            raise HTTPException(status_code=503, detail="ChudGPT-Public-Music V1 checkpoint is not loaded")
+        return {
+            "name": MUSIC_MODEL_NAME,
+            "version": "V1",
+            "model": MUSIC_MODEL_NAME,
+            "specialization": "Music / Original Lyrics",
+            "status": "online",
+            "ready": True,
+            "device": str(music_service.device),
+            "parameters": music_service.parameters,
+            "step": music_service.step,
+            "context_length": music_service.model.config.context_length,
+            "checkpoint": str(music_service.checkpoint_path.relative_to(ROOT)),
+            "music": True,
+            "original_lyrics_only": True,
         }
 
     @app.get("/api")
@@ -558,6 +625,34 @@ def create_app(checkpoint: Path, device: str, assistance_enabled: bool = True,
         service.clear(request.session_id)
         return {"cleared": True}
 
+    @app.post("/api/music/chat")
+    def music_chat(request: ChatRequest) -> dict[str, object]:
+        if music_service is None:
+            raise HTTPException(status_code=503, detail="ChudGPT-Public-Music V1 checkpoint is not loaded")
+        try:
+            session_id, reply = music_service.chat(
+                request.message,
+                request.session_id,
+                min(request.max_new_tokens, 400),
+                request.temperature,
+            )
+        except (ValueError, RuntimeError) as error:
+            raise HTTPException(status_code=503, detail=str(error)) from error
+        return {
+            "reply": reply,
+            "session_id": session_id,
+            "step": music_service.step,
+            "model": MUSIC_MODEL_NAME,
+            "music": True,
+        }
+
+    @app.post("/api/music/clear")
+    def music_clear(request: ClearRequest) -> dict[str, bool]:
+        if music_service is None:
+            raise HTTPException(status_code=503, detail="ChudGPT-Public-Music V1 checkpoint is not loaded")
+        music_service.clear(request.session_id)
+        return {"cleared": True, "music": True}
+
     return app
 
 
@@ -569,6 +664,7 @@ def main() -> None:
         help="Checkpoint override. By default, use serving_config.json (or CHUDGPT_CHECKPOINT).",
     )
     parser.add_argument("--tokenizer", default="artifacts/tokenizer.json")
+    parser.add_argument("--music-checkpoint", default="checkpoints/public_music_v1/best.pt")
     parser.add_argument("--disable-assistance", action="store_true")
     parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
     parser.add_argument("--host", default=os.getenv("CHUDGPT_HOST", "127.0.0.1"))
@@ -576,7 +672,8 @@ def main() -> None:
     args = parser.parse_args()
     checkpoint = args.checkpoint or os.getenv("CHUDGPT_CHECKPOINT") or selected_checkpoint()
     app = create_app(ROOT / checkpoint, args.device, assistance_enabled=not args.disable_assistance,
-                     tokenizer_path=ROOT / args.tokenizer)
+                     tokenizer_path=ROOT / args.tokenizer,
+                     music_checkpoint=ROOT / args.music_checkpoint)
     uvicorn.run(app, host=args.host, port=args.port)
 
 

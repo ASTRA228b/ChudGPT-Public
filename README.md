@@ -6,6 +6,27 @@ The native ChudGPT Desktop client now lives entirely in [`desktop/`](desktop/REA
 
 ChudGPT-Public is an independently trained, experimental conversational language model and public web API. It has **20,999,184 trainable parameters** and is designed for general conversation, basic facts, arithmetic, and simple Python, C#, JavaScript, and Unity questions.
 
+### ChudGPT-Public-Music V1
+
+Music V1 is a separate 20,999,184-parameter checkpoint fine-tuned for original lyrics, hooks, titles, song concepts, and musical style ideas. It has isolated conversation sessions and does not replace the standard Public V20 checkpoint. Its personality deliberately permits funny, chaotic, and occasionally nonsensical writing. It remains a very small experimental model: rhyme, factual music knowledge, and instruction following are not dependable.
+
+The reviewed Music corpus contains 714 unique conversations. Its CUDA response-only tune ran for 400 steps and reduced held-out validation loss from 4.2182 at step 20 to 0.9818 at step 400. The checkpoint is generated locally at `checkpoints/public_music_v1/best.pt` and is excluded from Git because of its size.
+
+Build and train it independently:
+
+```cmd
+python build_music_v1_data.py
+python fine_tune.py --config configs/finetune_music_v1.yaml --device cuda
+```
+
+Run both Public and Music checkpoints:
+
+```cmd
+python public_api_server.py --device cuda --port 8010 --music-checkpoint checkpoints/public_music_v1/best.pt
+```
+
+Music endpoints are `GET /api/music/status`, `POST /api/music/chat`, and `POST /api/music/clear`. Every Music status/chat response includes `"music": true`. The website is available at `/music`, Discord uses `!chud music <prompt>`, and ChudGPT Desktop 0.3.0 adds a Public/Music model selector.
+
 ### Public V20
 
 V20 is the current strongest Public serving profile. It combines the independently trained 20,999,184-parameter checkpoint with a local reviewed-response layer, exact decimal and large-integer arithmetic, conservative slang normalization, protected identity/meme facts, multi-candidate neural selection, and a dedicated Discord context mode. It does not call Pro, ChatGPT, or any external model.
@@ -143,6 +164,9 @@ Endpoints:
 - `GET /api/status`
 - `POST /api/chat` with `message` and optional `session_id`
 - `POST /api/clear` with `session_id`
+- `GET /api/music/status`
+- `POST /api/music/chat` with `message` and optional `session_id`
+- `POST /api/music/clear` with `session_id`
 
 ## Publish with Vercel and Cloudflare
 

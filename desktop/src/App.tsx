@@ -111,12 +111,12 @@ export default function App(): JSX.Element {
   const checkConnection = useCallback(async () => {
     setConnection("connecting");
     try {
-      await status();
+      await status(state.settings.modelProfile);
       setConnection("online");
     } catch {
       setConnection("offline");
     }
-  }, []);
+  }, [state.settings.modelProfile]);
   useEffect(() => {
     if (!loaded) return;
     void checkConnection();
@@ -215,7 +215,7 @@ export default function App(): JSX.Element {
     activeRequest.current = id;
     setRequestId(id);
     try {
-      const result = await chat(clean, target.sessionId, id);
+      const result = await chat(clean, target.sessionId, id, state.settings.modelProfile);
       updateChat(target.id, (item) => ({
         ...item,
         messages: [...item.messages, message("assistant", result.reply)],
@@ -262,7 +262,7 @@ export default function App(): JSX.Element {
       !window.confirm(`Delete “${chat.title}”? This cannot be undone.`)
     )
       return;
-    void clearSession(chat.sessionId).catch(() => undefined);
+    void clearSession(chat.sessionId, state.settings.modelProfile).catch(() => undefined);
     setState((current) => ({
       ...current,
       conversations: current.conversations.filter(
@@ -372,9 +372,9 @@ export default function App(): JSX.Element {
             </button>
             <div>
               <h1>
-                ChudGPT <span>Public</span>
+                ChudGPT <span>{state.settings.modelProfile === "music" ? "Music V1" : "Public"}</span>
               </h1>
-              <p>Independent experimental language model</p>
+              <p>{state.settings.modelProfile === "music" ? "Independent experimental music model" : "Independent experimental language model"}</p>
             </div>
             <button
               className={`status-pill ${connection}`}
@@ -388,7 +388,7 @@ export default function App(): JSX.Element {
                 <Wifi />
               )}
               <span>
-                Public · {connection[0].toUpperCase() + connection.slice(1)}
+                {state.settings.modelProfile === "music" ? "Music V1" : "Public"} · {connection[0].toUpperCase() + connection.slice(1)}
               </span>
             </button>
           </header>
@@ -396,6 +396,7 @@ export default function App(): JSX.Element {
             <div className="message-scroll">
               {!active || !active.messages.length ? (
                 <Welcome
+                  music={state.settings.modelProfile === "music"}
                   onStarter={(text) => {
                     setDraft(text);
                     window.dispatchEvent(new Event("chud:focus-composer"));

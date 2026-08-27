@@ -84,8 +84,10 @@ jobs:
           body: |
             ## ChudGPT Desktop ${{ github.ref_name }}
 
-            Native desktop client for ChudGPT-Public.
+            Native desktop client for ChudGPT-Public and ChudGPT-Public-Music V1.
 
+            - Public V20 / Music V1 model-profile selector in Settings
+            - Isolated Music sessions, status, welcome text, and API routing
             - Reliable composer focus for new and switched conversations
             - Safer request cancellation and stale-response handling
             - Persistent multi-chat system with isolated API sessions

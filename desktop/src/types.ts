@@ -27,6 +27,7 @@ export type Density = "comfortable" | "compact";
 export type StatusPollSeconds = 0 | 30 | 60 | 120 | 300;
 export type RenderMessageLimit = 0 | 100 | 250 | 500;
 export type ContentWidth = 720 | 880 | 1080 | 1400;
+export type ModelProfile = "public" | "music";
 
 export interface ChatMessage {
   id: string;
@@ -45,6 +46,7 @@ export interface Conversation {
 }
 
 export interface AppSettings {
+  modelProfile: ModelProfile;
   theme: ThemeName;
   interfaceScale: number;
   compactSidebar: boolean;
