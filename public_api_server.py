@@ -505,6 +505,45 @@ class MusicModelService(PublicModelService):
         self.reliable = None
         self.shorten_casual_generation = False
 
+    def chat(
+        self,
+        message: str,
+        session_id: str | None,
+        max_new_tokens: int = 420,
+        temperature: float = 0.72,
+        context_mode: Literal["default", "discord"] = "default",
+        discord_context: str | None = None,
+    ) -> tuple[str, str]:
+        """Generate every Music reply directly from the Music checkpoint.
+
+        Music deliberately bypasses Public's instruction, arithmetic, meme,
+        emoji, identity, Discord-context, reviewed-response, and repair-answer
+        routers. Conversation history and the fixed layout instruction are
+        model input only; no helper is allowed to provide reply text.
+        """
+        del context_mode, discord_context
+        clean_message = message.strip()
+        if not clean_message:
+            raise ValueError("message cannot be blank")
+        active_session = session_id or uuid.uuid4().hex
+        with self.lock:
+            history = list(self.sessions.get(active_session, []))
+            history.append({"role": "user", "content": clean_message})
+            generation_history = history[-8:]
+            reply = self._generate_raw(
+                generation_history,
+                max_new_tokens,
+                temperature,
+                self.system_prompt,
+            )
+            history.append({"role": "assistant", "content": reply})
+            self.sessions[active_session] = history
+            self.sessions.move_to_end(active_session)
+            while len(self.sessions) > MAX_SESSIONS:
+                self.sessions.popitem(last=False)
+        self.last_assistance_reason = None
+        return active_session, reply
+
     def _generate_raw(
         self,
         history: list[dict[str, str]],

@@ -16,6 +16,18 @@ def test_music_identity_and_funny_personality_is_learned_not_hardcoded() -> None
     assert "self.reliable = None" in source
 
 
+def test_music_chat_bypasses_every_public_answer_router() -> None:
+    source = (Path(__file__).parents[1] / "public_api_server.py").read_text(encoding="utf-8")
+    music_source = source[source.index("class MusicModelService"):source.index("def create_app(")]
+    assert "exact_instruction_response(" not in music_source
+    assert "exact_math_response(" not in music_source
+    assert "find_meme_fact(" not in music_source
+    assert "emoji_semantic_response(" not in music_source
+    assert "self.reliable.answer(" not in music_source
+    assert "self._assist_identity(" not in music_source
+    assert "self._assist_meme(" not in music_source
+
+
 def test_music_prompt_teaches_original_copyright_boundary() -> None:
     assert "copyrighted lyrics" in MUSIC_SYSTEM_PROMPT.lower()
     assert "every generated lyric must be new" in MUSIC_SYSTEM_PROMPT.lower()
