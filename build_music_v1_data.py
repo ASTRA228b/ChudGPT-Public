@@ -82,6 +82,26 @@ VERSE_PAIRS = [
     ("The clock puts on a suit and calls a vote,", "I nominate {focus}; the toaster clears its throat."),
     ("One cloud gets stuck above the laundromat,", "It looks like {focus} wearing a paper hat."),
     ("The final train pulls daylight from the track,", "I trade it {focus} and it refuses to give it back."),
+    ("Summer leaves its fingerprints across the glass,", "I chase {focus} while the warm cars pass."),
+    ("The old mall breathes through vents above the floor,", "I hear {focus} behind a locked-up store."),
+    ("Three in the morning turns the monitor pale,", "I debug {focus} while the tired streetlights fail."),
+    ("The storm draws silver ladders down the street,", "I run with {focus} and a double-time beat."),
+    ("A robot holds its broken voice in place,", "Then sings {focus} through sparks across its face."),
+    ("The summer radio is louder than the sea,", "It sends {focus} running barefoot back to me."),
+    ("Your empty chair still knows the shape of rain,", "I say {focus} and hear the room again."),
+    ("A microwave campaigns beside the sink,", "It promises {focus} and free popcorn to drink."),
+    ("The midnight highway wears a violet glow,", "I let {focus} decide how far we go."),
+    ("The stars move slowly through a silent frame,", "I give {focus} an impossible new name."),
+    ("A broken neon arrow points away,", "I follow {focus} to the edge of day."),
+    ("The food court fountain coughs beneath the dust,", "It hums {focus} because some ghosts still must."),
+    ("My cursor blinks like it has doubts to share,", "I type {focus} into the freezing air."),
+    ("A rusted speaker wakes beneath the stairs,", "It plays {focus} for rows of empty chairs."),
+    ("The engine keeps a rhythm in the rain,", "I steer {focus} through every glowing lane."),
+    ("We kept our jokes in boxes by the door,", "Now {focus} sounds different than before."),
+    ("The kitchen clock declares itself the king,", "It orders {focus} to make the teaspoons sing."),
+    ("A satellite falls softly out of tune,", "It beams {focus} toward a cardboard moon."),
+    ("The thunder signs its name across the night,", "I carry {focus} toward the nearest light."),
+    ("An escalator dreams beneath the grime,", "It lifts {focus} exactly half the time."),
 ]
 CHORUS_PAIRS = [
     ("Hold on to {focus} while the whole room sways,", "We can lose the map without losing our way."),
@@ -96,6 +116,18 @@ CHORUS_PAIRS = [
     ("Carry {focus} through the static and smoke,", "Turn the worst little moment into one decent joke."),
     ("When {focus} falls, let the bass line rise,", "We will tape up the moon and apologize to the sky."),
     ("I asked {focus} for a reason to move,", "It handed me chaos with an excellent groove."),
+    ("Bring {focus} into the open air,", "Let the drums answer what we could not share."),
+    ("We shout {focus} over thunder and chrome,", "Every wild echo points us back home."),
+    ("Spin {focus} under ultraviolet skies,", "Turn every small disaster into something that flies."),
+    ("If {focus} breaks, let the amplifiers ring,", "A cracked little voice can still carry the spring."),
+    ("Keep {focus} bright in the passenger side,", "Midnight is endless when the windows are wide."),
+    ("Goodbye, {focus}; I still know your sound,", "Some friends leave echoes that keep coming around."),
+    ("Vote for {focus}, the future is toast,", "The kitchen wants a leader and the blender wants a ghost."),
+    ("Run, {focus}, while the black clouds form,", "We borrow the lightning and outrun the storm."),
+    ("Wake up, {focus}, with your wires undone,", "A heart made of metal can still face the sun."),
+    ("Float with {focus} where the slow planets lean,", "Leave one low note in the space in between."),
+    ("Code, {focus}, till the blue morning shows,", "One bug disappears and three more strike a pose."),
+    ("Call {focus} through the abandoned hall,", "The mannequins listen but say nothing at all."),
 ]
 BRIDGES = [
     "Drop every drum; leave the breathing in.\nThe smallest honest sound is where we begin.",
@@ -151,14 +183,17 @@ def contextual_line(line: str, subject: str, salt: int) -> str:
     subject_focus = focus(subject)
     if "{focus}" in line:
         return line.format(focus=subject_focus)
+    # Keep bridges/outros tied to their song without the old malformed
+    # "As <whole prompt> drifts past" splice. These frames accept noun and
+    # gerund subjects naturally and stop one stock bridge from appearing as
+    # an identical line in hundreds of otherwise distinct examples.
     lowered = line[0].lower() + line[1:]
-    frames = [
-        f"Near {subject_focus}, {lowered}",
-        f"With {subject_focus} in mind, {lowered}",
-        f"After {subject_focus}, {lowered}",
-        f"As {subject_focus} drifts past, {lowered}",
-        f"Thinking of {subject_focus}, {lowered}",
-    ]
+    frames = (
+        f"Thinking about {subject_focus}, {lowered}",
+        f"Inside a song about {subject_focus}, {lowered}",
+        f"Under the shadow of {subject_focus}, {lowered}",
+        f"While I remember {subject_focus}, {lowered}",
+    )
     return frames[salt % len(frames)]
 
 
@@ -168,15 +203,21 @@ def contextual_block(text: str, subject: str, salt: int) -> str:
 
 
 def stanza(subject: str, index: int, offset: int = 0) -> str:
-    pair = VERSE_PAIRS[(index + offset * 7) % len(VERSE_PAIRS)]
-    return "\n".join(contextual_line(line, subject, index + offset + line_index)
-                      for line_index, line in enumerate(pair))
+    first_lines = [pair[0] for pair in VERSE_PAIRS]
+    second_lines = [pair[1] for pair in VERSE_PAIRS]
+    first = first_lines[(index + offset * 11) % len(first_lines)]
+    second = second_lines[(index * 17 + offset * 23 + 7) % len(second_lines)]
+    return "\n".join((contextual_line(first, subject, index + offset),
+                      contextual_line(second, subject, index + offset + 1)))
 
 
 def chorus(subject: str, index: int) -> str:
-    pair = CHORUS_PAIRS[(index * 5 + 2) % len(CHORUS_PAIRS)]
-    return "\n".join(contextual_line(line, subject, index + line_index)
-                      for line_index, line in enumerate(pair))
+    first_lines = [pair[0] for pair in CHORUS_PAIRS]
+    second_lines = [pair[1] for pair in CHORUS_PAIRS]
+    first = first_lines[(index * 5 + 2) % len(first_lines)]
+    second = second_lines[(index * 13 + 9) % len(second_lines)]
+    return "\n".join((contextual_line(first, subject, index),
+                      contextual_line(second, subject, index + 1)))
 
 
 def song(subject: str, genre: str, mood: str, index: int, *, include_title: bool,

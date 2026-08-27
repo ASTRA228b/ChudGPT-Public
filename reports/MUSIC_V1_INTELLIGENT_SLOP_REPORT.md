@@ -1,48 +1,52 @@
-# ChudGPT-Public-Music V1: Intelligent Slop Pass
+# ChudGPT-Public-Music V1: final quality and reliability report
 
 ## 1. What was wrong
 
-The original Music V1 corpus was narrow and heavily repeated. Five complete lyric lines occurred 1,076 times each, "screen goes black" appeared across 1,166 outputs, and generated songs frequently reused the same room/static/signal language. The live Discord Music samples also showed malformed titles, disconnected sections, prompt drift, and repeated old outros.
+The active Music checkpoint is overfit to a small set of room/static/signal lyrics. It often repeats "After Midnight," "the room stays blue," "name it courage," and the same signal/screen outro. The prior synthetic corpus looked large but was assembled from only 20 fixed verse pairs, 12 fixed chorus pairs, and a few bridge/outro blocks. Its old subject-splicing rule also taught malformed sentences such as "As microwave running for president drifts past...".
 
-## 2. Data and log findings
+## 2. What the logs showed
 
-- Old corpus: 3,358 assistant outputs, 80 unique titles, and 464 unique styles.
-- Rebuilt corpus: 3,600 unique conversations, 4,320 assistant outputs, 506 unique titles, and 1,252 unique styles.
-- The worst ordinary lyric line dropped from 1,076 occurrences to 10. Forty-use lines in the rebuilt corpus are short instrumental directions rather than song lyrics.
-- The private Discord JSONL log contained six Music V1 exchanges that reproduced the same stock-line and malformed-language failures.
+Private Music/Discord logs reproduced the same stock lines, malformed titles, prompt drift, and weak grammar. The analyzer reads these private JSONL files locally; no private log is published. It reports repeated lines and 3-6 word phrases, title/style duplication, output length, internal repetition, and malformed sections.
 
-## 3. Dataset changes
+## 3. Repetition findings
 
-The corpus builder now combines 51 subjects, 30 genres, 10 moods, varied rhythmic/texture/vocal/arrangement descriptions, multiple section layouts, request-scoped fragments, full songs, title/style-only requests, and multi-turn revisions. The previous corpus is backed up under `data/archive/music_v1_pre_intelligent_slop_20260827/`.
+The first corpus had five full lyric lines occurring 1,076 times each. The final rebuilt corpus has 3,600 unique conversations and 4,320 assistant turns. Its highest ordinary topic-bearing lyric repetition is five; the remaining 40-use entries are short instrumental-break directions. It contains 506 unique titles and 1,252 unique style descriptions. The active checkpoint remains contaminated by its older training history, so a clean corpus alone cannot repair it without a successful replacement checkpoint.
 
-## 4. Runtime changes
+## 4. Dataset changes
 
-- Added configurable no-repeat n-gram decoding; Music V1 uses a four-token window.
-- Uses six fixed neural sampling profiles, repetition penalty 1.16, and prompt/repetition-aware candidate ranking.
-- Penalizes repeated prior-session titles, styles, and lyric lines while allowing explicit continuity requests.
-- Rejects degenerate one-token/repeated-word titles and underspecified styles during candidate ranking.
-- No completed song, title, style, or fallback answer is inserted by runtime code.
+- Added broader genre, mood, subject, tempo, texture, vocal, and arrangement coverage.
+- Expanded verse/chorus writing and independently combines compatible first/second lines instead of reusing fixed pairs.
+- Removed the malformed "As <whole subject> drifts past" construction.
+- Added grammatical topic-aware bridge/outro frames so stock lines are not copied unchanged across hundreds of songs.
+- Preserved request scope: ordinary song drafts omit title/style; explicit title/style requests generate them; complete-song requests can use longer structures.
+- The pre-change corpus remains backed up under `data/archive/music_v1_pre_intelligent_slop_20260827/`.
 
-## 5. Private diagnostics
+## 5. Training changes
 
-Each Music generation writes private JSONL diagnostics with UTC timestamp, session, prompt, complete neural reply, checkpoint, chosen title/style, sections, length, score, decoding profiles, and repetition indicators. The analyzer reports corpus and private Discord repetition without exposing private logs publicly.
+Training now starts from the compatible `public_v20_quality` checkpoint rather than compounding the overfit Music checkpoint. The same 20,999,184-parameter architecture and tokenizer are retained. Two CUDA experiments were run: 500 steps on the first clean rebuild (validation loss 2.3427), then 1,000 steps on the expanded rebuild (validation loss 1.3435). Neither produced better human-readable unseen songs, so neither was promoted.
 
-## 6. Retraining result
+## 6. Generation changes
 
-The same 20,999,184-parameter architecture was fine-tuned for 600 optimizer steps on CUDA. Validation loss fell from 4.1571 at step 20 to 1.2428 at step 600 without NaNs. However, blind generation review showed that the final and intermediate checkpoints were less grammatical and less prompt-faithful than the proven active checkpoint. They were therefore archived as experiments and not promoted. This is an explicit quality decision: lower validation loss did not equal better conversation.
+Music still uses six neural samples, prompt-aware candidate ranking, four-token no-repeat n-grams, session title/style/line similarity penalties, and no canned song fallback. A lower-temperature decoding sweep was tested and rejected: on the active checkpoint it increased cross-output repeated lines from 55 to 113. The proven active decoding settings were restored.
 
-## 7. Non-cherry-picked benchmark
+## 7. Discord behavior
 
-The archived active checkpoint and candidate were each tested on the same ten unseen prompts with two samples each. The candidate improved unique-title ratio from 0.625 to 1.0 and reduced cross-output repeated lines from 58 to 0, but mean prompt-content overlap fell from 0.105 to 0.081 and qualitative coherence regressed. Every generated sample is retained in the JSON benchmark reports locally.
+`!chud music <prompt>` still routes only to Music V1. Long output uses the existing Discord-safe section-aware splitter rather than cutting a lyric line in half. Normal Public and unrelated commands were not changed.
 
-## 8. Discord behavior
+## 8. Exact non-cherry-picked benchmark
 
-`!chud music` remains routed only to the Music V1 endpoint. Its maximum neural output is now 400 tokens, and existing Discord-safe message splitting preserves long lyrics across multiple messages. Other bot commands and normal Public routing are unchanged.
+Ten requested prompts were each sampled twice. With the original decoder, the active checkpoint scored: prompt overlap 0.021, 55 cross-output repeated lines, 0 internal repeated lines, and 0 malformed-output flags. The 1,000-step fresh candidate scored: prompt overlap 0.017, 0 cross-output repeated lines, 0 internal repeated lines, and 0 malformed-output flags, but qualitative grammar and topic adherence were materially worse. The candidate was therefore rejected. Complete raw samples are retained in the local benchmark JSON files.
 
-## 9. Tests
+## 9. Before/after examples and verdict
 
-Focused Music/Public regression suite: 209 passed. New coverage checks request scope, title/style diversity behavior, degenerate-title scoring, varied section layouts, decoder n-gram blocking, and the absence of canned runtime songs.
+Before: the active checkpoint produced recognizable sections but recycled "After Midnight," "the room stays blue," and "I laugh once softly and don't look back." Candidate: copied lines disappeared, but samples such as "The old mall barefternoon..." were less readable. Final verdict: keep the active checkpoint and decoder; ship the corrected corpus, evaluation, and analysis pipeline; archive both rejected candidates. This is not claimed as a neural-quality win.
 
-## 10. Honest limitation
+## 10. Files changed
 
-Music V1 is still a 21M-parameter experimental model. It can be funny, strange, and more varied, but it cannot reliably match a large production model's long-range lyrical coherence. The rejected checkpoints are kept for research; the deployed checkpoint remains the most coherent tested option.
+- `build_music_v1_data.py`
+- `data/music_v1_conversations.jsonl`
+- `configs/finetune_music_v1.yaml`
+- `evaluate_music_v1.py`
+- `reports/MUSIC_V1_INTELLIGENT_SLOP_REPORT.md`
+
+Known limitation: a 21M decoder can learn the format and vocabulary yet still fail semantic composition. Lower validation loss did not guarantee better lyrics. A future promotion must beat the live checkpoint in blind human review as well as repetition metrics.

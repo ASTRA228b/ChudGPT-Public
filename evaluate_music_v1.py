@@ -10,16 +10,16 @@ from pathlib import Path
 from public_api_server import MusicModelService
 
 PROMPTS = [
-    "Make a love song",
-    "Write a full dark electronic song about my WiFi dying",
-    "Give me only a title for a funny song about a haunted microwave",
-    "Give me only a musical style for a rainy-night driving song",
-    "Write one chorus about losing a video game at the last second",
-    "Make a short punk song about a shopping cart with one bad wheel",
-    "Write a full dreamy synth-pop song about the last summer night",
-    "Create a weird but coherent folk song about a tax-paying dragon",
-    "Write a bridge for a song about leaving home, no title or style",
-    "Make a complete original song about nothing, but keep one clear idea throughout",
+    "Write a happy summer song",
+    "Write a sad song about losing an old friend",
+    "Write a heavy metal song about a broken robot",
+    "Write a dreamy synthwave song about driving at midnight",
+    "Write a funny song about a microwave becoming president",
+    "Write a song of nothing",
+    "Write a slow space song",
+    "Write a fast electronic song about running from a storm",
+    "Write a song about coding at 3 AM",
+    "Write a creepy song about an abandoned shopping mall",
 ]
 
 
