@@ -272,6 +272,23 @@ def test_music_repetition_filter_never_erases_the_neural_draft() -> None:
     assert "repetition-filter-reverted-destructive" in corrections
 
 
+def test_music_repetition_filter_keeps_a_smaller_novel_draft() -> None:
+    service = object.__new__(MusicModelService)
+    service.allowed_sections = {"verse 1": "Verse 1", "chorus": "Chorus"}
+    service.overrepresented_music_lines = set()
+    service.overrepresented_music_phrases = {"light keeps judging me"}
+    neural = """[Verse 1]
+A little light keeps judging me.
+The router rides the thunder while the copper cables sing.
+
+[Chorus]
+The storm can shake the windows, but the network holds the line."""
+    filtered, corrections = service._safely_filter_repetition(neural, "router thunderstorm song")
+    assert "judging" not in filtered.lower()
+    assert "router rides" in filtered.lower()
+    assert any(item.startswith("removed-overrepresented-lines:") for item in corrections)
+
+
 def test_write_me_a_song_requires_a_complete_generated_song() -> None:
     fragment = "[Chorus]\nOne lonely line."
     complete = """Title: Network Weather

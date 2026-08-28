@@ -731,9 +731,8 @@ class MusicModelService(PublicModelService):
         filtered, removed = self._remove_overrepresented_lines(reply, prompt)
         if not removed:
             return reply, []
-        original_lines = self._lyric_lines(reply)
-        removed_fraction = removed / max(1, len(original_lines))
-        if len(re.findall(r"\b\w+\b", filtered)) < 4 or removed_fraction > 0.35:
+        remaining_lyrics = self._lyric_lines(filtered)
+        if len(re.findall(r"\b\w+\b", filtered)) < 8 or not remaining_lyrics:
             return reply, ["repetition-filter-reverted-destructive"]
         validated, corrections = self._validate_structure(filtered)
         return validated, [f"removed-overrepresented-lines:{removed}", *corrections]
