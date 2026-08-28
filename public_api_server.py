@@ -602,6 +602,14 @@ class MusicModelService(PublicModelService):
         previous_title = re.search(r"(?im)^title\s*:\s*([^\n]+)", previous_music)
         previous_style = re.search(r"(?im)^style\s*:\s*([^\n]+)", previous_music)
         recent_replies = [turn["content"] for turn in history[:-1] if turn["role"] == "assistant"]
+        # Reinforce the user's subject inside the model prompt. This supplies no
+        # lyric text; it only helps the tiny checkpoint keep its own generation
+        # attached to the requested concept instead of drifting to old motifs.
+        system_prompt += (
+            " Keep every generated music response centered on this exact current request: "
+            + current_message[:500]
+            + ". Use concrete words or close musical imagery from that subject."
+        )
         if previous_title or previous_style:
             continuity: list[str] = []
             if previous_title:
@@ -842,7 +850,7 @@ class MusicModelService(PublicModelService):
         # swapping one adjective (for example, tiny -> little) while repeating
         # the same memorized phrase family.
         frequent = sorted(
-            (phrase for phrase, count in counts.items() if count >= 12),
+            (phrase for phrase, count in counts.items() if count >= 8),
             key=lambda phrase: (len(phrase.split()), phrase),
         )
         selected: list[str] = []
