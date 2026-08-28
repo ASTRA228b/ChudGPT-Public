@@ -30,6 +30,12 @@ SUBJECTS = [
     "running from a storm", "losing an old friend", "first love on the final train",
     "a lighthouse arguing with fog", "an empty carnival after closing", "a tiny dragon with rent due",
     "nothing deciding to become something", "a cassette remembering its owner",
+    "a bakery opening before sunrise", "a bicycle race through falling leaves",
+    "a lighthouse sending jokes to passing ships", "a garden growing through concrete",
+    "an exhausted dragon working customer support", "a picnic interrupted by friendly crows",
+    "a snow globe dreaming of summer", "a librarian secretly leading a punk band",
+    "two rival clouds learning to cooperate", "a submarine visiting a coral city",
+    "a love letter hidden inside a board game", "a train conductor who collects sunsets",
 ]
 GENRES = [
     "dark electronic", "bright synth-pop", "piano ballad", "chaotic hyperpop", "garage rock",
@@ -250,15 +256,29 @@ def song(subject: str, genre: str, mood: str, index: int, *, include_title: bool
     return "\n\n".join(parts).strip()
 
 
+def lyric_mash(first_subject: str, second_subject: str, genre: str, mood: str, index: int) -> str:
+    """Create training-only examples of combining supplied lyric ideas."""
+    title_subject = f"{focus(first_subject)} and {focus(second_subject)}"
+    return "\n\n".join((
+        f"Title: {generated_title(title_subject, index)}",
+        f"Style: {generated_style(genre, mood, index)}",
+        f"[Verse 1]\n{stanza(first_subject, index)}",
+        f"[Chorus]\n{chorus(title_subject, index)}",
+        f"[Verse 2]\n{stanza(second_subject, index, 1)}",
+        f"[Bridge]\n{contextual_block(BRIDGES[index % len(BRIDGES)], title_subject, index)}",
+        f"[Final Chorus]\n{chorus(title_subject, index + 1)}",
+    ))
+
+
 def build(seed: int = 2401) -> list[dict[str, object]]:
     rng = random.Random(seed)
     rows: list[dict[str, object]] = []
-    for index in range(3_600):
+    for index in range(4_600):
         subject = SUBJECTS[(index * 11 + index // 37) % len(SUBJECTS)]
         genre = GENRES[(index * 7 + index // 51) % len(GENRES)]
         mood = MOODS[(index * 13 + index // 67) % len(MOODS)]
         detail = DETAILS[(index * 17 + index // 29) % len(DETAILS)]
-        mode = index % 15
+        mode = index % 20
         if mode == 0:
             rows.append(record(f"Write a full {mood} {genre} song about {subject}, {detail}, with a title and style.", song(subject, genre, mood, index, include_title=True, include_style=True, full=True)))
         elif mode == 1:
@@ -293,8 +313,81 @@ def build(seed: int = 2401) -> list[dict[str, object]]:
                 {"role": "assistant", "content": song(subject, genre, mood, index, include_title=False, include_style=False, full=False)},
                 {"role": "user", "content": "What title and production style would fit it?"},
                 {"role": "assistant", "content": f"Title: {generated_title(subject, index)}\nStyle: {generated_style(genre, mood, index)}"}]})
-        else:
+        elif mode == 14:
             rows.append(record(f"Create an instrumental direction for {subject}, {detail}. Do not write lyrics.", f"Style: {generated_style(genre, mood, index)}. Keep the arrangement focused on {focus(subject)}."))
+        elif mode == 15:
+            rows.append(record(
+                f"Write a tiny 4-line song about {subject}.",
+                f"[Verse]\n{stanza(subject, index)}\n\n[Hook]\n{chorus(subject, index).splitlines()[0]}\n{chorus(subject, index).splitlines()[1]}",
+            ))
+        elif mode == 16:
+            opening = stanza(subject, index)
+            rows.append({"messages": [
+                {"role": "user", "content": f"Here is my opening verse:\n{opening}"},
+                {"role": "assistant", "content": "What would you like me to do with it?"},
+                {"role": "user", "content": "Continue it with a second verse that keeps the same subject and tone."},
+                {"role": "assistant", "content": f"[Verse 2]\n{stanza(subject, index, 2)}"},
+            ]})
+        elif mode == 17:
+            other_subject = SUBJECTS[(index * 19 + 7) % len(SUBJECTS)]
+            first = stanza(subject, index)
+            second = stanza(other_subject, index, 1)
+            rows.append({"messages": [
+                {"role": "user", "content": f"These are two lyric scraps:\n\n{first}\n\n{second}"},
+                {"role": "assistant", "content": "I have both lyric scraps. What should I do with them?"},
+                {"role": "user", "content": "Mash those lyrics together into one complete coherent song."},
+                {"role": "assistant", "content": lyric_mash(subject, other_subject, genre, mood, index)},
+            ]})
+        elif mode == 18:
+            titles = [generated_title(subject, index + offset * 31) for offset in range(5)]
+            rows.append(record(
+                f"Give me 5 different song title ideas about {subject}. No lyrics.",
+                "\n".join(f"{number}. {title}" for number, title in enumerate(titles, 1)),
+            ))
+        else:
+            styles = [generated_style(GENRES[(index + offset * 7) % len(GENRES)], mood, index + offset)
+                      for offset in range(3)]
+            rows.append(record(
+                f"Give me 3 distinct production styles for a song about {subject}. No lyrics.",
+                "\n".join(f"Style {number}: {style}" for number, style in enumerate(styles, 1)),
+            ))
+    # Keep very short composition well represented instead of relying on one
+    # sparse modulo branch. These remain varied across subject, genre, mood,
+    # wording, and generated lines.
+    short_requests = (
+        "Write a tiny 4-line song about {subject} in a {mood} {genre} mood.",
+        "Make a tiny 4-line song from this idea: {subject}; keep it {mood}.",
+        "I only want a tiny 4-line song about {subject}, styled as {genre}.",
+        "Turn {subject} into a tiny 4-line song. Keep it concise and {mood}.",
+    )
+    for short_index in range(180):
+        index = 10_000 + short_index
+        subject = SUBJECTS[(short_index * 17 + short_index // 11) % len(SUBJECTS)]
+        genre = GENRES[(short_index * 5 + 3) % len(GENRES)]
+        mood = MOODS[(short_index * 7 + 1) % len(MOODS)]
+        prompt = short_requests[short_index % len(short_requests)].format(
+            subject=subject, genre=genre, mood=mood
+        )
+        verse_lines = stanza(subject, index).splitlines()
+        hook_lines = chorus(subject, index).splitlines()
+        rows.append(record(prompt, "[Verse]\n" + "\n".join((verse_lines[0], verse_lines[1]))
+                           + "\n\n[Hook]\n" + "\n".join((hook_lines[0], hook_lines[1]))))
+    continuation_requests = (
+        "Continue it with a second verse that keeps the same subject and tone.",
+        "Continue it with a second verse, but move the scene forward.",
+        "Please continue it with a second verse in the same voice.",
+        "Continue it with a second verse and do not restart the song.",
+    )
+    for continuation_index in range(180):
+        index = 20_000 + continuation_index
+        subject = SUBJECTS[(continuation_index * 23 + 5) % len(SUBJECTS)]
+        opening = stanza(subject, index)
+        rows.append({"messages": [
+            {"role": "user", "content": f"Here is a lyric opening I wrote:\n{opening}"},
+            {"role": "assistant", "content": "What part would you like to develop next?"},
+            {"role": "user", "content": continuation_requests[continuation_index % len(continuation_requests)]},
+            {"role": "assistant", "content": f"[Verse 2]\n{stanza(subject, index, 3)}"},
+        ]})
     unique = {json.dumps(item, sort_keys=True, ensure_ascii=False): item for item in rows}
     rows = list(unique.values())
     if len(rows) < 3_200:

@@ -527,6 +527,109 @@ class MusicModelService(PublicModelService):
         }
         self.overrepresented_music_lines = self._load_overrepresented_lines()
         self.overrepresented_music_phrases = self._load_overrepresented_phrases()
+        self.generation_profiles = (
+            (0.52, 45, 0.86), (0.58, 50, 0.88), (0.64, 60, 0.90),
+            (0.70, 70, 0.92), (0.76, 80, 0.94), (0.82, 90, 0.95),
+        )
+
+    @staticmethod
+    def _classify_music_request(message: str) -> dict[str, object]:
+        """Classify requested musical work without supplying answer text."""
+        request = re.sub(r"\s+", " ", message.strip().lower())
+        asks_short = bool(re.search(
+            r"\b(?:short|tiny|quick|small|brief|20[ -]?second|one verse|one chorus|"
+            r"four[ -]?line|4[ -]?line)\b", request
+        ))
+        asks_full = bool(re.search(
+            r"\b(?:full|complete|long|extended)\b.*\b(?:song|lyrics)\b|"
+            r"\b(?:song|lyrics)\b.*\b(?:in full|complete|extended)\b|"
+            r"\b(?:write|make|create|generate)(?: me)? (?:a |an )?(?:original )?song\b",
+            request,
+        ))
+        if re.search(r"\b(?:mash(?:up)?|combine|merge|blend|splice|mix)\b.*\b(?:lyrics?|lines?|verses?|songs?)\b|"
+                     r"\b(?:lyrics?|lines?|verses?|songs?)\b.*\b(?:together|mash(?:up)?|combine|merge|blend)\b",
+                     request):
+            intent = "MASH_LYRICS"
+        elif re.search(r"\b(?:titles?|song names?|name ideas?)\b", request):
+            intent = "TITLE_IDEAS"
+        elif re.search(r"\b(?:styles?|genres?|production ideas?|sound ideas?)\b", request):
+            intent = "STYLE_IDEAS"
+        elif re.search(r"\b(?:rhyme|rhymes|rhyming)\b", request):
+            intent = "RHYME_HELP"
+        elif re.search(r"\b(?:rewrite|reword|make this (?:line |lyric )?(?:better|darker|angrier|sadder|"
+                       r"more emotional|less cringe|catchier))\b", request):
+            intent = "REWRITE_LYRIC"
+        elif re.search(r"\b(?:continue|finish|complete this|second verse|next verse|build around)\b", request):
+            intent = "CONTINUE_LYRICS"
+        elif re.search(r"\b(?:feedback|critique|review|what do you think)\b", request):
+            intent = "LYRIC_FEEDBACK"
+        else:
+            section_match = re.search(
+                r"\b(?:intro|pre-chorus|chorus|hook|bridge|breakdown|outro|verse)\b", request
+            )
+            if section_match and not asks_full:
+                intent = section_match.group(0).upper().replace("-", "_")
+            elif asks_short:
+                intent = "SHORT_SONG"
+            elif asks_full:
+                intent = "FULL_SONG"
+            else:
+                intent = "GENERAL_MUSIC_HELP"
+        requested_length = "short" if asks_short else (
+            "full" if asks_full or intent == "MASH_LYRICS" else "focused"
+        )
+        return {"intent": intent, "requested_length": requested_length}
+
+    @staticmethod
+    def _music_generation_instruction(intent: str, requested_length: str) -> str:
+        """Return structure-only guidance; never lyric, title, or style content."""
+        instructions = {
+            "FULL_SONG": (
+                " Generate a genuinely complete original song. Begin with generated Title: and Style: fields, "
+                "then use a genre-appropriate sequence of at least five labeled lyric sections, normally including "
+                "two verses, a recurring hook or chorus, a contrasting section, and an ending. Aim for 25-60 lyric "
+                "lines. Vary structure when the genre calls for it; do not return an idea list or a tiny fragment."
+            ),
+            "SHORT_SONG": (
+                " Generate an intentionally short original song of roughly 4-12 lyric lines using only the few "
+                "sections needed. Do not expand it into a full-length song."
+            ),
+            "MASH_LYRICS": (
+                " Mash the lyric material supplied in this conversation into one coherent song or section. Preserve "
+                "the user's important lines and meaning, reorder or bridge them when useful, remove accidental "
+                "duplication, and keep a consistent voice. Do not replace the source material with an unrelated song."
+            ),
+            "TITLE_IDEAS": " Generate only intentional, topic-relevant song title options; do not write lyrics.",
+            "STYLE_IDEAS": (
+                " Generate only distinct, understandable style options describing genre, mood, instrumentation, "
+                "tempo, vocal approach, and production where useful; do not write lyrics."
+            ),
+            "RHYME_HELP": " Give only useful rhyme or replacement-line options matching the supplied meaning and tone.",
+            "REWRITE_LYRIC": (
+                " Rewrite only the supplied lyric material as requested, preserving its core meaning unless the user "
+                "asks for a larger change."
+            ),
+            "CONTINUE_LYRICS": (
+                " Continue the supplied lyrics directly in the same perspective, topic, tone, and rough rhyme pattern. "
+                "Do not restart the song or silently replace the supplied lines."
+            ),
+            "LYRIC_FEEDBACK": " Give concise, specific songwriting feedback on the supplied material; do not replace it.",
+            "INTRO": " Generate only the requested intro.",
+            "PRE_CHORUS": " Generate only the requested pre-chorus.",
+            "CHORUS": " Generate only a memorable chorus centered on the requested subject, with a repeatable hook.",
+            "HOOK": " Generate only the requested hook ideas or hook, matching the requested count.",
+            "BRIDGE": " Generate only the requested bridge, providing a meaningful contrast to the existing song.",
+            "BREAKDOWN": " Generate only the requested breakdown.",
+            "OUTRO": " Generate only the requested outro.",
+            "VERSE": " Generate only the requested verse, matching any supplied lyrics.",
+            "GENERAL_MUSIC_HELP": (
+                " Answer the specific music or songwriting request directly. Do not force a full song when the user "
+                "asked for advice, an idea, or one component."
+            ),
+        }
+        return instructions.get(intent, instructions["GENERAL_MUSIC_HELP"]) + (
+            f" The requested output scope is {requested_length}."
+        )
 
     def chat(
         self,
@@ -602,6 +705,16 @@ class MusicModelService(PublicModelService):
         previous_title = re.search(r"(?im)^title\s*:\s*([^\n]+)", previous_music)
         previous_style = re.search(r"(?im)^style\s*:\s*([^\n]+)", previous_music)
         recent_replies = [turn["content"] for turn in history[:-1] if turn["role"] == "assistant"]
+        request_profile = self._classify_music_request(current_message)
+        detected_intent = str(request_profile["intent"])
+        requested_length = str(request_profile["requested_length"])
+        validation_message = current_message
+        if detected_intent == "MASH_LYRICS":
+            supplied_material = "\n".join(
+                turn["content"] for turn in history[:-1]
+                if turn["role"] == "user"
+            )
+            validation_message = supplied_material + "\n" + current_message
         # Reinforce the user's subject inside the model prompt. This supplies no
         # lyric text; it only helps the tiny checkpoint keep its own generation
         # attached to the requested concept instead of drifting to old motifs.
@@ -610,6 +723,7 @@ class MusicModelService(PublicModelService):
             + current_message[:500]
             + ". Use concrete words or close musical imagery from that subject."
         )
+        system_prompt += self._music_generation_instruction(detected_intent, requested_length)
         if previous_title or previous_style:
             continuity: list[str] = []
             if previous_title:
@@ -621,6 +735,8 @@ class MusicModelService(PublicModelService):
                 + "; ".join(continuity)
                 + ". Do not silently replace them unless the user requests a change."
             )
+        # Build context after intent guidance is complete. Older code appended
+        # its full-song guidance after this step, so the model never saw it.
         _, prompt_ids = build_context_token_ids(
             self.tokenizer,
             history,
@@ -628,25 +744,23 @@ class MusicModelService(PublicModelService):
             system_prompt=system_prompt,
         )
         prompt_tensor = torch.tensor([prompt_ids], device=self.device)
-        requested_tokens = max(160, min(max_new_tokens, 560))
-        wants_complete_song = bool(
-            re.search(
-                r"\b(?:(?:full|complete)(?:\s+(?:original|new))?\s+(?:song|lyrics)|"
-                r"(?:song|lyrics)\s+(?:in\s+)?full|"
-                r"(?:write|make|create|generate)(?:\s+me)?\s+(?:a|an)\s+song)\b",
-                current_message,
-                re.I,
-            )
-        )
-        if wants_complete_song:
-            system_prompt += (
-                " This request is for a full song. Generate one coherent song, beginning with "
-                "Title: and Style:, followed by at least [Verse 1], [Chorus], and one additional "
-                "valid lyric section. Do not output a numbered list of possible titles or styles."
-            )
-        minimum_draft_tokens = min(140, requested_tokens - 1) if wants_complete_song else 0
-        profiles = ((0.52, 45, 0.86), (0.58, 50, 0.88), (0.64, 60, 0.90),
-                    (0.70, 70, 0.92), (0.76, 80, 0.94), (0.82, 90, 0.95))
+        wants_complete_song = detected_intent in {"FULL_SONG", "MASH_LYRICS"}
+        if detected_intent == "FULL_SONG":
+            requested_tokens = max(420, min(max_new_tokens, 560))
+            minimum_draft_tokens = min(220, requested_tokens - 1)
+        elif detected_intent == "MASH_LYRICS":
+            requested_tokens = max(320, min(max_new_tokens, 520))
+            minimum_draft_tokens = min(120, requested_tokens - 1)
+        elif detected_intent == "SHORT_SONG":
+            requested_tokens = max(90, min(max_new_tokens, 180))
+            minimum_draft_tokens = 30
+        elif detected_intent in {"TITLE_IDEAS", "STYLE_IDEAS", "RHYME_HELP", "LYRIC_FEEDBACK"}:
+            requested_tokens = max(80, min(max_new_tokens, 180))
+            minimum_draft_tokens = 0
+        else:
+            requested_tokens = max(120, min(max_new_tokens, 300))
+            minimum_draft_tokens = 20
+        profiles = self.generation_profiles
         candidates: list[tuple[str, list[str]]] = []
         for sample_temperature, top_k, top_p in profiles:
             output = generate(
@@ -695,15 +809,24 @@ class MusicModelService(PublicModelService):
             score -= self._overrepresented_phrase_hits(reply, current_message) * 5.0
             return score
         shaped = [item for item in candidates
-                  if self._candidate_meets_music_shape(current_message, item[0])]
-        # Select structurally valid neural generations when any exist. If this
-        # tiny checkpoint misses the requested shape entirely, retain the best
-        # raw neural candidate rather than inserting canned lyrics.
+                  if self._candidate_meets_music_shape(validation_message, item[0])]
+        # A tiny checkpoint may end a long draft too early. Retry once as a
+        # section-by-section neural composition: the model still generates
+        # every title, style, and lyric; code supplies only layout labels.
+        if detected_intent in {"FULL_SONG", "MASH_LYRICS"} and not shaped:
+            assembled, assembly_corrections = self._assemble_neural_song(
+                history, system_prompt, current_message, detected_intent
+            )
+            if assembled:
+                candidates.append((assembled, assembly_corrections))
+                if self._candidate_meets_music_shape(validation_message, assembled):
+                    shaped.append((assembled, assembly_corrections))
+        # Select structurally valid neural generations when any exist.
         selection_pool = shaped or candidates
         scored = [(continuity_score(candidate), candidate, corrections)
                   for candidate, corrections in selection_pool]
         selected_score, selected, corrections = max(scored, key=lambda item: item[0])
-        selected, filter_corrections = self._safely_filter_repetition(selected, current_message)
+        selected, filter_corrections = self._safely_filter_repetition(selected, validation_message)
         corrections = [*corrections, *filter_corrections]
         title_match = re.search(r"(?im)^title\s*:\s*([^\n]+)", selected)
         style_match = re.search(r"(?im)^style\s*:\s*([^\n]+)", selected)
@@ -715,6 +838,8 @@ class MusicModelService(PublicModelService):
             for old_reply in recent_replies
         )
         self.last_music_metadata = {
+            "detected_intent": detected_intent,
+            "requested_length": requested_length,
             "candidate_count": len(candidates),
             "shape_valid_candidate_count": len(shaped),
             "selected_score": round(selected_score, 3),
@@ -734,11 +859,162 @@ class MusicModelService(PublicModelService):
         }
         return selected
 
+    def _sample_neural_piece(
+        self,
+        history: list[dict[str, str]],
+        system_prompt: str,
+        instruction: str,
+        max_tokens: int,
+        min_tokens: int = 0,
+    ) -> str:
+        """Ask the same Music checkpoint for one compositional component."""
+        stage_prompt = system_prompt + " " + instruction
+        _, prompt_ids = build_context_token_ids(
+            self.tokenizer,
+            history,
+            self.model.config.context_length,
+            system_prompt=stage_prompt,
+        )
+        prompt_tensor = torch.tensor([prompt_ids], device=self.device)
+        output = generate(
+            self.model,
+            prompt_tensor,
+            max_new_tokens=max_tokens,
+            temperature=0.64,
+            top_k=60,
+            top_p=0.90,
+            repetition_penalty=1.16,
+            eos_token_id=self.eos_id,
+            min_new_tokens=min_tokens,
+            no_repeat_ngram_size=4,
+        )[0, len(prompt_ids):].tolist()
+        return self.tokenizer.decode(output, skip_special_tokens=True).strip()
+
+    @staticmethod
+    def _piece_content(text: str) -> str:
+        """Keep model-generated content while removing conflicting wrappers."""
+        lines = []
+        for line in text.splitlines():
+            if re.match(r"(?i)^\s*(?:title|style)\s*:", line):
+                continue
+            if re.match(r"^\s*\[[^]]+\]\s*$", line):
+                continue
+            if line.strip():
+                lines.append(line.strip())
+        return "\n".join(lines).strip()
+
+    @staticmethod
+    def _mash_source_content(history: list[dict[str, str]]) -> str:
+        """Extract user-provided lyric material; never invent source lines."""
+        user_turns = [turn["content"].strip() for turn in history[:-1]
+                      if turn["role"] == "user" and turn["content"].strip()]
+        if not user_turns:
+            return ""
+        source = user_turns[-1]
+        source = re.sub(
+            r"(?is)^.*?(?:lyric scraps?|lyrics?|lines?)\s*(?:are|:)\s*[:\-]?\s*",
+            "",
+            source,
+            count=1,
+        ).strip()
+        fragments = [fragment.strip(" \t-*'\"") for fragment in re.split(r"\s*(?:/|\n+)\s*", source)]
+        return "\n".join(fragment for fragment in fragments if fragment)[:800]
+
+    def _assemble_neural_song(
+        self,
+        history: list[dict[str, str]],
+        system_prompt: str,
+        current_message: str,
+        intent: str,
+    ) -> tuple[str, list[str]]:
+        """Compose a complete result from model-generated parts only."""
+        metadata_options = [
+            self._sample_neural_piece(
+                history,
+                system_prompt,
+                "For this composition stage, generate only a new topic-relevant Title: line and a detailed Style: line.",
+                80,
+                10,
+            )
+            for _ in range(3)
+        ]
+
+        def metadata_score(option: str) -> float:
+            title_match = re.search(r"(?im)^title\s*:\s*([^\n]+)", option)
+            style_match = re.search(r"(?im)^style\s*:\s*([^\n]+)", option)
+            score = 0.0
+            if title_match:
+                title_value = title_match.group(1).strip()
+                score += 8.0 if not re.search(r"[\[\]{}:]", title_value) else -12.0
+                score += self._topic_relevance(current_message, title_value) * 8.0
+            if style_match:
+                style_value = style_match.group(1).strip()
+                style_words = len(re.findall(r"[a-z]+", style_value.lower()))
+                score += 8.0 if style_words >= 3 else -8.0
+                score -= 8.0 if re.search(r"[\[\]{}]", style_value) else 0.0
+            return score
+
+        metadata = max(metadata_options, key=metadata_score)
+        title = re.search(r"(?im)^title\s*:\s*([^\n]+)", metadata)
+        style = re.search(r"(?im)^style\s*:\s*([^\n]+)", metadata)
+        raw_metadata_lines = [line.strip() for line in metadata.splitlines() if line.strip()]
+        title_text = title.group(1).strip() if title else (raw_metadata_lines[0] if raw_metadata_lines else "")
+        style_text = style.group(1).strip() if style else (
+            raw_metadata_lines[1] if len(raw_metadata_lines) > 1 else ""
+        )
+        if not title_text or not style_text:
+            return "", ["neural-assembly-metadata-empty"]
+
+        section_sets = (
+            ("Verse 1", "Pre-Chorus", "Chorus", "Verse 2", "Bridge", "Final Chorus", "Outro"),
+            ("Intro", "Verse 1", "Hook", "Verse 2", "Bridge", "Final Chorus", "Outro"),
+            ("Verse 1", "Chorus", "Verse 2", "Breakdown", "Bridge", "Final Chorus", "Outro"),
+        )
+        layout_index = sum(ord(character) for character in current_message) % len(section_sets)
+        section_names = section_sets[layout_index]
+        pieces: list[str] = []
+        mash_source = "\n".join(
+            turn["content"] for turn in history[:-1]
+            if turn["role"] == "user"
+        )[-800:]
+        preserved_source = self._mash_source_content(history) if intent == "MASH_LYRICS" else ""
+        for section_name in section_names:
+            if intent == "MASH_LYRICS" and section_name in {"Verse 1", "Intro"} and preserved_source:
+                pieces.append(f"[{section_name}]\n{preserved_source}")
+                continue
+            source_guidance = (
+                " Preserve and recombine this user-supplied lyric material wherever it fits: "
+                + mash_source
+                if intent == "MASH_LYRICS" else ""
+            )
+            generated = self._sample_neural_piece(
+                history,
+                system_prompt,
+                f"For this composition stage, generate only the lyric lines for [{section_name}]. "
+                f"Keep them tightly relevant to this request: {current_message[:300]}.{source_guidance} "
+                "Do not output a title, style, explanation, or alternate options.",
+                90 if section_name not in {"Pre-Chorus", "Outro"} else 65,
+                24,
+            )
+            content = self._piece_content(generated)
+            if content:
+                pieces.append(f"[{section_name}]\n{content}")
+        if len(pieces) < 5:
+            return "", ["neural-assembly-too-few-sections"]
+        assembled = f"Title: {title_text}\nStyle: {style_text}\n\n" + "\n\n".join(pieces)
+        validated, corrections = self._validate_structure(assembled)
+        return validated, ["neural-section-assembly", *corrections]
+
     def _safely_filter_repetition(self, reply: str, prompt: str = "") -> tuple[str, list[str]]:
         """Suppress memorized lines without destroying the neural draft."""
         filtered, removed = self._remove_overrepresented_lines(reply, prompt)
         if not removed:
             return reply, []
+        if (
+            self._candidate_meets_music_shape(prompt, reply)
+            and not self._candidate_meets_music_shape(prompt, filtered)
+        ):
+            return reply, ["repetition-filter-reverted-shape-loss"]
         remaining_lyrics = self._lyric_lines(filtered)
         if len(re.findall(r"\b\w+\b", filtered)) < 8 or not remaining_lyrics:
             return reply, ["repetition-filter-reverted-destructive"]
@@ -863,12 +1139,9 @@ class MusicModelService(PublicModelService):
     def _candidate_meets_music_shape(message: str, reply: str) -> bool:
         """Check requested song shape without supplying any lyric content."""
         request = message.lower()
-        full = bool(re.search(
-            r"\b(?:(?:full|complete)(?:\s+(?:original|new))?\s+(?:song|lyrics)|"
-            r"(?:song|lyrics)\s+(?:in\s+)?full|"
-            r"(?:write|make|create|generate)(?:\s+me)?\s+(?:a|an)\s+song)\b",
-            request,
-        ))
+        profile = MusicModelService._classify_music_request(message)
+        intent = str(profile["intent"])
+        full = intent == "FULL_SONG"
         asks_song = bool(re.search(r"\b(?:song|lyrics|music)\b", request))
         asks_fragment = bool(re.search(r"\b(?:chorus|hook|verse|bridge|outro)\b", request))
         sections = re.findall(
@@ -877,15 +1150,34 @@ class MusicModelService(PublicModelService):
         )
         words = len(re.findall(r"\b\w+\b", reply))
         numbered_list = len(re.findall(r"(?m)^\s*\d+[.)]\s+", reply)) >= 3
-        if numbered_list:
+        if numbered_list and intent not in {"TITLE_IDEAS", "STYLE_IDEAS", "RHYME_HELP"}:
             return False
+        if intent in {"TITLE_IDEAS", "STYLE_IDEAS", "RHYME_HELP", "LYRIC_FEEDBACK"}:
+            return words >= 3 and not sections
         if full:
             return (
                 bool(re.search(r"(?im)^title\s*:\s*\S", reply))
                 and bool(re.search(r"(?im)^style\s*:\s*\S", reply))
-                and len(sections) >= 3
-                and words >= 50
+                and len(sections) >= 5
+                and words >= 90
             )
+        if intent == "SHORT_SONG":
+            return bool(sections) and len(sections) <= 3 and 8 <= words <= 120
+        if intent == "MASH_LYRICS":
+            ignored = {
+                "mash", "mashup", "combine", "merge", "blend", "splice", "mix",
+                "these", "those", "this", "that", "lyrics", "lyric", "lines", "line",
+                "verse", "verses", "songs", "song", "together", "into", "complete",
+                "coherent", "with", "from", "about", "please", "make", "write",
+            }
+            source_words = {
+                word for word in re.findall(r"[a-z0-9']{4,}", request)
+                if word not in ignored
+            }
+            reply_words = set(re.findall(r"[a-z0-9']{4,}", reply.lower()))
+            required_overlap = min(2, len(source_words))
+            preserves_source = not source_words or len(source_words & reply_words) >= required_overlap
+            return len(sections) >= 5 and words >= 55 and preserves_source
         if asks_fragment:
             return bool(sections) and words >= 8
         if asks_song:
@@ -937,14 +1229,9 @@ class MusicModelService(PublicModelService):
         score = PublicModelService._candidate_score(message, reply)
         request = message.lower()
         wants_song = bool(re.search(r"\b(?:song|music|lyrics)\b", request))
-        wants_complete_song = bool(
-            re.search(
-                r"\b(?:(?:full|complete)(?:\s+(?:original|new))?\s+(?:song|lyrics)|"
-                r"(?:song|lyrics)\s+(?:in\s+)?full|"
-                r"(?:write|make|create|generate)(?:\s+me)?\s+(?:a|an)\s+song)\b",
-                request,
-            )
-        )
+        profile = MusicModelService._classify_music_request(message)
+        intent = str(profile["intent"])
+        wants_complete_song = intent == "FULL_SONG"
         wants_fragment = bool(re.search(r"\b(?:only|just)\s+(?:a\s+)?(?:title|style|hook|chorus|verse|bridge|outro)\b", request))
         asks_choice = bool(re.search(r"\b(?:what|which|remind).*(?:title|name|style|genre)\b", request))
         asks_title = bool(re.search(r"\b(?:title|song name|name (?:the|this|my) song)\b", request))
@@ -985,12 +1272,16 @@ class MusicModelService(PublicModelService):
             score += (8.0 if has_style else -8.0) if metadata_expected else (-3.0 if has_style else 3.0)
             section_names = set(re.findall(r"(?im)^\[(verse|chorus|bridge|outro)[^]]*\]", reply))
             score += len(section_names) * 3.0
-            desired_sections = 3 if wants_complete_song else 2
+            desired_sections = 5 if wants_complete_song else (1 if intent == "SHORT_SONG" else 2)
             score -= max(0, desired_sections - len(section_names)) * 4.0
             repeated_sections = len(re.findall(r"(?im)^\[(?:verse|chorus|bridge|outro)[^]]*\]", reply)) - len(section_names)
             score -= repeated_sections * 2.0
             if wants_complete_song:
-                score -= 8.0 if len(reply.split()) < 80 else 0.0
+                score -= 20.0 if len(reply.split()) < 90 else 0.0
+                score += min(len(reply.split()), 320) * 0.035
+            elif intent == "SHORT_SONG":
+                score -= 16.0 if len(reply.split()) < 12 else 0.0
+                score -= 14.0 if len(reply.split()) > 120 else 0.0
             else:
                 score -= 18.0 if len(reply.split()) < 30 else 0.0
                 score -= 12.0 if not section_names else 0.0

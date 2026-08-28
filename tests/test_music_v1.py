@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import torch
@@ -40,8 +41,8 @@ def test_music_dataset_is_large_and_unique() -> None:
     path = Path(__file__).parents[1] / "data" / "music_v1_conversations.jsonl"
     records = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
     serialized = {json.dumps(record, sort_keys=True, ensure_ascii=False) for record in records}
-    assert len(records) >= 2_700
-    assert len(serialized) >= 2_700
+    assert len(records) >= 3_900
+    assert len(serialized) >= 3_900
     assert any("funny" in json.dumps(record).lower() or "ridiculous" in json.dumps(record).lower() for record in records)
 
 
@@ -64,6 +65,10 @@ def test_music_dataset_teaches_complete_song_contract_and_followups() -> None:
     assert assistant_text.count("[Pre-Chorus]") >= 100
     assert assistant_text.count("[Instrumental Break]") >= 100
     assert sum(len(record["messages"]) >= 6 for record in records) >= 150
+    serialized_records = "\n".join(json.dumps(record, ensure_ascii=False).lower() for record in records)
+    assert serialized_records.count("mash those lyrics together") >= 150
+    assert serialized_records.count("tiny 4-line song") >= 150
+    assert serialized_records.count("continue it with a second verse") >= 150
 
 
 def test_music_candidate_ranking_prefers_complete_generated_song() -> None:
@@ -102,8 +107,63 @@ def test_music_metadata_is_preferred_only_when_requested() -> None:
 def test_music_full_length_is_only_for_explicit_full_requests() -> None:
     source = (Path(__file__).parents[1] / "public_api_server.py").read_text(encoding="utf-8")
     assert "wants_complete_song" in source
-    assert "desired_sections = 3 if wants_complete_song else 2" in source
-    assert "minimum_draft_tokens = min(140, requested_tokens - 1) if wants_complete_song else 0" in source
+    assert 'detected_intent == "FULL_SONG"' in source
+    assert "minimum_draft_tokens = min(220, requested_tokens - 1)" in source
+
+
+def test_music_intent_classifier_distinguishes_songwriting_jobs() -> None:
+    cases = {
+        "Write me a full song about coding at 3 AM": ("FULL_SONG", "full"),
+        "Make a tiny funny song about a microwave": ("SHORT_SONG", "short"),
+        "Give me a chorus about feeling lost": ("CHORUS", "focused"),
+        "Give me 5 hook ideas": ("HOOK", "focused"),
+        "What rhymes with crash?": ("RHYME_HELP", "focused"),
+        "Rewrite this lyric to sound darker": ("REWRITE_LYRIC", "focused"),
+        "Continue these lyrics: the rain came down": ("CONTINUE_LYRICS", "focused"),
+        "Give me ten song title ideas about computers": ("TITLE_IDEAS", "focused"),
+        "Give me five styles for a dark electronic song": ("STYLE_IDEAS", "focused"),
+        "Mash these lyrics together into one song": ("MASH_LYRICS", "full"),
+    }
+    for prompt, expected in cases.items():
+        profile = MusicModelService._classify_music_request(prompt)
+        assert (profile["intent"], profile["requested_length"]) == expected
+
+
+def test_music_intent_guidance_contains_no_canned_song_content() -> None:
+    full = MusicModelService._music_generation_instruction("FULL_SONG", "full")
+    mash = MusicModelService._music_generation_instruction("MASH_LYRICS", "full")
+    assert "at least five labeled lyric sections" in full
+    assert "supplied in this conversation" in mash
+    assert "hallway" not in full.lower() + mash.lower()
+    assert "midnight" not in full.lower() + mash.lower()
+
+
+def test_music_full_short_and_partial_shapes_are_different() -> None:
+    full = """Title: Rain Engine
+Style: energetic rock with heavy drums
+
+[Intro]
+Clouds gather over the avenue and the first drops mark the road.
+[Verse 1]
+Water runs from every roof while I keep walking through the weather.
+[Pre-Chorus]
+Every silver puddle starts to shake beneath the growing thunder.
+[Chorus]
+Let the rain come down, let the whole town sing its name together.
+[Verse 2]
+Rivers form beside my shoes and carry yesterday toward the sea.
+[Bridge]
+For one quiet breath the storm releases everything it held.
+[Final Chorus]
+Let the rain come down, let the whole town sing its name together.
+[Outro]
+Morning finds the street still shining after all the clouds have gone."""
+    short = "[Verse 1]\nRain taps twice against my door.\n\n[Chorus]\nCome down, rain, then ask for more."
+    titles = "1. Weather Without Walls\n2. Silver Street\n3. After the Downpour"
+    assert MusicModelService._candidate_meets_music_shape("Write a full song about rain", full)
+    assert not MusicModelService._candidate_meets_music_shape("Write a short song about rain", full)
+    assert MusicModelService._candidate_meets_music_shape("Write a short song about rain", short)
+    assert MusicModelService._candidate_meets_music_shape("Give me song title ideas about rain", titles)
 
 
 def test_music_candidate_ranking_prefers_title_and_style_for_recall() -> None:
@@ -296,12 +356,23 @@ Style: glitch rock
 
 [Verse 1]
 The router shakes awake while every blue light paints a rhythm across the room tonight.
+I trace the copper cables through the dust beneath the desk and listen for a sign.
+
+[Pre-Chorus]
+Every packet waits beside the gate while thunder shakes the window frame.
 
 [Chorus]
 Carry the signal home through static, thunder, broken cables, and the restless air.
+Carry the signal home until the sleeping network learns my name.
+
+[Verse 2]
+The modem blinks a stubborn code; I reset every switch and start the search again.
 
 [Bridge]
-One final packet finds the road and turns the silence into sound again."""
+One final packet finds the road and turns the silence into sound again.
+
+[Outro]
+Morning reaches through the blinds as every quiet status light turns green."""
     assert not MusicModelService._candidate_meets_music_shape("Write me a song", fragment)
     assert MusicModelService._candidate_meets_music_shape("Write me a song", complete)
 
@@ -317,10 +388,151 @@ Style: dark electronic rock
 
 [Verse 1]
 The first generated verse carries enough original words to establish the scene and subject clearly.
+Rain starts tapping on the windows while the whole street waits beneath the clouds.
+
+[Pre-Chorus]
+Every silver gutter fills and every distant roof begins to sing aloud.
 
 [Chorus]
 The generated chorus returns with a distinct hook and keeps the requested musical idea moving forward.
+Let the neon rain keep falling while we turn the restless weather into sound.
+
+[Verse 2]
+Puddles catch the traffic lights and scatter every color on the shining ground.
 
 [Bridge]
-The bridge changes perspective before the final rhythm resolves the song with several more original words."""
+The bridge changes perspective before the final rhythm resolves the song with several more original words.
+
+[Outro]
+Morning clears the avenue and leaves one final drop to mark the closing beat."""
     assert MusicModelService._candidate_meets_music_shape("Write me a full song", reply)
+
+
+def test_neural_song_assembly_uses_generated_parts_without_canned_lyrics(monkeypatch) -> None:
+    service = object.__new__(MusicModelService)
+    service.allowed_sections = {
+        "verse 1": "Verse 1",
+        "intro": "Intro",
+        "pre-chorus": "Pre-Chorus",
+        "hook": "Hook",
+        "chorus": "Chorus",
+        "verse 2": "Verse 2",
+        "bridge": "Bridge",
+        "final chorus": "Final Chorus",
+        "outro": "Outro",
+    }
+    generated_parts = iter([
+        "Title: Copper Weather\nStyle: glitch rock with restless drums",
+        "Title: Copper Weather\nStyle: glitch rock with restless drums",
+        "Title: Copper Weather\nStyle: glitch rock with restless drums",
+        "The compiler wakes and throws its sparks across the room.\nI follow every warning while the cooling fans begin to bloom.",
+        "The cursor holds its breath before the build begins again.\nA quiet error turns into a rhythm in the rain.",
+        "Compile the night and carry every broken line along.\nTurn the red diagnostics into one electric song.",
+        "The second build is cleaner but the tests still shake the floor.\nI patch another function and then ask the code for more.",
+        "The stack trace twists sideways and reveals a hidden door.\nI change the old assumption that was breaking us before.",
+        "Compile the night; the final run is brighter than before.\nEvery passing test becomes a heartbeat through the floor.",
+        "The terminal grows quiet as the sunrise finds the screen.\nI save the final changes and the status light turns green.",
+    ])
+
+    monkeypatch.setattr(service, "_sample_neural_piece", lambda *args, **kwargs: next(generated_parts))
+    assembled, corrections = service._assemble_neural_song(
+        [{"role": "user", "content": "Write a full song about coding"}],
+        "music system",
+        "Write a full song about coding",
+        "FULL_SONG",
+    )
+
+    assert "Title: Copper Weather" in assembled
+    assert "Style: glitch rock" in assembled
+    assert len(re.findall(r"(?m)^\[[^]]+\]$", assembled)) == 7
+    assert "compiler wakes" in assembled.lower()
+    assert "neural-section-assembly" in corrections
+    assert MusicModelService._candidate_meets_music_shape("Write a full song about coding", assembled)
+
+
+def test_mash_intent_requests_preservation_from_neural_model(monkeypatch) -> None:
+    service = object.__new__(MusicModelService)
+    service.allowed_sections = {
+        "verse 1": "Verse 1", "chorus": "Chorus", "verse 2": "Verse 2",
+        "breakdown": "Breakdown", "bridge": "Bridge",
+        "final chorus": "Final Chorus", "outro": "Outro",
+    }
+    instructions: list[str] = []
+    parts = iter([
+        "Title: Paper Satellites\nStyle: crooked synth pop",
+        "Title: Paper Satellites\nStyle: crooked synth pop",
+        "Title: Paper Satellites\nStyle: crooked synth pop",
+        *["Blue paper satellites cross the kitchen sky.\nBorrowed lines return with new connections as they fly."] * 7,
+    ])
+
+    def sample(*args, **kwargs):
+        instructions.append(args[2])
+        return next(parts)
+
+    monkeypatch.setattr(service, "_sample_neural_piece", sample)
+    assembled, _ = service._assemble_neural_song(
+        [{"role": "user", "content": "Mash these lyrics: blue paper / kitchen sky"}],
+        "music system",
+        "Mash these lyrics: blue paper / kitchen sky",
+        "MASH_LYRICS",
+    )
+
+    assert assembled
+    assert any("Preserve and recombine" in instruction for instruction in instructions)
+    assert "blue paper" in assembled.lower()
+
+
+def test_mash_shape_requires_user_lyric_material() -> None:
+    unrelated = "[Verse 1]\nA hallway machine wanders beneath a distant moon with several unrelated words."
+    preserved = """[Verse 1]
+Blue paper satellites cross the kitchen sky while coffee waits on the dashboard tonight.
+The engine keeps a crooked rhythm and the morning traffic starts to glow.
+[Chorus]
+Carry every folded signal through the city; let the dashboard coffee overflow."""
+    preserved += """
+[Verse 2]
+Traffic writes another melody while every folded satellite keeps moving.
+[Bridge]
+Coffee cools beside the wheel as morning opens up the road.
+[Outro]
+Blue paper settles on the seat and leaves the dashboard glowing."""
+    prompt = "Mash these lyrics together: blue paper satellites / coffee on the dashboard"
+    assert not MusicModelService._candidate_meets_music_shape(prompt, unrelated)
+    assert MusicModelService._candidate_meets_music_shape(prompt, preserved)
+
+
+def test_mash_source_content_preserves_only_user_supplied_material() -> None:
+    history = [
+        {"role": "user", "content": "My lyric scraps are: blue paper satellites / coffee on the dashboard"},
+        {"role": "assistant", "content": "What should I do with them?"},
+        {"role": "user", "content": "Mash those lyrics together"},
+    ]
+    assert MusicModelService._mash_source_content(history) == (
+        "blue paper satellites\ncoffee on the dashboard"
+    )
+
+
+def test_repetition_filter_preserves_a_complete_song_shape(monkeypatch) -> None:
+    service = object.__new__(MusicModelService)
+    original = """Title: Copper Weather
+Style: glitch rock
+
+[Verse 1]
+One two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen.
+[Pre-Chorus]
+One two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen.
+[Chorus]
+One two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen.
+[Verse 2]
+One two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen.
+[Bridge]
+One two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen.
+[Outro]
+One two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen."""
+    damaged = "Title: Copper Weather\nStyle: glitch rock\n\n[Verse 1]\nOnly one line remains."
+    monkeypatch.setattr(service, "_remove_overrepresented_lines", lambda reply, prompt: (damaged, 6))
+    filtered, corrections = service._safely_filter_repetition(
+        original, "Write a full song about coding"
+    )
+    assert filtered == original
+    assert corrections == ["repetition-filter-reverted-shape-loss"]
