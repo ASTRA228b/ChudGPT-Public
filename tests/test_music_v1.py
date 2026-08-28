@@ -259,3 +259,23 @@ def test_music_keeps_repeated_phrase_when_user_explicitly_requests_it() -> None:
     )
     assert removed == 0
     assert "light keeps judging me" in fixed.lower()
+
+
+def test_full_song_shape_rejects_numbered_title_dump() -> None:
+    broken = "1. Orbit\n2. Rain A\n3. Style: faded villages\n4. Static"
+    assert not MusicModelService._candidate_meets_music_shape("Write me a full song", broken)
+
+
+def test_full_song_shape_accepts_generated_song_structure() -> None:
+    reply = """Title: Neon Rain
+Style: dark electronic rock
+
+[Verse 1]
+The first generated verse carries enough original words to establish the scene and subject clearly.
+
+[Chorus]
+The generated chorus returns with a distinct hook and keeps the requested musical idea moving forward.
+
+[Bridge]
+The bridge changes perspective before the final rhythm resolves the song with several more original words."""
+    assert MusicModelService._candidate_meets_music_shape("Write me a full song", reply)

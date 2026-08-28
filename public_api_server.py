@@ -612,6 +612,12 @@ class MusicModelService(PublicModelService):
                 re.I,
             )
         )
+        if wants_complete_song:
+            system_prompt += (
+                " This request is for a full song. Generate one coherent song, beginning with "
+                "Title: and Style:, followed by at least [Verse 1], [Chorus], and one additional "
+                "valid lyric section. Do not output a numbered list of possible titles or styles."
+            )
         minimum_draft_tokens = min(140, requested_tokens - 1) if wants_complete_song else 0
         profiles = ((0.52, 45, 0.86), (0.58, 50, 0.88), (0.64, 60, 0.90),
                     (0.70, 70, 0.92), (0.76, 80, 0.94), (0.82, 90, 0.95))
@@ -662,8 +668,14 @@ class MusicModelService(PublicModelService):
             score -= len(set(self._lyric_lines(reply)) & self.overrepresented_music_lines) * 4.0
             score -= self._overrepresented_phrase_hits(reply, current_message) * 5.0
             return score
+        shaped = [item for item in candidates
+                  if self._candidate_meets_music_shape(current_message, item[0])]
+        # Select structurally valid neural generations when any exist. If this
+        # tiny checkpoint misses the requested shape entirely, retain the best
+        # raw neural candidate rather than inserting canned lyrics.
+        selection_pool = shaped or candidates
         scored = [(continuity_score(candidate), candidate, corrections)
-                  for candidate, corrections in candidates]
+                  for candidate, corrections in selection_pool]
         selected_score, selected, corrections = max(scored, key=lambda item: item[0])
         selected, removed_lines = self._remove_overrepresented_lines(selected, current_message)
         if removed_lines:
@@ -681,6 +693,7 @@ class MusicModelService(PublicModelService):
         )
         self.last_music_metadata = {
             "candidate_count": len(candidates),
+            "shape_valid_candidate_count": len(shaped),
             "selected_score": round(selected_score, 3),
             "title": title_match.group(1).strip() if title_match else None,
             "style": style_match.group(1).strip() if style_match else None,
@@ -803,7 +816,7 @@ class MusicModelService(PublicModelService):
         # swapping one adjective (for example, tiny -> little) while repeating
         # the same memorized phrase family.
         frequent = sorted(
-            (phrase for phrase, count in counts.items() if count >= 4),
+            (phrase for phrase, count in counts.items() if count >= 12),
             key=lambda phrase: (len(phrase.split()), phrase),
         )
         selected: list[str] = []
@@ -811,6 +824,37 @@ class MusicModelService(PublicModelService):
             if not any(shorter in phrase for shorter in selected):
                 selected.append(phrase)
         return set(selected)
+
+    @staticmethod
+    def _candidate_meets_music_shape(message: str, reply: str) -> bool:
+        """Check requested song shape without supplying any lyric content."""
+        request = message.lower()
+        full = bool(re.search(
+            r"\b(?:(?:full|complete)(?:\s+(?:original|new))?\s+(?:song|lyrics)|(?:song|lyrics)\s+(?:in\s+)?full)\b",
+            request,
+        ))
+        asks_song = bool(re.search(r"\b(?:song|lyrics|music)\b", request))
+        asks_fragment = bool(re.search(r"\b(?:chorus|hook|verse|bridge|outro)\b", request))
+        sections = re.findall(
+            r"(?im)^\[(?:intro|verse(?:\s+\d+)?|pre-chorus|chorus|hook|bridge|breakdown|final chorus|outro)\]$",
+            reply,
+        )
+        words = len(re.findall(r"\b\w+\b", reply))
+        numbered_list = len(re.findall(r"(?m)^\s*\d+[.)]\s+", reply)) >= 3
+        if numbered_list:
+            return False
+        if full:
+            return (
+                bool(re.search(r"(?im)^title\s*:\s*\S", reply))
+                and bool(re.search(r"(?im)^style\s*:\s*\S", reply))
+                and len(sections) >= 3
+                and words >= 50
+            )
+        if asks_fragment:
+            return bool(sections) and words >= 8
+        if asks_song:
+            return bool(sections) and words >= 20
+        return words >= 2
 
     def _overrepresented_phrase_hits(self, reply: str, prompt: str) -> int:
         normalized_reply = re.sub(r"\s+", " ", reply.lower())

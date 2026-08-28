@@ -2439,19 +2439,26 @@ def main() -> None:
                     prompt,
                     music_reply,
                 )
-                sent = await send_music_lyrics_file(
-                    message,
-                    settings.music_export_dir,
-                    music_prompt,
-                    music_reply,
-                    safe_mentions,
-                )
-                if not sent:
+                if len(music_reply) <= 2_000:
                     await message.reply(
-                        "Music V1 generated the lyrics, but Discord would not accept the text-file upload. The temporary host copy was deleted.",
+                        music_reply,
                         mention_author=False,
                         allowed_mentions=safe_mentions,
                     )
+                else:
+                    sent = await send_music_lyrics_file(
+                        message,
+                        settings.music_export_dir,
+                        music_prompt,
+                        music_reply,
+                        safe_mentions,
+                    )
+                    if not sent:
+                        await message.reply(
+                            "Music V1 generated the lyrics, but the reply exceeded Discord's message limit and Discord would not accept the text-file upload. The temporary host copy was deleted.",
+                            mention_author=False,
+                            allowed_mentions=safe_mentions,
+                        )
                 return
             recent_context = list(recent_user_messages[context_key])
             model_prompt = prompt
