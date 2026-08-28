@@ -461,9 +461,10 @@ def test_music_chat_uses_separate_music_endpoint(monkeypatch) -> None:
         "json": {
             "message": "write a funny toaster chorus",
             "session_id": "music-session",
-            "max_new_tokens": 400,
-            "temperature": 0.82,
-        },
+                "max_new_tokens": 400,
+                "temperature": 0.82,
+                "source": "discord",
+            },
         "timeout": 120,
     }
 

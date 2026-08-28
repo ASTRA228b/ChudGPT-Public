@@ -10,6 +10,7 @@ release-smoke/
 reports/*.json
 reports/*.log
 reports/*.pid
+logs/music/*.jsonl
 *_background.out.log
 *_background.err.log
 data/raw_v*/

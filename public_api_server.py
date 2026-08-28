@@ -7,6 +7,7 @@ import json
 import os
 import re
 import threading
+import time
 import uuid
 from collections import Counter, OrderedDict
 from datetime import datetime, timezone
@@ -78,6 +79,7 @@ class ChatRequest(BaseModel):
     context_mode: Literal["default", "discord"] = "default"
     system_instruction: str | None = Field(default=None, max_length=1_500)
     discord_context: str | None = Field(default=None, max_length=1_000)
+    source: Literal["api", "webclient", "discord"] = "api"
 
 
 class ClearRequest(BaseModel):
@@ -506,9 +508,16 @@ class MusicModelService(PublicModelService):
         self.reliable = None
         self.shorten_casual_generation = False
         self.generation_log_path = Path(
-            os.getenv("CHUDGPT_MUSIC_LOG_PATH", str(ROOT / "reports" / "music_v1_generations.jsonl"))
+            os.getenv("CHUDGPT_MUSIC_LOG_PATH", str(ROOT / "logs" / "music" / "generations.jsonl"))
         )
         self.last_music_metadata: dict[str, object] = {}
+        self.allowed_sections = {
+            "intro": "Intro", "verse": "Verse", "verse 1": "Verse 1",
+            "verse 2": "Verse 2", "verse 3": "Verse 3", "pre-chorus": "Pre-Chorus",
+            "chorus": "Chorus", "hook": "Hook", "bridge": "Bridge",
+            "breakdown": "Breakdown", "final chorus": "Final Chorus", "outro": "Outro",
+        }
+        self.overrepresented_music_lines = self._load_overrepresented_lines()
 
     def chat(
         self,
@@ -518,6 +527,7 @@ class MusicModelService(PublicModelService):
         temperature: float = 0.72,
         context_mode: Literal["default", "discord"] = "default",
         discord_context: str | None = None,
+        source: Literal["api", "webclient", "discord"] = "api",
     ) -> tuple[str, str]:
         """Generate every Music reply directly from the Music checkpoint.
 
@@ -535,6 +545,7 @@ class MusicModelService(PublicModelService):
             history = list(self.sessions.get(active_session, []))
             history.append({"role": "user", "content": clean_message})
             generation_history = history[-8:]
+            started = time.perf_counter()
             reply = self._generate_raw(
                 generation_history,
                 max_new_tokens,
@@ -546,7 +557,8 @@ class MusicModelService(PublicModelService):
             self.sessions.move_to_end(active_session)
             while len(self.sessions) > MAX_SESSIONS:
                 self.sessions.popitem(last=False)
-            self._log_music_generation(active_session, clean_message, reply)
+            self.last_music_metadata["generation_time_ms"] = round((time.perf_counter() - started) * 1000, 2)
+            self._log_music_generation(active_session, clean_message, reply, source)
         self.last_assistance_reason = None
         return active_session, reply
 
@@ -602,7 +614,7 @@ class MusicModelService(PublicModelService):
         minimum_draft_tokens = min(140, requested_tokens - 1) if wants_complete_song else 0
         profiles = ((0.52, 45, 0.86), (0.58, 50, 0.88), (0.64, 60, 0.90),
                     (0.70, 70, 0.92), (0.76, 80, 0.94), (0.82, 90, 0.95))
-        candidates: list[str] = []
+        candidates: list[tuple[str, list[str]]] = []
         for sample_temperature, top_k, top_p in profiles:
             output = generate(
                 self.model,
@@ -618,7 +630,8 @@ class MusicModelService(PublicModelService):
             )[0, len(prompt_ids):].tolist()
             reply = self.tokenizer.decode(output, skip_special_tokens=True).strip()
             if reply:
-                candidates.append(reply)
+                validated, corrections = self._validate_structure(reply)
+                candidates.append((validated, corrections))
         if not candidates:
             raise RuntimeError("Music model produced empty output")
         def continuity_score(reply: str) -> float:
@@ -642,9 +655,19 @@ class MusicModelService(PublicModelService):
                         score -= 12.0 * self._text_similarity(candidate_style.group(1), old_style.group(1))
                     old_lines = set(self._lyric_lines(old_reply))
                     score -= len(old_lines & set(self._lyric_lines(reply))) * 2.5
+            # This list is derived from prior Music generations at startup,
+            # rather than a hand-authored phrase blacklist. It suppresses
+            # checkpoint memorization while leaving novel oddness intact.
+            score -= len(set(self._lyric_lines(reply)) & self.overrepresented_music_lines) * 4.0
             return score
-        scored = [(continuity_score(candidate), candidate) for candidate in candidates]
-        selected_score, selected = max(scored, key=lambda item: item[0])
+        scored = [(continuity_score(candidate), candidate, corrections)
+                  for candidate, corrections in candidates]
+        selected_score, selected, corrections = max(scored, key=lambda item: item[0])
+        selected, removed_lines = self._remove_overrepresented_lines(selected)
+        if removed_lines:
+            corrections = [*corrections, f"removed-overrepresented-lines:{removed_lines}"]
+            selected, final_corrections = self._validate_structure(selected)
+            corrections.extend(final_corrections)
         title_match = re.search(r"(?im)^title\s*:\s*([^\n]+)", selected)
         style_match = re.search(r"(?im)^style\s*:\s*([^\n]+)", selected)
         selected_lines = self._lyric_lines(selected)
@@ -667,8 +690,85 @@ class MusicModelService(PublicModelService):
             "repeated_line_count": repeated_line_count,
             "recent_line_overlap": recent_line_overlap,
             "repetition_detection_triggered": repeated_line_count > 0 or recent_line_overlap > 0,
+            "topic_relevance_score": round(self._topic_relevance(current_message, selected), 3),
+            "structure_validation_corrections": corrections,
+            "title_style_regeneration": False,
         }
         return selected
+
+    def _remove_overrepresented_lines(self, reply: str) -> tuple[str, int]:
+        """Remove log-proven memorized lyric lines, never generated answer ideas."""
+        kept: list[str] = []
+        removed = 0
+        for line in reply.splitlines():
+            normalized = re.sub(r"\s+", " ", line.strip().lower())
+            if normalized in self.overrepresented_music_lines:
+                removed += 1
+                continue
+            kept.append(line)
+        return "\n".join(kept).strip(), removed
+
+    def _validate_structure(self, reply: str) -> tuple[str, list[str]]:
+        """Normalize only obvious metadata/section defects in neural text."""
+        corrections: list[str] = []
+        normalized: list[str] = []
+        verse_number = 0
+        for line in reply.splitlines():
+            fixed = line
+            if re.match(r"(?i)^\s*(?:static\s+)+title\s*:", fixed):
+                fixed = re.sub(r"(?i)^\s*(?:static\s+)+title\s*:", "Title:", fixed)
+                corrections.append("normalized-title-label")
+            if re.match(r"(?i)^\s*sty(?:p|l|las?|les?)\s*:", fixed):
+                fixed = re.sub(r"(?i)^\s*sty(?:p|l|las?|les?)\s*:", "Style:", fixed)
+                corrections.append("normalized-style-label")
+            if re.match(r"(?i)^\s*style\s*:", fixed):
+                cleaned = re.sub(
+                    r"(?i),?\s*with a clear pulse and a slightly unwise finale\.?\s*$", "", fixed
+                ).rstrip(" ,;.")
+                if cleaned != fixed:
+                    fixed = cleaned
+                    corrections.append("removed-memorized-style-suffix")
+            match = re.match(r"^\s*\[([^]\n]+)\]\s*$", fixed)
+            if match:
+                raw = re.sub(r"\s+", " ", match.group(1).strip().lower())
+                canonical = self.allowed_sections.get(raw)
+                if canonical is None:
+                    fixed = match.group(1).strip()
+                    corrections.append(f"unwrapped-unknown-section:{raw}")
+                else:
+                    if canonical.startswith("Verse"):
+                        verse_number += 1
+                        canonical = f"Verse {verse_number}"
+                    fixed = f"[{canonical}]"
+                    if canonical.lower() != raw:
+                        corrections.append(f"normalized-section:{raw}->{canonical}")
+            normalized.append(fixed)
+        section_indexes = [i for i, line in enumerate(normalized) if re.match(r"^\[[^]]+\]$", line.strip())]
+        outro_index = next((i for i in section_indexes if normalized[i].strip() == "[Outro]"), None)
+        if outro_index is not None and any(i > outro_index for i in section_indexes):
+            next_section = next(i for i in section_indexes if i > outro_index)
+            outro_block = normalized[outro_index:next_section]
+            del normalized[outro_index:next_section]
+            while normalized and not normalized[-1].strip():
+                normalized.pop()
+            normalized.extend(["", *outro_block])
+            corrections.append("moved-outro-to-end")
+        return "\n".join(normalized).strip(), corrections
+
+    def _load_overrepresented_lines(self) -> set[str]:
+        counts: Counter[str] = Counter()
+        for path in (ROOT / "reports" / "music_v1_generations.jsonl",
+                     ROOT / "logs" / "music" / "generations.jsonl"):
+            if not path.is_file():
+                continue
+            try:
+                for raw in path.read_text(encoding="utf-8", errors="replace").splitlines():
+                    record = json.loads(raw)
+                    text = str(record.get("reply", record.get("output", "")))
+                    counts.update(set(self._lyric_lines(text)))
+            except (OSError, json.JSONDecodeError):
+                continue
+        return {line for line, count in counts.items() if count >= 4}
 
     @staticmethod
     def _lyric_lines(text: str) -> list[str]:
@@ -681,12 +781,15 @@ class MusicModelService(PublicModelService):
         right_words = set(re.findall(r"[a-z0-9']+", right.lower()))
         return len(left_words & right_words) / max(len(left_words | right_words), 1)
 
-    def _log_music_generation(self, session_id: str, prompt: str, reply: str) -> None:
+    def _log_music_generation(self, session_id: str, prompt: str, reply: str, source: str) -> None:
         record = {
             "timestamp_utc": datetime.now(timezone.utc).isoformat(),
             "session_id": session_id,
             "prompt": prompt,
             "reply": reply,
+            "source": source,
+            "requested_model": MUSIC_MODEL_NAME,
+            "actual_model": MUSIC_MODEL_NAME,
             "model": MUSIC_MODEL_NAME,
             "checkpoint": str(self.checkpoint_path),
             **self.last_music_metadata,
@@ -714,7 +817,11 @@ class MusicModelService(PublicModelService):
         content_words = {word for word in re.findall(r"[a-z]{4,}", request)
                          if word not in {"write", "make", "song", "music", "lyrics", "full", "complete", "about", "with", "give"}}
         reply_words = set(re.findall(r"[a-z]{4,}", reply.lower()))
-        score += min(len(content_words & reply_words), 6) * 2.0
+        relevance = MusicModelService._topic_relevance(message, reply)
+        score += min(len(content_words & reply_words), 6) * 3.0
+        score += relevance * 24.0
+        if content_words and relevance < 0.08:
+            score -= 18.0
         lines = MusicModelService._lyric_lines(reply)
         repeated_line_count = sum(count - 2 for count in __import__("collections").Counter(lines).values() if count > 2)
         score -= repeated_line_count * 5.0
@@ -723,17 +830,24 @@ class MusicModelService(PublicModelService):
             title_words = re.findall(r"[a-z0-9]+", title_match.group(1).lower())
             if not title_words or all(len(word) == 1 for word in title_words) or len(set(title_words)) == 1:
                 score -= 24.0
+            score += MusicModelService._topic_relevance(message, title_match.group(1)) * 10.0
+            if re.search(r"[\[\]{}:]|\b(?:title|style|verse|chorus)\b", title_match.group(1), re.I):
+                score -= 14.0
         style_match = re.search(r"(?im)^style\s*:\s*([^\n]+)", reply)
         if style_match and len(re.findall(r"[a-z]+", style_match.group(1).lower())) < 4:
             score -= 10.0
+        malformed_metadata = bool(re.search(r"(?im)^\s*(?:styp|styl|stylas|styles?)\s*:", reply))
+        if malformed_metadata:
+            score -= 18.0
         if asks_choice:
             score += 6.0 if re.search(r"(?im)^title\s*:", reply) else -4.0
             score += 6.0 if re.search(r"(?im)^style\s*:", reply) else -4.0
         if wants_song and not wants_fragment:
             has_title = bool(re.search(r"(?im)^title\s*:", reply))
             has_style = bool(re.search(r"(?im)^style\s*:", reply))
-            score += (8.0 if has_title else -8.0) if asks_title else (-3.0 if has_title else 3.0)
-            score += (8.0 if has_style else -8.0) if asks_style else (-3.0 if has_style else 3.0)
+            metadata_expected = wants_complete_song or asks_title or asks_style
+            score += (8.0 if has_title else -8.0) if metadata_expected else (-3.0 if has_title else 3.0)
+            score += (8.0 if has_style else -8.0) if metadata_expected else (-3.0 if has_style else 3.0)
             section_names = set(re.findall(r"(?im)^\[(verse|chorus|bridge|outro)[^]]*\]", reply))
             score += len(section_names) * 3.0
             desired_sections = 3 if wants_complete_song else 2
@@ -743,9 +857,38 @@ class MusicModelService(PublicModelService):
             if wants_complete_song:
                 score -= 8.0 if len(reply.split()) < 80 else 0.0
             else:
-                score -= 4.0 if len(reply.split()) < 30 else 0.0
+                score -= 18.0 if len(reply.split()) < 30 else 0.0
+                score -= 12.0 if not section_names else 0.0
             score += min(len(reply.split()), 220) * 0.025
         return score
+
+    @staticmethod
+    def _topic_relevance(message: str, reply: str) -> float:
+        """Estimate lexical/semantic topic coverage without supplying answer text."""
+        stop = {"write", "make", "give", "song", "music", "lyrics", "full", "complete",
+                "original", "about", "with", "that", "this", "your", "please", "some"}
+        request_words = {word for word in re.findall(r"[a-z]{3,}", message.lower()) if word not in stop}
+        reply_words = set(re.findall(r"[a-z]{3,}", reply.lower()))
+        concept_groups = {
+            "water": {"water", "rain", "river", "ocean", "sea", "wave", "waves", "tide", "shore", "flow", "drop", "drown"},
+            "chudgpt": {"chudgpt", "model", "token", "prompt", "reply", "answer", "glitch", "code", "machine", "bot", "ai"},
+            "yourself": {"chudgpt", "model", "token", "prompt", "reply", "answer", "glitch", "machine", "bot", "ai", "voice"},
+            "keyboard": {"keyboard", "key", "keys", "spacebar", "typing", "type", "letter"},
+            "thunderstorm": {"thunder", "storm", "lightning", "rain", "cloud", "sky"},
+            "microwave": {"microwave", "kitchen", "heat", "beep", "plate", "timer"},
+            "space": {"space", "star", "stars", "orbit", "planet", "moon", "galaxy", "rocket"},
+            "coding": {"coding", "code", "bug", "debug", "compile", "screen", "keyboard", "program"},
+            "robot": {"robot", "metal", "circuit", "servo", "machine", "dance", "dancing"},
+        }
+        expanded = set(request_words)
+        if re.search(r"\b(?:you|yourself)\b", message.lower()):
+            expanded |= concept_groups["yourself"]
+        for key, values in concept_groups.items():
+            if key in request_words or request_words & values:
+                expanded |= values
+        if not expanded:
+            return 0.5
+        return len(expanded & reply_words) / max(min(len(expanded), 8), 1)
 
 
 def create_app(checkpoint: Path, device: str, assistance_enabled: bool = True,
@@ -862,6 +1005,7 @@ def create_app(checkpoint: Path, device: str, assistance_enabled: bool = True,
                 request.session_id,
                 min(request.max_new_tokens, 400),
                 request.temperature,
+                source=request.source,
             )
         except (ValueError, RuntimeError) as error:
             raise HTTPException(status_code=503, detail=str(error)) from error

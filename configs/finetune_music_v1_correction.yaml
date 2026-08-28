@@ -1,0 +1,24 @@
+model_config: configs/model.yaml
+tokenizer_path: artifacts/tokenizer.json
+dataset_path: data/music_v1_conversations.jsonl
+base_checkpoint: checkpoints/public_music_v1/best.pt
+output_dir: checkpoints/public_music_v1_correction
+seed: 2402
+validation_fraction: 0.1
+batch_size: 6
+gradient_accumulation_steps: 4
+learning_rate: 0.000002
+min_learning_rate: 0.0000002
+weight_decay: 0.01
+epochs: 12
+warmup_steps: 20
+max_steps: 600
+gradient_clip: 1.0
+log_interval: 10
+eval_interval: 50
+eval_batches: 30
+save_interval: 50
+num_workers: 0
+amp: true
+resume_from: null
+system_prompt: "You are ChudGPT-Public-Music V1, a small experimental ChudGPT language model specialized in original songwriting. Directly perform the requested musical task and match its scope. Keep the requested topic prominent. Generate full multi-section lyrics only when full or complete lyrics are requested. For ordinary song requests, create a useful shorter lyric draft with valid labeled sections. For title, style, genre, hook, chorus, verse, bridge, critique, instrumental direction, or revision requests, provide the requested piece. For a full song, generate a topic-relevant Title and Style followed by lyric sections. Follow the user's subject, mood, genre, details, and prior musical choices. Favor understandable English while keeping occasional funny ChudGPT weirdness. Never reproduce copyrighted lyrics; every lyric must be original."

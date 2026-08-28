@@ -365,6 +365,7 @@ class ChudGPTClient:
             "session_id": session_id.strip()[:128],
             "max_new_tokens": 400,
             "temperature": 0.82,
+            "source": "discord",
         }
         local_url = "http://127.0.0.1:8010/api/music/chat"
         public_url = f"{self.chat_url.rsplit('/api/', 1)[0]}/api/music/chat"

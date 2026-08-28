@@ -164,3 +164,72 @@ def test_music_candidate_score_rejects_degenerate_titles() -> None:
     good = "Title: The Quiet Department\nStyle: dark pop with soft drums\n\n[Verse]\nNothing waits beside the door."
     prompt = "Give me a title and style for a song about nothing"
     assert MusicModelService._candidate_score(prompt, good) > MusicModelService._candidate_score(prompt, bad)
+
+
+def test_music_topic_relevance_prefers_requested_subject() -> None:
+    water = "[Verse 1]\nRiver water rolls toward the ocean.\n[Chorus]\nWaves rise with the tide beside the shore."
+    hallway = "[Verse 1]\nA red hallway flickers at night.\n[Chorus]\nThe screen goes black beneath the light."
+    prompt = "Write me a full song about water"
+    assert MusicModelService._candidate_score(prompt, water) > MusicModelService._candidate_score(prompt, hallway)
+
+
+def test_music_you_topic_means_chudgpt() -> None:
+    assert MusicModelService._topic_relevance(
+        "Write me a song about you", "I am ChudGPT, a little model turning prompts into a voice."
+    ) > MusicModelService._topic_relevance(
+        "Write me a song about you", "The hallway has a red light and an old chair."
+    )
+
+
+def test_music_structure_validator_repairs_labels_and_outro_order() -> None:
+    service = object.__new__(MusicModelService)
+    service.allowed_sections = {
+        "verse 2": "Verse 2", "chorus": "Chorus", "bridge": "Bridge", "outro": "Outro"
+    }
+    text = "Styp: synth pop\n\n[Verse 2]\nFirst line.\n\n[Outro]\nBye.\n\n[Bridge]\nWait."
+    fixed, corrections = service._validate_structure(text)
+    assert "Style: synth pop" in fixed
+    assert "[Verse 1]" in fixed
+    assert fixed.rfind("[Outro]") > fixed.rfind("[Bridge]")
+    assert corrections
+
+
+def test_music_request_source_is_validated() -> None:
+    from public_api_server import ChatRequest
+    assert ChatRequest(message="song", source="webclient").source == "webclient"
+
+
+def test_music_ordinary_song_rejects_metadata_only_fragment() -> None:
+    broken = "Driving\nStylas: glorious mistake, textured percenturpose."
+    lyrics = "[Verse 1]\nMy compiler hums while every tired key keeps time.\n\n[Chorus]\nCode through the night, fix one more line."
+    prompt = "Write a song about coding"
+    assert MusicModelService._candidate_score(prompt, lyrics) > MusicModelService._candidate_score(prompt, broken)
+
+
+def test_music_validator_normalizes_stylas() -> None:
+    service = object.__new__(MusicModelService)
+    service.allowed_sections = {}
+    fixed, corrections = service._validate_structure("Driving\nStylas: chaotic rock")
+    assert fixed == "Driving\nStyle: chaotic rock"
+    assert "normalized-style-label" in corrections
+
+
+def test_music_validator_removes_memorized_style_suffix_and_static_title_prefix() -> None:
+    service = object.__new__(MusicModelService)
+    service.allowed_sections = {}
+    text = "static Title: Very After Midnight\nStyle: microwave; sad, with a clear pulse and a slightly unwise finale"
+    fixed, corrections = service._validate_structure(text)
+    assert fixed == "Title: Very After Midnight\nStyle: microwave; sad"
+    assert "normalized-title-label" in corrections
+    assert "removed-memorized-style-suffix" in corrections
+
+
+def test_music_removes_only_log_proven_overrepresented_lines() -> None:
+    service = object.__new__(MusicModelService)
+    service.overrepresented_music_lines = {"the hallway hums in a tired key,"}
+    fixed, removed = service._remove_overrepresented_lines(
+        "[Verse 1]\nThe hallway hums in a tired key,\nA new coding rhythm wakes at dawn."
+    )
+    assert removed == 1
+    assert "hallway" not in fixed.lower()
+    assert "coding rhythm" in fixed
