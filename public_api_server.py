@@ -518,6 +518,7 @@ class MusicModelService(PublicModelService):
             "breakdown": "Breakdown", "final chorus": "Final Chorus", "outro": "Outro",
         }
         self.overrepresented_music_lines = self._load_overrepresented_lines()
+        self.overrepresented_music_phrases = self._load_overrepresented_phrases()
 
     def chat(
         self,
@@ -659,11 +660,12 @@ class MusicModelService(PublicModelService):
             # rather than a hand-authored phrase blacklist. It suppresses
             # checkpoint memorization while leaving novel oddness intact.
             score -= len(set(self._lyric_lines(reply)) & self.overrepresented_music_lines) * 4.0
+            score -= self._overrepresented_phrase_hits(reply, current_message) * 5.0
             return score
         scored = [(continuity_score(candidate), candidate, corrections)
                   for candidate, corrections in candidates]
         selected_score, selected, corrections = max(scored, key=lambda item: item[0])
-        selected, removed_lines = self._remove_overrepresented_lines(selected)
+        selected, removed_lines = self._remove_overrepresented_lines(selected, current_message)
         if removed_lines:
             corrections = [*corrections, f"removed-overrepresented-lines:{removed_lines}"]
             selected, final_corrections = self._validate_structure(selected)
@@ -696,13 +698,18 @@ class MusicModelService(PublicModelService):
         }
         return selected
 
-    def _remove_overrepresented_lines(self, reply: str) -> tuple[str, int]:
-        """Remove log-proven memorized lyric lines, never generated answer ideas."""
+    def _remove_overrepresented_lines(self, reply: str, prompt: str = "") -> tuple[str, int]:
+        """Remove exact or paraphrased log-proven memorized lyric lines."""
         kept: list[str] = []
         removed = 0
+        prompt_normalized = re.sub(r"\s+", " ", prompt.strip().lower())
         for line in reply.splitlines():
             normalized = re.sub(r"\s+", " ", line.strip().lower())
-            if normalized in self.overrepresented_music_lines:
+            repeated_phrase = any(
+                phrase in normalized and phrase not in prompt_normalized
+                for phrase in getattr(self, "overrepresented_music_phrases", set())
+            )
+            if normalized in self.overrepresented_music_lines or repeated_phrase:
                 removed += 1
                 continue
             kept.append(line)
@@ -769,6 +776,49 @@ class MusicModelService(PublicModelService):
             except (OSError, json.JSONDecodeError):
                 continue
         return {line for line, count in counts.items() if count >= 4}
+
+    def _load_overrepresented_phrases(self) -> set[str]:
+        """Learn recurring 3-5 word phrase families from private Music logs."""
+        counts: Counter[str] = Counter()
+        for path in (ROOT / "reports" / "music_v1_generations.jsonl",
+                     ROOT / "logs" / "music" / "generations.jsonl"):
+            if not path.is_file():
+                continue
+            try:
+                for raw in path.read_text(encoding="utf-8", errors="replace").splitlines():
+                    record = json.loads(raw)
+                    text = str(record.get("reply", record.get("output", "")))
+                    phrases: set[str] = set()
+                    for line in self._lyric_lines(text):
+                        words = re.findall(r"[a-z0-9']+", line)
+                        for width in (3, 4, 5):
+                            for index in range(len(words) - width + 1):
+                                phrase_words = words[index:index + width]
+                                if sum(len(word) >= 4 for word in phrase_words) >= 2:
+                                    phrases.add(" ".join(phrase_words))
+                    counts.update(phrases)
+            except (OSError, json.JSONDecodeError):
+                continue
+        # Prefer the shortest meaningful learned form. This catches a model
+        # swapping one adjective (for example, tiny -> little) while repeating
+        # the same memorized phrase family.
+        frequent = sorted(
+            (phrase for phrase, count in counts.items() if count >= 4),
+            key=lambda phrase: (len(phrase.split()), phrase),
+        )
+        selected: list[str] = []
+        for phrase in frequent:
+            if not any(shorter in phrase for shorter in selected):
+                selected.append(phrase)
+        return set(selected)
+
+    def _overrepresented_phrase_hits(self, reply: str, prompt: str) -> int:
+        normalized_reply = re.sub(r"\s+", " ", reply.lower())
+        normalized_prompt = re.sub(r"\s+", " ", prompt.lower())
+        return sum(
+            phrase in normalized_reply and phrase not in normalized_prompt
+            for phrase in self.overrepresented_music_phrases
+        )
 
     @staticmethod
     def _lyric_lines(text: str) -> list[str]:

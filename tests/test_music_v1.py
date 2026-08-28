@@ -227,9 +227,35 @@ def test_music_validator_removes_memorized_style_suffix_and_static_title_prefix(
 def test_music_removes_only_log_proven_overrepresented_lines() -> None:
     service = object.__new__(MusicModelService)
     service.overrepresented_music_lines = {"the hallway hums in a tired key,"}
+    service.overrepresented_music_phrases = set()
     fixed, removed = service._remove_overrepresented_lines(
         "[Verse 1]\nThe hallway hums in a tired key,\nA new coding rhythm wakes at dawn."
     )
     assert removed == 1
     assert "hallway" not in fixed.lower()
     assert "coding rhythm" in fixed
+
+
+def test_music_removes_paraphrased_log_proven_phrase_family() -> None:
+    service = object.__new__(MusicModelService)
+    service.overrepresented_music_lines = set()
+    service.overrepresented_music_phrases = {"light keeps judging me"}
+    fixed, removed = service._remove_overrepresented_lines(
+        "[Chorus]\nA little light keeps judging me.\nThe bass wakes up beneath the street.",
+        "Make a dark electronic chorus",
+    )
+    assert removed == 1
+    assert "judging" not in fixed.lower()
+    assert "bass wakes" in fixed
+
+
+def test_music_keeps_repeated_phrase_when_user_explicitly_requests_it() -> None:
+    service = object.__new__(MusicModelService)
+    service.overrepresented_music_lines = set()
+    service.overrepresented_music_phrases = {"light keeps judging me"}
+    fixed, removed = service._remove_overrepresented_lines(
+        "[Chorus]\nThe light keeps judging me.",
+        "Write a chorus using the phrase light keeps judging me",
+    )
+    assert removed == 0
+    assert "light keeps judging me" in fixed.lower()
