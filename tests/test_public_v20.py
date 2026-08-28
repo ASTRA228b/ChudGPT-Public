@@ -763,3 +763,14 @@ def test_repeat_it_again_uses_recent_assistant_message() -> None:
         {"role": "assistant", "content": "Hello there."},
     ]
     assert responder.answer("no no say it agin", history) == "Hello there."
+
+
+def test_good_follows_the_bots_how_are_you_question_naturally() -> None:
+    responder = PublicReliableResponder(Path("data/public_v20_conversations.jsonl"))
+    history = [
+        {"role": "user", "content": "How are you"},
+        {"role": "assistant", "content": "I'm doing well and ready to chat. How are you?"},
+    ]
+    reply = responder.answer("Good", history) or ""
+    assert "glad" in reply.lower()
+    assert "microwave" not in reply.lower()

@@ -501,6 +501,30 @@ def test_music_chat_uses_separate_music_endpoint(monkeypatch) -> None:
     }
 
 
+def test_music_clear_uses_separate_music_endpoint(monkeypatch) -> None:
+    client = ChudGPTClient("https://public.example/api/chat", 10)
+    captured = {}
+
+    class Response:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, object]:
+            return {"cleared": True, "music": True}
+
+    def fake_post(url, json, timeout):
+        captured.update(url=url, json=json, timeout=timeout)
+        return Response()
+
+    monkeypatch.setattr(client.http, "post", fake_post)
+    client.clear_music("music-session")
+    assert captured == {
+        "url": "http://127.0.0.1:8010/api/music/clear",
+        "json": {"session_id": "music-session"},
+        "timeout": 10,
+    }
+
+
 def test_chat_retries_local_503_before_public_failover(monkeypatch) -> None:
     client = ChudGPTClient("https://public.example/api/chat", 10)
     called = []

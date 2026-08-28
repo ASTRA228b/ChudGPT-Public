@@ -454,7 +454,15 @@ class PublicModelService:
                 normalized_message,
                 include_discord=context_mode == "discord",
             )
-            if instruction_reply is not None:
+            contextual_repeat = bool(re.fullmatch(
+                r"(?:no\s+no\s+)?say\s+it\s+(?:again|agin)[?.!]*",
+                normalized_message,
+                re.I,
+            ))
+            if contextual_repeat and reliable_reply is not None:
+                reply = reliable_reply
+                self.last_assistance_reason = "reviewed-conversation-recall"
+            elif instruction_reply is not None:
                 reply = instruction_reply
                 self.last_assistance_reason = "exact-user-instruction"
             elif arithmetic_reply is not None:
@@ -543,7 +551,13 @@ class MusicModelService(PublicModelService):
             raise ValueError("message cannot be blank")
         active_session = session_id or uuid.uuid4().hex
         with self.lock:
-            history = list(self.sessions.get(active_session, []))
+            # Older Music builds could persist an empty neural reply after the
+            # repetition filter removed every lyric line.  Never feed those
+            # poisoned turns back into the conversation formatter.
+            history = [
+                turn for turn in self.sessions.get(active_session, [])
+                if isinstance(turn.get("content"), str) and turn["content"].strip()
+            ]
             history.append({"role": "user", "content": clean_message})
             generation_history = history[-8:]
             started = time.perf_counter()
@@ -553,6 +567,8 @@ class MusicModelService(PublicModelService):
                 temperature,
                 self.system_prompt,
             )
+            if not reply.strip():
+                raise RuntimeError("Music model produced empty output after candidate selection")
             history.append({"role": "assistant", "content": reply})
             self.sessions[active_session] = history
             self.sessions.move_to_end(active_session)
@@ -607,7 +623,9 @@ class MusicModelService(PublicModelService):
         requested_tokens = max(160, min(max_new_tokens, 560))
         wants_complete_song = bool(
             re.search(
-                r"\b(?:(?:full|complete)(?:\s+(?:original|new))?\s+(?:song|lyrics)|(?:song|lyrics)\s+(?:in\s+)?full)\b",
+                r"\b(?:(?:full|complete)(?:\s+(?:original|new))?\s+(?:song|lyrics)|"
+                r"(?:song|lyrics)\s+(?:in\s+)?full|"
+                r"(?:write|make|create|generate)(?:\s+me)?\s+(?:a|an)\s+song)\b",
                 current_message,
                 re.I,
             )
@@ -677,11 +695,8 @@ class MusicModelService(PublicModelService):
         scored = [(continuity_score(candidate), candidate, corrections)
                   for candidate, corrections in selection_pool]
         selected_score, selected, corrections = max(scored, key=lambda item: item[0])
-        selected, removed_lines = self._remove_overrepresented_lines(selected, current_message)
-        if removed_lines:
-            corrections = [*corrections, f"removed-overrepresented-lines:{removed_lines}"]
-            selected, final_corrections = self._validate_structure(selected)
-            corrections.extend(final_corrections)
+        selected, filter_corrections = self._safely_filter_repetition(selected, current_message)
+        corrections = [*corrections, *filter_corrections]
         title_match = re.search(r"(?im)^title\s*:\s*([^\n]+)", selected)
         style_match = re.search(r"(?im)^style\s*:\s*([^\n]+)", selected)
         selected_lines = self._lyric_lines(selected)
@@ -710,6 +725,18 @@ class MusicModelService(PublicModelService):
             "title_style_regeneration": False,
         }
         return selected
+
+    def _safely_filter_repetition(self, reply: str, prompt: str = "") -> tuple[str, list[str]]:
+        """Suppress memorized lines without destroying the neural draft."""
+        filtered, removed = self._remove_overrepresented_lines(reply, prompt)
+        if not removed:
+            return reply, []
+        original_lines = self._lyric_lines(reply)
+        removed_fraction = removed / max(1, len(original_lines))
+        if len(re.findall(r"\b\w+\b", filtered)) < 4 or removed_fraction > 0.35:
+            return reply, ["repetition-filter-reverted-destructive"]
+        validated, corrections = self._validate_structure(filtered)
+        return validated, [f"removed-overrepresented-lines:{removed}", *corrections]
 
     def _remove_overrepresented_lines(self, reply: str, prompt: str = "") -> tuple[str, int]:
         """Remove exact or paraphrased log-proven memorized lyric lines."""
@@ -830,7 +857,9 @@ class MusicModelService(PublicModelService):
         """Check requested song shape without supplying any lyric content."""
         request = message.lower()
         full = bool(re.search(
-            r"\b(?:(?:full|complete)(?:\s+(?:original|new))?\s+(?:song|lyrics)|(?:song|lyrics)\s+(?:in\s+)?full)\b",
+            r"\b(?:(?:full|complete)(?:\s+(?:original|new))?\s+(?:song|lyrics)|"
+            r"(?:song|lyrics)\s+(?:in\s+)?full|"
+            r"(?:write|make|create|generate)(?:\s+me)?\s+(?:a|an)\s+song)\b",
             request,
         ))
         asks_song = bool(re.search(r"\b(?:song|lyrics|music)\b", request))
@@ -902,7 +931,12 @@ class MusicModelService(PublicModelService):
         request = message.lower()
         wants_song = bool(re.search(r"\b(?:song|music|lyrics)\b", request))
         wants_complete_song = bool(
-            re.search(r"\b(?:(?:full|complete)(?:\s+(?:original|new))?\s+(?:song|lyrics)|(?:song|lyrics)\s+(?:in\s+)?full)\b", request)
+            re.search(
+                r"\b(?:(?:full|complete)(?:\s+(?:original|new))?\s+(?:song|lyrics)|"
+                r"(?:song|lyrics)\s+(?:in\s+)?full|"
+                r"(?:write|make|create|generate)(?:\s+me)?\s+(?:a|an)\s+song)\b",
+                request,
+            )
         )
         wants_fragment = bool(re.search(r"\b(?:only|just)\s+(?:a\s+)?(?:title|style|hook|chorus|verse|bridge|outro)\b", request))
         asks_choice = bool(re.search(r"\b(?:what|which|remind).*(?:title|name|style|genre)\b", request))

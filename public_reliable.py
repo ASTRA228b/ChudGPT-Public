@@ -93,6 +93,10 @@ class PublicReliableResponder:
             return "Yes - my name is ChudGPT. This chat uses the ChudGPT-Public V20 model."
         if re.fullmatch(r"(?:hru|how are you|how are you doing)(?:\s+rn|\s+right now)?[?.!]*", normalized):
             return "I'm doing well and ready to chat. How are you?"
+        if re.fullmatch(r"(?:good|great|pretty good|doing good|doing well)[!.]*", normalized) and re.search(
+            r"\bhow are you\b|\bhow are you doing\b", previous_assistant.lower()
+        ):
+            return "Glad to hear it. What's on your mind?"
         if re.fullmatch(r"(?:what(?:'s| is) up|sup|wassup)[?.!]*", normalized):
             return "Not much - I'm here and ready to chat. What's up with you?"
         if re.fullmatch(r"(?:you(?:'re| are)|ur|u r) cool[?.!]*", normalized):

@@ -261,6 +261,34 @@ def test_music_keeps_repeated_phrase_when_user_explicitly_requests_it() -> None:
     assert "light keeps judging me" in fixed.lower()
 
 
+def test_music_repetition_filter_never_erases_the_neural_draft() -> None:
+    service = object.__new__(MusicModelService)
+    service.allowed_sections = {"chorus": "Chorus"}
+    service.overrepresented_music_lines = set()
+    service.overrepresented_music_phrases = {"light keeps judging me"}
+    neural = "[Chorus]\nA little light keeps judging me."
+    filtered, corrections = service._safely_filter_repetition(neural, "Write a dark chorus")
+    assert filtered == neural
+    assert "repetition-filter-reverted-destructive" in corrections
+
+
+def test_write_me_a_song_requires_a_complete_generated_song() -> None:
+    fragment = "[Chorus]\nOne lonely line."
+    complete = """Title: Network Weather
+Style: glitch rock
+
+[Verse 1]
+The router shakes awake while every blue light paints a rhythm across the room tonight.
+
+[Chorus]
+Carry the signal home through static, thunder, broken cables, and the restless air.
+
+[Bridge]
+One final packet finds the road and turns the silence into sound again."""
+    assert not MusicModelService._candidate_meets_music_shape("Write me a song", fragment)
+    assert MusicModelService._candidate_meets_music_shape("Write me a song", complete)
+
+
 def test_full_song_shape_rejects_numbered_title_dump() -> None:
     broken = "1. Orbit\n2. Rain A\n3. Style: faded villages\n4. Static"
     assert not MusicModelService._candidate_meets_music_shape("Write me a full song", broken)

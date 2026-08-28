@@ -388,6 +388,25 @@ class ChudGPTClient:
                 LOGGER.warning("Music endpoint failed (%s): %s", url, error)
         raise errors[-1] if errors else RuntimeError("Music V1 is unavailable")
 
+    def clear_music(self, session_id: str) -> None:
+        """Clear only the separate Music V1 conversation session."""
+        payload = {"session_id": session_id.strip()[:128]}
+        local_url = "http://127.0.0.1:8010/api/music/clear"
+        public_url = f"{self.chat_url.rsplit('/api/', 1)[0]}/api/music/clear"
+        errors: list[Exception] = []
+        for url in dict.fromkeys((local_url, public_url)):
+            try:
+                response = self.http.post(url, json=payload, timeout=self.timeout)
+                response.raise_for_status()
+                data: Any = response.json()
+                if isinstance(data, dict) and data.get("cleared") is True:
+                    return
+                raise RuntimeError("Music V1 did not confirm that its memory was cleared")
+            except (requests.RequestException, ValueError, RuntimeError) as error:
+                errors.append(error)
+                LOGGER.warning("Music clear endpoint failed (%s): %s", url, error)
+        raise errors[-1] if errors else RuntimeError("Music V1 clear endpoint is unavailable")
+
     def clear(self, session_id: str) -> None:
         response = None
         errors: list[Exception] = []
@@ -2418,6 +2437,18 @@ def main() -> None:
             music_match = re.fullmatch(r"music(?:\s+(.+))?", prompt.strip(), re.I | re.S)
             if music_match:
                 music_prompt = (music_match.group(1) or "").strip()
+                music_session_id = "music-" + make_session_id(message)
+                if music_prompt.lower() == "clear":
+                    await __import__("asyncio").to_thread(
+                        public_api.clear_music,
+                        music_session_id,
+                    )
+                    await message.reply(
+                        "Music V1 memory cleared for your conversation in this channel.",
+                        mention_author=False,
+                        allowed_mentions=safe_mentions,
+                    )
+                    return
                 if not music_prompt:
                     await message.reply(
                         f"Give Music V1 something to write, for example: `{settings.prefix} music write a chorus about my WiFi dying`.",
@@ -2430,7 +2461,7 @@ def main() -> None:
                         music_reply = await __import__("asyncio").to_thread(
                             public_api.music_chat,
                             music_prompt,
-                            "music-" + make_session_id(message),
+                            music_session_id,
                         )
                 await __import__("asyncio").to_thread(
                     log_discord_exchange,
