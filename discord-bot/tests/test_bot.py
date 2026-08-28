@@ -1,3 +1,4 @@
+import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -32,11 +33,42 @@ from bot import (
     discord_reaction_label,
     discord_attachment_reply,
     discord_media_url_reply,
+    create_music_lyrics_file,
+    send_music_lyrics_file,
 )
 
 
 def test_discord_reaction_label_preserves_unicode_sequence() -> None:
     assert discord_reaction_label(discord.PartialEmoji(name="😭")) == "😭"
+
+
+def test_music_lyrics_export_uses_title_and_utf8(tmp_path) -> None:
+    path = create_music_lyrics_file(
+        tmp_path,
+        "write something",
+        "Title: Neon Rain\n\n[Chorus]\nCafé lights glow.",
+    )
+    try:
+        assert path.name.startswith("Neon_Rain_")
+        assert path.suffix == ".txt"
+        assert "Café lights glow." in path.read_text(encoding="utf-8")
+    finally:
+        path.unlink(missing_ok=True)
+
+
+def test_music_lyrics_attachment_is_deleted_after_sending(tmp_path) -> None:
+    message = SimpleNamespace(reply=AsyncMock())
+    sent = asyncio.run(send_music_lyrics_file(
+        message,
+        tmp_path,
+        "write a chorus about rain",
+        "[Chorus]\nRain taps a rhythm on the roof.",
+        discord.AllowedMentions.none(),
+    ))
+    assert sent is True
+    assert list(tmp_path.iterdir()) == []
+    kwargs = message.reply.await_args.kwargs
+    assert kwargs["file"].filename.endswith(".txt")
 
 
 def test_discord_reaction_label_uses_custom_name_without_snowflake() -> None:

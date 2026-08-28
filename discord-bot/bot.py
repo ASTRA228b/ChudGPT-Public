@@ -128,6 +128,7 @@ class Settings:
     soundboard_host: str
     soundboard_admin_user_ids: frozenset[int]
     server_backup_dir: Path
+    music_export_dir: Path
     blacklist_file: Path
 
     @classmethod
@@ -157,6 +158,9 @@ class Settings:
             ),
             server_backup_dir=Path(os.getenv(
                 "CHUDGPT_SERVER_BACKUP_DIR", r"D:\ChudGPT-Discord-Server-Files"
+            )),
+            music_export_dir=Path(os.getenv(
+                "CHUDGPT_MUSIC_EXPORT_DIR", r"D:\ChudGPT-Music-Files"
             )),
             blacklist_file=Path(os.getenv(
                 "CHUDGPT_BLACKLIST_FILE", str(Path(__file__).with_name("blacklist.json"))
@@ -1528,6 +1532,52 @@ async def dm_role_snapshot(
             LOGGER.warning("Could not remove temporary role backup %s: %s", path, error)
 
 
+def create_music_lyrics_file(directory: Path, prompt: str, lyrics: str) -> Path:
+    """Create one temporary Music V1 text export on the host computer."""
+    directory.mkdir(parents=True, exist_ok=True)
+    title = re.search(r"(?im)^title\s*:\s*([^\n]+)", lyrics)
+    base = title.group(1) if title else prompt
+    safe_name = re.sub(r"[^A-Za-z0-9_-]+", "_", base).strip("_")[:60] or "music_v1_lyrics"
+    path = directory / f"{safe_name}_{secrets.token_hex(4)}.txt"
+    path.write_text(lyrics.strip() + "\n", encoding="utf-8")
+    return path
+
+
+async def send_music_lyrics_file(
+    message: discord.Message,
+    directory: Path,
+    prompt: str,
+    lyrics: str,
+    allowed_mentions: discord.AllowedMentions,
+) -> bool:
+    """Attach generated lyrics and always delete the temporary host copy."""
+    path: Path | None = None
+    upload: discord.File | None = None
+    try:
+        path = await __import__("asyncio").to_thread(
+            create_music_lyrics_file, directory, prompt, lyrics
+        )
+        upload = discord.File(path, filename=path.name)
+        await message.reply(
+            f"Music V1 wrote this from your prompt. The generated lyrics are attached as `{path.name}`.",
+            file=upload,
+            mention_author=False,
+            allowed_mentions=allowed_mentions,
+        )
+        return True
+    except (OSError, discord.Forbidden, discord.HTTPException) as error:
+        LOGGER.warning("Could not send temporary Music V1 lyrics file: %s", error)
+        return False
+    finally:
+        if upload is not None:
+            upload.close()
+        if path is not None:
+            try:
+                path.unlink(missing_ok=True)
+            except OSError as error:
+                LOGGER.warning("Could not remove temporary Music V1 file %s: %s", path, error)
+
+
 async def rebuild_guild_layout(guild: discord.Guild, data: dict[str, Any]) -> tuple[int, list[str]]:
     """Recreate saved categories and supported channels, collecting failures."""
     categories: dict[str, discord.CategoryChannel] = {}
@@ -2389,11 +2439,19 @@ def main() -> None:
                     prompt,
                     music_reply,
                 )
-                for index, chunk in enumerate(split_discord_message(music_reply)):
-                    if index == 0:
-                        await message.reply(chunk, mention_author=False, allowed_mentions=safe_mentions)
-                    else:
-                        await message.channel.send(chunk, allowed_mentions=safe_mentions)
+                sent = await send_music_lyrics_file(
+                    message,
+                    settings.music_export_dir,
+                    music_prompt,
+                    music_reply,
+                    safe_mentions,
+                )
+                if not sent:
+                    await message.reply(
+                        "Music V1 generated the lyrics, but Discord would not accept the text-file upload. The temporary host copy was deleted.",
+                        mention_author=False,
+                        allowed_mentions=safe_mentions,
+                    )
                 return
             recent_context = list(recent_user_messages[context_key])
             model_prompt = prompt
