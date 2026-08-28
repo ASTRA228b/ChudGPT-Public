@@ -987,11 +987,19 @@ class MusicModelService(PublicModelService):
                 + mash_source
                 if intent == "MASH_LYRICS" else ""
             )
+            prior_lyrics = "\n\n".join(pieces)[-1400:]
+            novelty_guidance = (
+                " These sections are already written:\n" + prior_lyrics
+                + "\nWrite new imagery and phrasing for the next section. Do not repeat or closely "
+                  "paraphrase any existing line, except when intentionally developing a short hook."
+                if prior_lyrics else ""
+            )
             generated = self._sample_neural_piece(
                 history,
                 system_prompt,
                 f"For this composition stage, generate only the lyric lines for [{section_name}]. "
-                f"Keep them tightly relevant to this request: {current_message[:300]}.{source_guidance} "
+                f"Keep them tightly relevant to this request: {current_message[:300]}.{source_guidance}"
+                f"{novelty_guidance} "
                 "Do not output a title, style, explanation, or alternate options.",
                 90 if section_name not in {"Pre-Chorus", "Outro"} else 65,
                 24,
@@ -1007,19 +1015,56 @@ class MusicModelService(PublicModelService):
 
     def _safely_filter_repetition(self, reply: str, prompt: str = "") -> tuple[str, list[str]]:
         """Suppress memorized lines without destroying the neural draft."""
-        filtered, removed = self._remove_overrepresented_lines(reply, prompt)
+        filtered, intra_removed = self._remove_intra_song_repetition(reply)
+        filtered, removed = self._remove_overrepresented_lines(filtered, prompt)
+        filter_corrections: list[str] = []
+        if intra_removed:
+            filter_corrections.append(f"removed-intra-song-repetitions:{intra_removed}")
         if not removed:
-            return reply, []
+            return filtered, filter_corrections
         if (
             self._candidate_meets_music_shape(prompt, reply)
             and not self._candidate_meets_music_shape(prompt, filtered)
         ):
+            # Keep intra-song duplicate removal even when removing learned log
+            # phrases would make a complete draft too short.
+            if intra_removed:
+                intra_only, _ = self._remove_intra_song_repetition(reply)
+                return intra_only, [*filter_corrections, "overrepresented-filter-reverted-shape-loss"]
             return reply, ["repetition-filter-reverted-shape-loss"]
         remaining_lyrics = self._lyric_lines(filtered)
         if len(re.findall(r"\b\w+\b", filtered)) < 8 or not remaining_lyrics:
             return reply, ["repetition-filter-reverted-destructive"]
-        validated, corrections = self._validate_structure(filtered)
-        return validated, [f"removed-overrepresented-lines:{removed}", *corrections]
+        validated, structure_corrections = self._validate_structure(filtered)
+        return validated, [
+            *filter_corrections,
+            f"removed-overrepresented-lines:{removed}",
+            *structure_corrections,
+        ]
+
+    @classmethod
+    def _remove_intra_song_repetition(cls, reply: str) -> tuple[str, int]:
+        """Remove repeated or near-duplicate lyric lines within one draft."""
+        kept: list[str] = []
+        lyric_lines: list[str] = []
+        removed = 0
+        for line in reply.splitlines():
+            normalized = re.sub(r"\s+", " ", line.strip().lower())
+            words = re.findall(r"[a-z0-9']+", normalized)
+            is_metadata = bool(re.match(r"(?i)^\s*(?:title|style)\s*:", line))
+            is_section = bool(re.match(r"^\s*\[[^]]+\]\s*$", line))
+            if len(words) >= 4 and not is_metadata and not is_section:
+                repeated = any(
+                    normalized == old
+                    or cls._text_similarity(normalized, old) >= 0.65
+                    for old in lyric_lines
+                )
+                if repeated:
+                    removed += 1
+                    continue
+                lyric_lines.append(normalized)
+            kept.append(line)
+        return "\n".join(kept).strip(), removed
 
     def _remove_overrepresented_lines(self, reply: str, prompt: str = "") -> tuple[str, int]:
         """Remove exact or paraphrased log-proven memorized lyric lines."""
@@ -1045,19 +1090,22 @@ class MusicModelService(PublicModelService):
         verse_number = 0
         for line in reply.splitlines():
             fixed = line
+            cleaned_memorized_suffix = re.sub(
+                r"(?i),?\s*with a clear pulse and a slightly unwise finale\.?\s*$",
+                "",
+                fixed,
+            ).rstrip(" ,;.")
+            if cleaned_memorized_suffix != fixed:
+                fixed = cleaned_memorized_suffix
+                corrections.append("removed-memorized-style-suffix")
+                if not fixed:
+                    continue
             if re.match(r"(?i)^\s*(?:static\s+)+title\s*:", fixed):
                 fixed = re.sub(r"(?i)^\s*(?:static\s+)+title\s*:", "Title:", fixed)
                 corrections.append("normalized-title-label")
             if re.match(r"(?i)^\s*sty(?:p|l|las?|les?)\s*:", fixed):
                 fixed = re.sub(r"(?i)^\s*sty(?:p|l|las?|les?)\s*:", "Style:", fixed)
                 corrections.append("normalized-style-label")
-            if re.match(r"(?i)^\s*style\s*:", fixed):
-                cleaned = re.sub(
-                    r"(?i),?\s*with a clear pulse and a slightly unwise finale\.?\s*$", "", fixed
-                ).rstrip(" ,;.")
-                if cleaned != fixed:
-                    fixed = cleaned
-                    corrections.append("removed-memorized-style-suffix")
             match = re.match(r"^\s*\[([^]\n]+)\]\s*$", fixed)
             if match:
                 raw = re.sub(r"\s+", " ", match.group(1).strip().lower())

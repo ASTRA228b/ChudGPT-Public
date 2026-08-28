@@ -284,6 +284,18 @@ def test_music_validator_removes_memorized_style_suffix_and_static_title_prefix(
     assert "removed-memorized-style-suffix" in corrections
 
 
+def test_music_validator_removes_memorized_suffix_outside_style_metadata() -> None:
+    service = object.__new__(MusicModelService)
+    service.allowed_sections = {"bridge": "Bridge"}
+    fixed, corrections = service._validate_structure(
+        "[Bridge]\nStywichard; sad, with a clear pulse and a slightly unwise finale\nA novel line remains."
+    )
+    assert "slightly unwise finale" not in fixed.lower()
+    assert "Stywichard; sad" in fixed
+    assert "A novel line remains" in fixed
+    assert "removed-memorized-style-suffix" in corrections
+
+
 def test_music_removes_only_log_proven_overrepresented_lines() -> None:
     service = object.__new__(MusicModelService)
     service.overrepresented_music_lines = {"the hallway hums in a tired key,"}
@@ -534,5 +546,23 @@ One two three four five six seven eight nine ten eleven twelve thirteen fourteen
     filtered, corrections = service._safely_filter_repetition(
         original, "Write a full song about coding"
     )
-    assert filtered == original
-    assert corrections == ["repetition-filter-reverted-shape-loss"]
+    assert filtered.lower().count("one two three") == 1
+    assert corrections == [
+        "removed-intra-song-repetitions:5",
+        "overrepresented-filter-reverted-shape-loss",
+    ]
+
+
+def test_intra_song_filter_removes_exact_and_close_repeated_lines() -> None:
+    reply = """[Verse 1]
+The hallway hums in a tired key.
+I made one promise to make it through.
+[Chorus]
+The hallway hums in a tired key.
+I made one promise that I would make it through.
+The final window opens into morning."""
+    filtered, removed = MusicModelService._remove_intra_song_repetition(reply)
+    assert removed == 2
+    assert filtered.lower().count("hallway hums") == 1
+    assert filtered.lower().count("made one promise") == 1
+    assert "final window" in filtered.lower()
