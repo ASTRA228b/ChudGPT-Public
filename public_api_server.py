@@ -25,7 +25,6 @@ from chudlm.checkpoint import load_checkpoint
 from chudlm.emoji_awareness import (
     add_emoji_context,
     emoji_database,
-    emoji_semantic_response,
     strip_emoji_context,
 )
 from chudlm.generation import generate
@@ -38,11 +37,6 @@ from chudlm.response_quality import (
     score_generated_reply,
 )
 from chudlm.text_normalization import normalize_user_text
-from project_facts import FAMILY_FACTS, FAMILY_SUMMARY, PUBLIC_IDENTITY
-from public_meme_facts import find_meme_fact
-from public_math import exact_math_response
-from public_instructions import exact_instruction_response
-from public_reliable import PublicReliableResponder
 from music_instructions import MUSIC_MODEL_NAME, MUSIC_SYSTEM_PROMPT
 
 ROOT = Path(__file__).resolve().parent
@@ -87,7 +81,7 @@ class ClearRequest(BaseModel):
 
 
 class PublicModelService:
-    """Serve neural conversation with narrow stable-project identity repair."""
+    """Serve neural conversation without canned or retrieval-backed answers."""
 
     def __init__(self, checkpoint_path: Path, device_name: str, assistance_enabled: bool = True,
                  tokenizer_path: Path | None = None,
@@ -110,142 +104,17 @@ class PublicModelService:
         self.checkpoint_path = checkpoint_path
         self.sessions: OrderedDict[str, list[dict[str, str]]] = OrderedDict()
         self.lock = threading.Lock()
-        self.assistance_enabled = assistance_enabled
+        # Kept as a compatibility attribute for older callers and response
+        # schemas. Public V20 is now neural-only regardless of the legacy
+        # constructor flag: validation may select or reject model samples, but
+        # it must never replace them with a hand-written answer.
+        self.assistance_enabled = False
         self.last_assistance_reason: str | None = None
         self.system_prompt = system_prompt
         self.shorten_casual_generation = True
         # Build and retain the immutable Unicode metadata once at startup.
         self.emoji_database = emoji_database()
-        self.reliable = PublicReliableResponder(ROOT / "data/public_v20_conversations.jsonl")
-
-    @staticmethod
-    def _identity_subject(message: str) -> str | None:
-        """Recognize explicit project-identity questions, never general topics."""
-        normalized = re.sub(r"[^a-z0-9+#]+", " ", message.lower()).strip()
-        is_question = bool(re.search(r"\b(what|who|which|tell|explain|describe|list|are|am|identify|name|how|is)\b", normalized))
-        if not is_question:
-            return None
-        if re.search(r"\b(who|what) (are|is) you\b|\bwhich chudgpt (are|is) (you|this)\b|\bwhat model (are|is)", normalized):
-            return "public"
-        if "identify yourself" in normalized or re.search(r"\b(plus|pro) or (?:the )?public\b", normalized):
-            return "public"
-        if "assistant part of" in normalized and "chudgpt" in normalized:
-            return "public"
-        if "code differ" in normalized and "chudgpt" in normalized:
-            return "code"
-        if "other chudgpt" in normalized or "chudgpt family" in normalized or "which chudgpt is better" in normalized:
-            return "family"
-        if "archived" in normalized and ("checkpoint" in normalized or "chudgpt" in normalized):
-            return "archived"
-        if re.search(r"\b(old|historical) (?:training )?(?:snapshots|checkpoints)\b", normalized):
-            return "archived"
-        if "deliberately chaotic" in normalized and "chudgpt" in normalized:
-            return "mega"
-        aliases = {
-            "public": ("chudgpt public",), "plus": ("chudgpt plus",),
-            "pro": ("chudgpt pro",), "code": ("chudgpt code",),
-            "ultimate": ("chudgpt ultimate",), "buggy": ("buggy chudgpt", "buggy mode"),
-            "mega": ("mega chud", "chudgpt mega"),
-        }
-        for subject, names in aliases.items():
-            if any(re.search(rf"(?<![a-z0-9]){re.escape(name)}(?![a-z0-9])", normalized) for name in names):
-                return subject
-        # Keep project metadata exact without pretending that an arbitrary
-        # made-up suffix is a real released profile.
-        unknown_profile = re.search(r"\bchudgpt[ -]([a-z][a-z0-9_-]{1,30})\b", normalized)
-        if unknown_profile:
-            candidate = unknown_profile.group(1)
-            if candidate not in {"and", "or", "is", "family", "model", "project"}:
-                return f"unknown:{candidate}"
-        if re.search(r"\bwhat is chudgpt\b|\bexplain (?:the )?chudgpt(?: project)?\b|\btell me about (?:the )?chudgpt(?: project)?\b", normalized):
-            return "family"
-        return None
-
-    @staticmethod
-    def _identity_reply_is_sound(reply: str, subject: str) -> bool:
-        lowered = reply.lower()
-        if "�" in reply or len(reply.split()) < 4:
-            return False
-        if subject == "public":
-            return "chudgpt" in lowered and "public" in lowered and not re.search(r"\bi am (?:chudgpt )?(?:pro|plus|chatgpt)\b", lowered)
-        if subject == "family":
-            return "chudgpt" in lowered and any(term in lowered for term in ("family", "project", "public", "plus", "pro"))
-        if subject.startswith("unknown:"):
-            return False
-        expected = {"archived": "checkpoint", "mega": "mega", "buggy": "buggy"}.get(subject, subject)
-        return expected in lowered and "chudgpt" in lowered
-
-    def _assist_identity(self, message: str, raw_reply: str) -> tuple[str, str | None]:
-        subject = self._identity_subject(message)
-        # Identity is stable project metadata, so explicit identity questions
-        # always use the verified source. A tiny model can mention the correct
-        # name while surrounding it with malformed or invented details.
-        if not self.assistance_enabled or subject is None:
-            return raw_reply, None
-        if subject == "public":
-            return (
-                f"{PUBLIC_IDENTITY} The currently loaded model has {self.parameters:,} parameters, "
-                f"a {self.model.config.context_length}-token context window, and checkpoint step {self.step}."
-            ), "stable-public-identity"
-        if subject == "family":
-            reply = FAMILY_SUMMARY
-            if re.search(r"\b(?:better|best|stronger|worse|compare)\b", message, re.I):
-                reply += " There is no single best variant: Public is the general public model, Code is best suited to programming, Pro favors longer conversations, and Buggy or MEGA CHUD are intentionally unreliable."
-            return reply, "stable-family-metadata"
-        if subject.startswith("unknown:"):
-            display_name = subject.split(":", 1)[1].replace("_", "-").title()
-            return (
-                f"I do not have a verified ChudGPT profile named ChudGPT-{display_name}. "
-                "The known family includes Public, Plus, Pro, Code, Ultimate, Buggy, and MEGA CHUD."
-            ), "stable-family-metadata"
-        reply = FAMILY_FACTS[subject]
-        if re.search(r"\b(?:better|best|stronger|worse|compare)\b", message, re.I):
-            reply += " Whether it is better depends on the job: Public is the public general model, Code focuses on programming, and Pro favors longer general conversations."
-        return reply, "stable-family-metadata"
-
-    def _assist_meme(self, message: str, raw_reply: str) -> tuple[str, str | None]:
-        """Repair only explicitly named, reviewed memes; leave all other text neural."""
-        if not self.assistance_enabled:
-            return raw_reply, None
-        # Product/family identity always outranks the unrelated word glossary.
-        if self._identity_subject(message) is not None:
-            return raw_reply, None
-        fact = find_meme_fact(message)
-        if fact is None:
-            return raw_reply, None
-        return fact, "reviewed-meme-context"
-
-    @staticmethod
-    def _discord_context_reply(message: str, discord_context: str | None) -> str | None:
-        if not discord_context:
-            return None
-        fields = dict(re.findall(
-            r"(?:^|;\s*)(server|channel|speaker|relationship|member_roles|developer_name|developer_mention)=([^;]+)",
-            discord_context,
-        ))
-        normalized = message.lower()
-        if re.search(r"\b(?:what|which) server\b|\bwhere are we(?: talking)?\b", normalized) and fields.get("server"):
-            if fields["server"].strip().lower() == "direct messages":
-                if re.search(r"\b(?:what|which) server\b", normalized):
-                    return "This is a private Discord direct message, not a server channel."
-                return "We're talking in a private Discord direct message."
-            return f"We're talking in the {fields['server']} Discord server."
-        if re.search(r"\b(?:who|what) am i\b|\bdo you know me\b", normalized) and fields.get("speaker"):
-            relation = fields.get("relationship", "Discord user")
-            return f"You're {fields['speaker']}, identified here as {relation}."
-        if re.search(r"\b(?:what|which) (?:is |are )?my (?:server )?(?:tag|role|roles)\b", normalized):
-            roles = fields.get("member_roles", "none")
-            return f"Your Discord server role{'s are' if ',' in roles else ' is'} {roles}."
-        if (
-            re.search(r"\b(?:who|what) is astra\b|\btell me about astra\b", normalized)
-            or re.search(r"\bwho (?:made|created|developed) (?:you|chudgpt)\b", normalized)
-            or re.search(r"\bwho is (?:your|the) developer\b", normalized)
-        ):
-            developer = fields.get("developer_name", "Astra")
-            mention = fields.get("developer_mention", "")
-            visible_mention = f" ({mention})" if mention and mention != "unavailable" else ""
-            return f"{developer}{visible_mention} is ChudGPT's developer and the owner of this Discord bot."
-        return None
+        self.reliable = None
 
     def _generate_raw(
         self,
@@ -307,12 +176,6 @@ class PublicModelService:
             )[0]]
             if valid:
                 return max(valid, key=lambda reply: score_generated_reply(prompt, reply) + self._candidate_score(prompt, reply))
-            if previous_assistant and re.fullmatch(
-                r"\s*(?:what|what\?|huh|bro(?: what)?|why|what are you talking about)[?!.]*\s*",
-                prompt,
-                re.I,
-            ):
-                return "Yeah, that last answer wandered off. I was responding to your previous message, but I clearly missed it."
             # Draw fresh candidates.  A small model can legitimately miss the
             # complete quality gate several times in a row; that must not turn
             # an otherwise healthy API request into HTTP 503.
@@ -364,12 +227,11 @@ class PublicModelService:
                     key=lambda reply: score_generated_reply(prompt, reply)
                     + self._candidate_score(prompt, reply),
                 )
-            # A healthy model request should not become a 503 just because all
-            # sampled candidates failed relevance or format checks. Be honest
-            # about the failed generation and invite one clearer retry instead
-            # of exposing unrelated text or reporting a server outage.
-            return "I couldn't form a relevant answer to that. Try rewording the request with the exact result you want."
-        return "I couldn't generate an answer to that request. Please try wording it another way."
+            # Never substitute a canned answer when every neural sample fails.
+            # The API reports a generation failure so clients can retry without
+            # presenting hand-written text as model output.
+            raise RuntimeError("Public V20 did not produce a usable neural reply")
+        raise RuntimeError("Public V20 produced empty neural output")
 
     @staticmethod
     def _candidate_score(message: str, reply: str) -> float:
@@ -447,55 +309,11 @@ class PublicModelService:
             # generations remain in view. Keep the four most recent exchanges;
             # this is context selection only and never changes model output.
             generation_history = history[-8:]
-            # Deterministic routing must see normalized user text, never the
-            # private model-facing annotation appended above.
-            instruction_reply = exact_instruction_response(normalized_message)
-            arithmetic_reply = exact_math_response(normalized_message)
-            reliable_reply = (
-                self.reliable.answer(normalized_message, generation_history[:-1])
-                if self.reliable is not None
-                else None
-            )
-            discord_reply = self._discord_context_reply(normalized_message, discord_context)
-            meme_reply = find_meme_fact(normalized_message)
-            emoji_reply = emoji_semantic_response(
-                normalized_message,
-                include_discord=context_mode == "discord",
-            )
-            contextual_repeat = bool(re.fullmatch(
-                r"(?:no\s+no\s+)?say\s+it\s+(?:again|agin)[?.!]*",
-                normalized_message,
-                re.I,
-            ))
-            if contextual_repeat and reliable_reply is not None:
-                reply = reliable_reply
-                self.last_assistance_reason = "reviewed-conversation-recall"
-            elif instruction_reply is not None:
-                reply = instruction_reply
-                self.last_assistance_reason = "exact-user-instruction"
-            elif arithmetic_reply is not None:
-                reply = arithmetic_reply
-                self.last_assistance_reason = "exact-math"
-            elif discord_reply is not None:
-                reply = discord_reply
-                self.last_assistance_reason = "discord-session-context"
-            elif meme_reply is not None and self._identity_subject(normalized_message) is None:
-                reply = meme_reply
-                self.last_assistance_reason = "reviewed-meme-context"
-            elif emoji_reply is not None:
-                reply = emoji_reply
-                self.last_assistance_reason = "emoji-semantic-context"
-            elif reliable_reply is not None:
-                reply = reliable_reply
-                self.last_assistance_reason = "reviewed-local-response"
-            else:
-                active_prompt = DISCORD_SYSTEM_PROMPT if context_mode == "discord" else self.system_prompt
-                if context_mode == "discord" and discord_context:
-                    active_prompt += " Current Discord context: " + discord_context
-                raw_reply = self._generate_raw(generation_history, max_new_tokens, temperature, active_prompt)
-                reply, self.last_assistance_reason = self._assist_identity(clean_message, raw_reply)
-                if self.last_assistance_reason is None:
-                    reply, self.last_assistance_reason = self._assist_meme(clean_message, reply)
+            active_prompt = DISCORD_SYSTEM_PROMPT if context_mode == "discord" else self.system_prompt
+            if context_mode == "discord" and discord_context:
+                active_prompt += " Current Discord context: " + discord_context
+            reply = self._generate_raw(generation_history, max_new_tokens, temperature, active_prompt)
+            self.last_assistance_reason = None
             history.append({"role": "assistant", "content": reply})
             self.sessions[active_session] = history
             self.sessions.move_to_end(active_session)
@@ -1490,8 +1308,9 @@ def create_app(checkpoint: Path, device: str, assistance_enabled: bool = True,
             "context_length": service.model.config.context_length,
             "checkpoint": str(service.checkpoint_path.relative_to(ROOT)),
             "raw_model_generation": True,
-            "identity_assistance": service.assistance_enabled,
-            "assistance_scope": "exact operations, stable project facts, reviewed local responses, and neural candidate quality checks",
+            "identity_assistance": False,
+            "fallbacks": False,
+            "generation_policy": "neural-only; invalid samples are rejected, never replaced",
             "emoji_awareness": {
                 "library": "emoji 2.15.0",
                 "unicode_emoji_version": service.emoji_database.max_emoji_version,
@@ -1522,6 +1341,8 @@ def create_app(checkpoint: Path, device: str, assistance_enabled: bool = True,
             "checkpoint": str(music_service.checkpoint_path.relative_to(ROOT)),
             "music": True,
             "original_lyrics_only": True,
+            "fallbacks": False,
+            "generation_policy": "neural-only; invalid samples are rejected, never replaced",
         }
 
     @app.get("/api")

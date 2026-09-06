@@ -39,7 +39,7 @@ def test_context_keeps_recent_history_and_system_prompt() -> None:
     assert len(ids) <= 1024
 
 
-def test_runtime_assistance_is_narrow_and_auditable() -> None:
+def test_runtime_is_neural_only_and_auditable() -> None:
     source = Path("public_api_server.py").read_text(encoding="utf-8")
     forbidden = (
             "ExampleRetriever", "classify_intent",
@@ -50,19 +50,22 @@ def test_runtime_assistance_is_narrow_and_auditable() -> None:
     for symbol in forbidden:
         assert symbol not in source
     assert "raw_model_generation" in source
-    assert "_assist_identity" in source
-    assert "stable-public-identity" in source
-    assert "stable-family-metadata" in source
+    assert "_assist_identity" not in source
+    assert "PublicReliableResponder" not in source
+    assert "exact_math_response" not in source
+    assert "exact_instruction_response" not in source
+    assert '"fallbacks": False' in source
     assert "_calculate_arithmetic" not in source
     assert "_random_code_answer" not in source
 
 
-def test_technical_retry_does_not_expose_invented_content_or_raise_a_false_outage() -> None:
+def test_technical_retry_never_uses_a_canned_answer() -> None:
     source = Path("public_api_server.py").read_text(encoding="utf-8")
     assert "Model repeatedly generated only rejected uncertainty templates" not in source
     assert "never_expose" in source
     assert 'reply = "..."' not in source
-    assert "I couldn't form a relevant answer" in source
+    assert "I couldn't form a relevant answer" not in source
+    assert "did not produce a usable neural reply" in source
     assert "try asking another way" not in source.lower()
 
 
@@ -104,35 +107,6 @@ def test_serving_config_selects_v20_and_keeps_v8_archived() -> None:
     assert config["archived_checkpoints"]["v20"] == "checkpoints/public_v20_final/best.pt"
 
 
-def test_identity_assistance_does_not_route_normal_topics() -> None:
-    normal = ("hello", "67", "67 + 8", "write Python", "tell me a joke", "tung tung sahur")
-    for prompt in normal:
-        assert PublicModelService._identity_subject(prompt) is None
-    assert PublicModelService._identity_subject("What are you?") == "public"
-    assert PublicModelService._identity_subject("What is ChudGPT Pro?") == "pro"
-    assert PublicModelService._identity_subject("What is ChudGPT?") == "family"
-    assert PublicModelService._identity_subject("What is ChudGPT-Public?") == "public"
-    assert PublicModelService._identity_subject("Explain the ChudGPT project") == "family"
-    assert PublicModelService._identity_subject("What other ChudGPTs exist?") == "family"
-    assert PublicModelService._identity_subject("What is ChudGPT, and which version is better?") == "family"
-    assert PublicModelService._identity_subject("What is ChudGPT-Waffle, and is it better?") == "unknown:waffle"
-
-
-def test_unknown_family_profile_is_honest_and_identity_is_not_always_injected() -> None:
-    service = object.__new__(PublicModelService)
-    service.assistance_enabled = True
-    unchanged, reason = service._assist_identity("Tell me about Saturn", "Saturn has prominent rings.")
-    assert unchanged == "Saturn has prominent rings."
-    assert reason is None
-    repaired, reason = service._assist_identity(
-        "What is ChudGPT-Waffle, and is it better?", "I am ChudGPT-Public."
-    )
-    assert "do not have a verified" in repaired.lower()
-    assert "chudgpt-waffle" in repaired.lower()
-    assert "waffle" not in repaired.lower().split("known family", 1)[-1]
-    assert reason == "stable-family-metadata"
-
-
 def test_reviewed_meme_help_is_narrow_and_unknown_text_stays_neural() -> None:
     assert "absurdist" in (find_meme_fact("Tung tung tung tung tung sahur") or "")
     assert "number" in (find_meme_fact("what does the 67 meme mean?") or "")
@@ -140,48 +114,6 @@ def test_reviewed_meme_help_is_narrow_and_unknown_text_stays_neural() -> None:
     assert find_meme_fact("What is ChudGPT?") is None
     assert find_meme_fact("What is ChudGPT-Public?") is None
     assert "insult" in (find_meme_fact("What does chud mean?") or "")
-    service = object.__new__(PublicModelService)
-    service.assistance_enabled = True
-    reply, reason = service._assist_meme("tell me about the Ohio meme", "Distance is 44 miles.")
-    assert "Ohio" in reply
-    assert reason == "reviewed-meme-context"
-    unchanged, reason = service._assist_meme("hello mate", "Hey!",)
-    assert unchanged == "Hey!"
-    assert reason is None
-
-
-def test_family_and_public_identity_questions_are_distinct() -> None:
-    service = object.__new__(PublicModelService)
-    service.assistance_enabled = True
-    service.parameters = 20_999_184
-    service.step = 800
-    service.model = type("Model", (), {"config": type("Config", (), {"context_length": 1024})()})()
-    family, family_reason = service._assist_identity("Explain the ChudGPT project", "unrelated")
-    public, public_reason = service._assist_identity("Tell me about ChudGPT-Public", "unrelated")
-    repaired_public, _ = service._assist_identity(
-        "What is ChudGPT Public?", "ChudGPT-Public is the current model and Lis predict."
-    )
-    assert "overall project and model family" in family.lower()
-    assert "public-facing model" in public.lower()
-    assert "public chat and api" in public.lower()
-    assert "20,999,184 parameters" in public
-    assert "1024-token context" in public
-    assert family != public
-    assert repaired_public == public
-    assert family_reason == "stable-family-metadata"
-    assert public_reason == "stable-public-identity"
-    unchanged, reason = service._assist_meme("What exactly is ChudGPT Public?", public)
-    assert unchanged == public
-    assert reason is None
-
-
-def test_family_comparison_answers_the_comparison() -> None:
-    service = object.__new__(PublicModelService)
-    service.assistance_enabled = True
-    reply, reason = service._assist_identity("Which ChudGPT is better?", "Saturn has rings.")
-    assert "no single best" in reply.lower()
-    assert "code" in reply.lower() and "public" in reply.lower()
-    assert reason == "stable-family-metadata"
 
 
 def test_candidate_ranking_rejects_cross_topic_code_and_math() -> None:

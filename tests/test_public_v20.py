@@ -63,12 +63,6 @@ def test_latest_discord_intents_get_relevant_additive_responses(prompt: str, exp
     assert reply is not None and expected.lower() in reply.lower()
 
 
-def test_discord_context_understands_what_am_i() -> None:
-    context = "server=Test; channel=chat; speaker=Astra; relationship=ChudGPT developer Astra"
-    reply = PublicModelService._discord_context_reply("what am I?", context)
-    assert reply == "You're Astra, identified here as ChudGPT developer Astra."
-
-
 @pytest.mark.parametrize(
     ("prompt", "expected"),
     [
@@ -211,35 +205,6 @@ def test_normalization_does_not_rewrite_code() -> None:
 )
 def test_exact_quoted_instruction(message: str, expected: str) -> None:
     assert exact_instruction_response(message) == expected
-
-
-def test_discord_context_identifies_server_and_developer() -> None:
-    context = "server=Astra Lab; channel=ai; speaker=Astra; relationship=ChudGPT developer Astra"
-    assert PublicModelService._discord_context_reply("what server are we in?", context) == (
-        "We're talking in the Astra Lab Discord server."
-    )
-    dm_context = "server=Direct Messages; channel=direct-message; speaker=Astra; relationship=ChudGPT developer Astra"
-    assert PublicModelService._discord_context_reply("Where are we talking?", dm_context) == (
-        "We're talking in a private Discord direct message."
-    )
-    assert PublicModelService._discord_context_reply("What server are we in?", dm_context) == (
-        "This is a private Discord direct message, not a server channel."
-    )
-    assert "developer Astra" in (PublicModelService._discord_context_reply("who am I?", context) or "")
-    role_context = "server=Astra Lab; channel=ai; speaker=River; member_roles=Moderator, Monke; relationship=Discord user"
-    assert PublicModelService._discord_context_reply("what is my server tag?", role_context) == (
-        "Your Discord server roles are Moderator, Monke."
-    )
-    developer_context = (
-        "server=Astra Lab; channel=ai; speaker=River; member_roles=Member; "
-        "developer_name=Astra; developer_mention=<@12345>; relationship=Discord user"
-    )
-    assert PublicModelService._discord_context_reply("Who is Astra?", developer_context) == (
-        "Astra (<@12345>) is ChudGPT's developer and the owner of this Discord bot."
-    )
-    assert PublicModelService._discord_context_reply("Who made ChudGPT?", developer_context) == (
-        "Astra (<@12345>) is ChudGPT's developer and the owner of this Discord bot."
-    )
 
 
 def test_reliable_short_discord_and_general_prompts() -> None:
@@ -808,4 +773,5 @@ def test_child_abuse_disclosure_gets_immediate_safety_guidance() -> None:
 def test_public_never_exposes_off_topic_candidates_when_all_samples_fail() -> None:
     source = (Path(__file__).parents[1] / "public_api_server.py").read_text(encoding="utf-8")
     assert '"no-shared-subject"' in source
-    assert "I couldn't form a relevant answer" in source
+    assert "I couldn't form a relevant answer" not in source
+    assert 'raise RuntimeError("Public V20 did not produce a usable neural reply")' in source
