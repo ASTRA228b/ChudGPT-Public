@@ -7,7 +7,8 @@ from pathlib import Path
 from chudlm.prompts import DEFAULT_SYSTEM_PROMPT, build_context_token_ids, format_conversation
 from public_api_server import PublicModelService, selected_checkpoint
 from public_meme_facts import find_meme_fact
-from public_math import exact_integer_arithmetic
+from public_math import exact_integer_arithmetic, exact_math_response
+from public_identity import project_identity_response
 from short_prompt_benchmark import CASES
 
 
@@ -39,7 +40,7 @@ def test_context_keeps_recent_history_and_system_prompt() -> None:
     assert len(ids) <= 1024
 
 
-def test_runtime_uses_only_the_approved_exact_math_tool_and_is_auditable() -> None:
+def test_runtime_uses_only_approved_narrow_grounding_and_is_auditable() -> None:
     source = Path("public_api_server.py").read_text(encoding="utf-8")
     forbidden = (
             "ExampleRetriever", "classify_intent",
@@ -50,13 +51,43 @@ def test_runtime_uses_only_the_approved_exact_math_tool_and_is_auditable() -> No
     for symbol in forbidden:
         assert symbol not in source
     assert "raw_model_generation" in source
-    assert "_assist_identity" not in source
     assert "PublicReliableResponder" not in source
     assert "exact_math_response" in source
+    assert "project_identity_response" in source
     assert "exact_instruction_response" not in source
     assert '"fallbacks": False' in source
     assert "_calculate_arithmetic" not in source
     assert "_random_code_answer" not in source
+
+
+def test_project_identity_grounding_is_detailed_and_narrow() -> None:
+    about = project_identity_response("Tell me more about yourself") or ""
+    assert "ChudGPT-Public V20" in about
+    assert "20,999,184" in about
+    assert "decoder-only transformer" in about
+    assert "Public-Music V1" in about
+    family = project_identity_response("List all the ChudGPT models") or ""
+    for name in ("Public V20", "Public-Music V1", "Plus", "Pro", "Code", "Ultimate", "Buggy", "MEGA CHUD", "700", "1600"):
+        assert name in family
+    assert project_identity_response("Write a story about an AI robot") is None
+    assert project_identity_response("Write a song about the ChudGPT model family") is None
+    assert project_identity_response("Tell me about yourself in exactly three sentences") is None
+    assert project_identity_response("you are cool") is None
+    assert project_identity_response("florble snax 992") is None
+
+
+def test_public_service_routes_identity_facts_without_generic_fallback(monkeypatch) -> None:
+    service = object.__new__(PublicModelService)
+    service.lock = __import__("threading").RLock()
+    service.sessions = __import__("collections").OrderedDict()
+    service.system_prompt = DEFAULT_SYSTEM_PROMPT
+    service.last_assistance_reason = None
+    service.parameters = 20_999_184
+    service.model = type("Model", (), {"config": type("Config", (), {"context_length": 1024})()})()
+    monkeypatch.setattr(service, "_generate_raw", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("neural generation should not run")))
+    _, reply = service.chat("Who are you?", "identity-test")
+    assert "ChudGPT-Public V20" in reply
+    assert service.last_assistance_reason == "project_identity"
 
 
 def test_public_service_routes_unambiguous_arithmetic_through_exact_math(monkeypatch) -> None:
@@ -175,6 +206,14 @@ def test_exact_math_gate_does_not_capture_non_math_prompts() -> None:
         "The 2024-2025 season was wild", "write code that adds two numbers",
     )
     assert all(exact_integer_arithmetic(prompt) is None for prompt in non_math)
+
+
+def test_exact_math_understands_common_spelled_numbers_and_discount_wording() -> None:
+    assert exact_math_response("What is seventeen plus twenty-six?") == "17 + 26 = 43"
+    assert exact_math_response("Is thirty-one a prime number?") == "31 is prime."
+    assert exact_math_response("A $12 item is discounted by 25 percent. What is the new price?") == (
+        "The discount is 25% of $12, so the sale price is $9."
+    )
 
 
 def test_v10_dataset_is_balanced_unique_and_large() -> None:

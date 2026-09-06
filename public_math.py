@@ -31,6 +31,10 @@ _DISCOUNT = re.compile(
     rf"\b(?:costs?|priced?\s+at|price\s+is)\s*\$?({NUMBER}).*?({NUMBER})\s*%\s*(?:off|discount)",
     re.IGNORECASE,
 )
+_DISCOUNT_ITEM = re.compile(
+    rf"\$?({NUMBER})\s+(?:item|product|purchase).*?discounted\s+by\s+({NUMBER})\s*(?:%|percent)",
+    re.IGNORECASE,
+)
 _PERCENT_OF = re.compile(rf"\b({NUMBER})\s*(?:%|percent)\s+of\s+\$?({NUMBER})\b", re.IGNORECASE)
 _AVERAGE = re.compile(
     r"^(?:(?:find|calculate|compute|what is)\s+(?:the\s+)?)?(?:average|mean)\s+(?:of\s+)?"
@@ -68,6 +72,57 @@ _QUADRATIC = re.compile(
     r"^(?:solve\s*)?(?P<a>[+-]?\d*)x(?:\^2|²)\s*(?P<bsign>[+-])\s*(?P<b>\d*)x\s*(?P<csign>[+-])\s*(?P<c>\d+(?:\.\d+)?)\s*=\s*0[?.!]*$",
     re.I,
 )
+
+_SMALL_NUMBER_WORDS = {
+    "zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+    "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+    "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14,
+    "fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18,
+    "nineteen": 19, "twenty": 20, "thirty": 30, "forty": 40,
+    "fifty": 50, "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90,
+}
+
+
+def _small_word_number(text: str) -> int | None:
+    words = text.lower().replace("-", " ").split()
+    if not words or any(word not in _SMALL_NUMBER_WORDS for word in words):
+        return None
+    if len(words) > 2:
+        return None
+    values = [_SMALL_NUMBER_WORDS[word] for word in words]
+    if len(values) == 2 and not (values[0] >= 20 and values[0] % 10 == 0 and values[1] < 10):
+        return None
+    return sum(values)
+
+
+def _word_number_response(text: str) -> str | None:
+    number_words = r"[a-z]+(?:[- ][a-z]+)?"
+    direct = re.fullmatch(
+        rf"(?:what(?: is|'s)|calculate|compute)\s+({number_words})\s+"
+        rf"(plus|minus|times|multiplied by|divided by)\s+({number_words})[?.!]*",
+        text,
+        re.IGNORECASE,
+    )
+    if direct:
+        left, right = _small_word_number(direct.group(1)), _small_word_number(direct.group(3))
+        if left is None or right is None:
+            return None
+        operator = direct.group(2).lower()
+        if operator == "plus":
+            return f"{left} + {right} = {left + right}"
+        if operator == "minus":
+            return f"{left} - {right} = {left - right}"
+        if operator in {"times", "multiplied by"}:
+            return f"{left} * {right} = {left * right}"
+        if right == 0:
+            return "Division by zero is undefined."
+        return f"{left} / {right} = {_render_fraction(Fraction(left, right))}"
+    prime = re.fullmatch(rf"is\s+({number_words})\s+(?:a\s+)?prime(?: number)?[?.!]*", text, re.I)
+    if prime:
+        value = _small_word_number(prime.group(1))
+        if value is not None:
+            return f"{value} is {'prime' if _is_prime(value) else 'not prime'}."
+    return None
 
 
 def _decimal(text: str) -> Decimal:
@@ -182,6 +237,9 @@ def exact_math_response(message: str) -> str | None:
     expression_reply = _expression_response(text)
     if expression_reply is not None:
         return expression_reply
+    word_number_reply = _word_number_response(text)
+    if word_number_reply is not None:
+        return word_number_reply
 
     match = _ROOT.fullmatch(text)
     if match:
@@ -313,7 +371,7 @@ def exact_math_response(message: str) -> str | None:
             unit = "kilometers" if re.search(r"km/h|kilometers?\s+per", text, re.I) else "miles"
             return f"Distance = speed × time = {_render(speed)} × {_render(hours)} = {_render(distance)} {unit}."
 
-        match = _DISCOUNT.search(text)
+        match = _DISCOUNT.search(text) or _DISCOUNT_ITEM.search(text)
         if match and re.search(r"\b(?:sale price|new price|pay|cost after|how much)\b", text, re.I):
             price, percent = _decimal(match.group(1)), _decimal(match.group(2))
             sale = price * (Decimal(100) - percent) / Decimal(100)

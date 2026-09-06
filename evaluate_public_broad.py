@@ -50,6 +50,7 @@ def main() -> None:
     p=argparse.ArgumentParser(); p.add_argument("--checkpoint",required=True); p.add_argument("--tokenizer",required=True)
     p.add_argument("--mode",choices=("raw","production"),default="raw"); p.add_argument("--output",required=True)
     p.add_argument("--compact-prompt", action="store_true", help="Use the compact system prompt used by v12/v13 training")
+    p.add_argument("--category", help="Run only one benchmark category")
     a=p.parse_args()
     service=PublicModelService(
         Path(a.checkpoint), "cuda", assistance_enabled=a.mode=="production",
@@ -57,12 +58,22 @@ def main() -> None:
         system_prompt=TRAINING_SYSTEM_PROMPT if a.compact_prompt else DEFAULT_SYSTEM_PROMPT,
     )
     results=[]
-    for i,(cat,prompt,expected) in enumerate(CASES):
-        _,reply=service.chat(prompt,f"single-{i}",140,.58); passed=matches(reply,expected)
-        results.append({"category":cat,"prompt":prompt,"reply":reply,"passed":passed}); print(f"[{cat}] {'PASS' if passed else 'FAIL'} {reply}")
-    for i,(cat,turns) in enumerate(MULTI):
+    selected_cases = [case for case in CASES if a.category is None or case[0] == a.category]
+    selected_multi = [case for case in MULTI if a.category is None or case[0] == a.category]
+    for i,(cat,prompt,expected) in enumerate(selected_cases):
+        try:
+            _,reply=service.chat(prompt,f"single-{i}",140,.58); error=None
+        except RuntimeError as exc:
+            reply=""; error=str(exc)
+        passed=matches(reply,expected)
+        results.append({"category":cat,"prompt":prompt,"reply":reply,"passed":passed,"error":error}); print(f"[{cat}] {'PASS' if passed else 'FAIL'} {reply}", flush=True)
+    for i,(cat,turns) in enumerate(selected_multi):
         for turn,(prompt,expected) in enumerate(turns):
-            _,reply=service.chat(prompt,f"multi-{i}",140,.58); results.append({"category":cat,"prompt":prompt,"reply":reply,"passed":matches(reply,expected),"turn":turn})
+            try:
+                _,reply=service.chat(prompt,f"multi-{i}",140,.58); error=None
+            except RuntimeError as exc:
+                reply=""; error=str(exc)
+            results.append({"category":cat,"prompt":prompt,"reply":reply,"passed":matches(reply,expected),"turn":turn,"error":error})
     cats={}
     for cat in sorted({r["category"] for r in results}):
         group=[r for r in results if r["category"]==cat]; cats[cat]={"score":sum(r["passed"] for r in group),"total":len(group)}

@@ -1,14 +1,15 @@
-"""Small, stable metadata source for ChudGPT identity repair.
+"""Small, stable metadata source for ChudGPT and AI identity grounding.
 
 This is deliberately limited to project identity. It is not a general answer
-database and is consulted only after the neural model produces an unusable or
-identity-confused reply to an explicit identity/family question.
+database and is consulted only for explicit AI, identity, capability, creator,
+or ChudGPT-family questions.
 """
 
 from __future__ import annotations
 
 FAMILY_FACTS: dict[str, str] = {
     "public": "ChudGPT-Public is the current public experimental ChudGPT language model and API.",
+    "music": "ChudGPT-Public-Music V1 is the original-songwriting member of the public family. It generates lyrics, hooks, titles, styles, rewrites, and lyric mashups.",
     "plus": "ChudGPT Plus is a conversational ChudGPT model and serving profile.",
     "pro": "ChudGPT Pro is a general-use profile built from Plus with a larger runtime conversation window and stronger recovery.",
     "code": "ChudGPT Code is the programming-focused ChudGPT experience.",
@@ -24,7 +25,8 @@ PUBLIC_IDENTITY = (
 )
 
 FAMILY_SUMMARY = (
-    "ChudGPT is the overall project and model family. Its variants include Public, Plus, Pro, "
-    "Code, Ultimate, intentionally broken Buggy, deliberately chaotic MEGA CHUD, and archived "
-    "700, 1300, 1500, and 1600 training snapshots."
+    "ChudGPT is Astra's overall project and model family. Its twelve served model APIs are "
+    "ChudGPT-Public V20, ChudGPT-Public-Music V1, Plus, Pro, Code, Ultimate, intentionally "
+    "broken Buggy, deliberately chaotic MEGA CHUD, and the historical 700, 1300, 1500, and "
+    "1600 training snapshots."
 )
