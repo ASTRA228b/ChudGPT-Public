@@ -671,6 +671,49 @@ def test_generic_uncertainty_fallbacks_are_rejected(reply: str) -> None:
     assert "generic-uncertainty-fallback" in reasons
 
 
+def test_exact_sentence_and_forbidden_word_constraints_are_checked() -> None:
+    prompt = "Explain gravity in exactly 3 sentences. Do not use the words force, pull, or mass."
+    good = "Gravity curves spacetime. Objects follow those curves. Planets therefore orbit stars."
+    wrong_count = "Gravity curves spacetime. Objects follow those curves."
+    forbidden = "Gravity curves spacetime. It can pull objects. Planets therefore orbit stars."
+    assert assess_generated_reply(prompt, good)[0]
+    assert "sentence-count-constraint" in assess_generated_reply(prompt, wrong_count)[1]
+    assert "forbidden-word-constraint" in assess_generated_reply(prompt, forbidden)[1]
+
+
+def test_forbidden_subject_name_does_not_trigger_false_relevance_failure() -> None:
+    prompt = "Describe Minecraft without saying Minecraft, block, cube, craft, mine, Steve, or Creeper."
+    reply = "Explore a generated wilderness, gather resources, build shelters, and battle monsters after sunset."
+    valid, reasons = assess_generated_reply(prompt, reply)
+    assert valid
+    assert "no-shared-subject" not in reasons
+
+
+def test_exclusive_code_line_limit_is_checked() -> None:
+    prompt = "Write a C# script under 3 lines."
+    assert assess_generated_reply(prompt, "```csharp\nusing System;\nclass A {}\n```")[0]
+    _, reasons = assess_generated_reply(prompt, "```csharp\nusing System;\nclass A\n{\n}\n```")
+    assert "line-count-constraint" in reasons
+
+
+def test_prose_after_csharp_fence_is_not_mistaken_for_another_language() -> None:
+    prompt = "Write a C# Unity script and explain one performance mistake."
+    reply = "```csharp\nusing UnityEngine;\npublic class Demo : MonoBehaviour {}\n```\nUpdating UI every frame can be wasteful."
+    valid, reasons = assess_generated_reply(prompt, reply)
+    assert valid
+    assert "mixed-programming-languages" not in reasons
+
+
+def test_broken_csharp_identifiers_and_duplicate_methods_are_rejected() -> None:
+    prompt = "Write a C# Unity FPS script."
+    good = "```csharp\nusing UnityEngine;\npublic class Fps : MonoBehaviour { float fps; void Update() => fps = 1f / Time.deltaTime; }\n```"
+    undeclared = "```csharp\nusing UnityEngine;\npublic class Fps : MonoBehaviour\n{\nfloat fps;\nvoid Update() => elapsed = 1f / Time.deltaTime;\n}\n```"
+    duplicate = "```csharp\nusing UnityEngine;\npublic class Fps : MonoBehaviour { void Update() {} void Update() {} }\n```"
+    assert assess_generated_reply(prompt, good)[0]
+    assert "broken-csharp-integrity" in assess_generated_reply(prompt, undeclared)[1]
+    assert "broken-csharp-integrity" in assess_generated_reply(prompt, duplicate)[1]
+
+
 @pytest.mark.parametrize(
     ("prompt", "fragment"),
     [

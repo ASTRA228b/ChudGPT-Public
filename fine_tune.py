@@ -29,6 +29,8 @@ class FineTuneConfig:
     model_config: str = "configs/model.yaml"
     tokenizer_path: str = "artifacts/tokenizer.json"
     dataset_path: str = "data/finetune/conversations.jsonl"
+    additional_dataset_path: str | None = None
+    additional_dataset_repeat: int = 1
     base_checkpoint: str = "checkpoints/latest.pt"
     output_dir: str = "checkpoints/finetuned"
     seed: int = 42
@@ -123,6 +125,15 @@ def main() -> None:
     training_records, validation_records = split_records(
         records, config.validation_fraction, config.seed
     )
+    if config.additional_dataset_path:
+        if config.additional_dataset_repeat < 1:
+            raise ValueError("additional_dataset_repeat must be at least one")
+        additional_records = load_sft_records(Path(config.additional_dataset_path))
+        additional_training, additional_validation = split_records(
+            additional_records, config.validation_fraction, config.seed + 1
+        )
+        training_records.extend(additional_training * config.additional_dataset_repeat)
+        validation_records.extend(additional_validation)
     training_data = SupervisedConversationDataset(
         training_records, tokenizer, model_config.context_length,
         system_prompt=config.system_prompt or DEFAULT_SYSTEM_PROMPT,

@@ -208,9 +208,11 @@ class PublicModelService:
                 "broken-code-fence", "corrupt-fragment", "repetition-loop",
                 "degenerate-repetition", "repeated-clause", "identity-repetition",
                 "broken-identity-grammar", "recursive-self-definition",
-                "wrong-programming-language", "mixed-programming-languages", "code-only-constraint",
+                "wrong-programming-language", "mixed-programming-languages", "broken-csharp-integrity",
+                "code-only-constraint",
                 "missing-requested-code", "no-shared-subject", "missing-story-subject",
-                "wrong-item-count", "sentence-count-constraint", "yes-no-constraint",
+                "wrong-item-count", "sentence-count-constraint", "forbidden-word-constraint",
+                "line-count-constraint", "yes-no-constraint",
                 "generic-uncertainty-fallback", "unrelated-topic-starter",
                 "unrequested-technical-topic", "technical-reply-to-emotional-prompt",
             }

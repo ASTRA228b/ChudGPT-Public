@@ -59,7 +59,9 @@ def has_structured_list(text: str) -> bool:
 LANGUAGE_MARKERS = {
     "python": (r"\bpython\b", r"\bdef\s+\w+\s*\(|\bimport\s+\w+"),
     "csharp": (r"(?:\bcsharp\b|\bunity\b|(?<!\w)c#(?!\w))", r"\busing\s+(?:System|UnityEngine)\b|\b(?:public|private)\s+(?:class|void)\b"),
-    "javascript": (r"\b(?:javascript|js|node(?:\.js)?)\b", r"\b(?:const|let|var)\s+\w+|\bfunction\s+\w+|=>"),
+    # `=>` is also valid C# expression-body syntax, so it cannot identify
+    # JavaScript by itself without creating false mixed-language rejections.
+    "javascript": (r"\b(?:javascript|js|node(?:\.js)?)\b", r"\b(?:const|let|var)\s+\w+|\bfunction\s+\w+"),
     "typescript": (r"\b(?:typescript|ts)\b", r"\binterface\s+\w+|:\s*(?:string|number|boolean)\b"),
     "java": (r"\bjava\b", r"\bpublic\s+static\s+void\s+main\b|\bSystem\.out\.println\b"),
     "rust": (r"\brust\b", r"\bfn\s+\w+\s*\(|\blet\s+mut\b"),
@@ -81,10 +83,38 @@ def detected_programming_languages(reply: str) -> set[str]:
         language for language, (_, syntax_pattern) in LANGUAGE_MARKERS.items()
         if re.search(syntax_pattern, reply, re.I)
     }
-    fences = {tag.lower() for tag in re.findall(r"```\s*([a-zA-Z+#]+)", reply)}
+    # Only a language tag on the same line as an opening fence counts. The
+    # previous cross-line pattern mistook the first prose word after a closing
+    # fence (for example "Updating") for a second programming language.
+    fences = {
+        tag.lower()
+        for tag in re.findall(r"(?m)^```[ \t]*([a-zA-Z+#]+)[ \t]*$", reply)
+    }
     aliases = {"cs": "csharp", "c#": "csharp", "js": "javascript", "ts": "typescript", "py": "python", "c++": "cpp"}
     found.update(aliases.get(tag, tag) for tag in fences if tag)
     return found
+
+
+def _csharp_integrity_issues(reply: str) -> bool:
+    """Catch common small-model C# identifier and structure breakage."""
+    blocks = re.findall(r"```(?:csharp|cs|c#)?[ \t]*\r?\n?(.*?)```", reply, re.I | re.S)
+    code = "\n".join(blocks) if blocks else reply
+    if code.count("{") != code.count("}") or code.count("(") != code.count(")"):
+        return True
+    method_names = re.findall(r"\bvoid\s+([A-Za-z_]\w*)\s*\(", code)
+    if len(method_names) != len(set(method_names)):
+        return True
+    if "TMP_Text" in code and not re.search(r"\busing\s+TMPro\s*;", code):
+        return True
+    declared = set(re.findall(
+        r"\b(?:float|double|int|string|bool|var|TMP_Text)\s+([A-Za-z_]\w*)\b",
+        code,
+    ))
+    assigned = set(re.findall(r"(?m)^\s*([a-z_][A-Za-z0-9_]*)\s*(?:=|\+=|-=|\*=|/=)", code))
+    assigned.update(re.findall(r"=>\s*([a-z_][A-Za-z0-9_]*)\s*(?:=|\+=|-=|\*=|/=)", code))
+    member_bases = set(re.findall(r"\b([a-z_][A-Za-z0-9_]*)\.text\s*=", code))
+    allowed_members = {"name", "enabled"}
+    return bool((assigned | member_bases) - declared - allowed_members)
 
 
 def _sentence_count(text: str) -> int:
@@ -93,6 +123,32 @@ def _sentence_count(text: str) -> int:
 
 def _requested_item_count(prompt: str) -> int | None:
     match = re.search(r"\b(?:exactly\s+)?(\d+)\s+(?:steps|ways|ideas|examples|tips|reasons|items|things)\b", prompt, re.I)
+    return int(match.group(1)) if match else None
+
+
+def _requested_sentence_count(prompt: str) -> int | None:
+    match = re.search(r"\b(?:in|using)?\s*exactly\s+(\d+)\s+sentences?\b", prompt, re.I)
+    return int(match.group(1)) if match else None
+
+
+def _forbidden_words(prompt: str) -> set[str]:
+    """Extract simple word-exclusion constraints without supplying an answer."""
+    match = re.search(
+        r"\b(?:do not|don't|without)\s+(?:use|using|say|saying)\s+(?:the\s+)?(?:words?\s+)?(.+?)(?:[.!?]|$)",
+        prompt,
+        re.I,
+    )
+    if not match:
+        return set()
+    return {
+        word.lower()
+        for word in re.findall(r"[A-Za-z][A-Za-z'-]*", match.group(1))
+        if word.lower() not in {"and", "or"}
+    }
+
+
+def _exclusive_line_limit(prompt: str) -> int | None:
+    match = re.search(r"\b(?:under|fewer than|less than)\s+(\d+)\s+(?:code\s+)?lines?\b", prompt, re.I)
     return int(match.group(1)) if match else None
 
 
@@ -272,8 +328,14 @@ def assess_generated_reply(
         listed_items = len(re.findall(r"(?m)^\s*(?:\d+[.)]|[-*])\s+\S+", stripped))
         if listed_items != requested_items:
             reasons.append("wrong-item-count")
-    if re.search(r"\b(?:one|a single) sentence\b", prompt, re.I) and _sentence_count(stripped) != 1:
+    requested_sentences = _requested_sentence_count(prompt)
+    if requested_sentences is None and re.search(r"\b(?:one|a single) sentence\b", prompt, re.I):
+        requested_sentences = 1
+    if requested_sentences is not None and _sentence_count(stripped) != requested_sentences:
         reasons.append("sentence-count-constraint")
+    forbidden_words = _forbidden_words(prompt)
+    if forbidden_words & set(words):
+        reasons.append("forbidden-word-constraint")
     if re.search(r"\b(?:answer|respond|reply)\s+(?:only\s+)?(?:yes or no|with yes or no)\b", prompt, re.I):
         if not re.fullmatch(r"\s*(?:yes|no)[.!]?\s*", stripped, re.I):
             reasons.append("yes-no-constraint")
@@ -315,31 +377,45 @@ def assess_generated_reply(
     ))
     if explicit_code_request and not has_code:
         reasons.append("missing-requested-code")
+    line_limit = _exclusive_line_limit(prompt)
+    if line_limit is not None and has_code:
+        code_blocks = re.findall(r"```(?:[A-Za-z+#]+)?[ \t]*\r?\n?(.*?)```", stripped, re.S)
+        code_text = "\n".join(code_blocks) if code_blocks else stripped
+        code_lines = [line for line in code_text.splitlines() if line.strip()]
+        if len(code_lines) >= line_limit:
+            reasons.append("line-count-constraint")
     requested_language = requested_programming_language(prompt)
     detected_languages = detected_programming_languages(stripped) if has_code else set()
     if requested_language and has_code and detected_languages and requested_language not in detected_languages:
         reasons.append("wrong-programming-language")
     if len(detected_languages) > 1 and not re.search(r"\b(?:compare|convert|translate|both|multiple)\b", prompt, re.I):
         reasons.append("mixed-programming-languages")
+    if requested_language == "csharp" and has_code and _csharp_integrity_issues(stripped):
+        reasons.append("broken-csharp-integrity")
     if re.search(r"\b(?:return|output|respond with)\s+(?:only\s+)?(?:the\s+)?(?:complete\s+)?code\b|\bcode only\b", prompt, re.I):
         outside = re.sub(r"```[\s\S]*?```", "", stripped).strip()
         if outside:
             reasons.append("code-only-constraint")
-    if classify_intent(prompt).name != "meme" and not has_strong_math_intent(prompt) and re.search(
+    if (
+        classify_intent(prompt).name != "meme"
+        and not has_strong_math_intent(prompt)
+        and not explicit_code_request
+        and re.search(
         r"(?:\$?\d+(?:\.\d+)?\s*(?:[+*/=×÷]|-(?=\s*\d))\s*\$?\d+|"
         r"\b(?:multiply|divide|calculate|equals)\b.{0,50}\d|"
         r"\b(?:distance equals|speed times time|percent of|split equally into)\b)",
         stripped,
         re.I,
+        )
     ):
         reasons.append("unrequested-math")
-    if not has_strong_math_intent(prompt) and re.search(
+    if not has_strong_math_intent(prompt) and not explicit_code_request and re.search(
         r"\b\d+(?:\.\d+)?\s*[^a-z0-9\s.,]{1,3}\s*-?\d+(?:\.\d+)?\b",
         stripped,
         re.I,
     ):
         reasons.append("unrequested-numeric-expression")
-    if not has_strong_math_intent(prompt) and re.search(r"[$€£]\s*0{2,}\d|\b\d{4}\b", stripped):
+    if not has_strong_math_intent(prompt) and not explicit_code_request and re.search(r"[$€£]\s*0{2,}\d|\b\d{4}\b", stripped):
         prompt_numbers = set(re.findall(r"\b\d{4}\b", prompt))
         reply_numbers = set(re.findall(r"\b\d{4}\b", stripped))
         if not prompt_numbers or not reply_numbers <= prompt_numbers:
@@ -373,7 +449,13 @@ def assess_generated_reply(
         prompt_anchors = set(_words(prompt)) - STOP_WORDS - {"mean", "meme", "memes"}
         reply_anchors = set(_words(stripped))
         shared_subject = shared_subject or bool(prompt_anchors & reply_anchors)
-    if prompt_words and not social_prompt and not shared_subject:
+    # When the user forbids the subject's obvious name and aliases, lexical
+    # overlap is the wrong relevance signal. Other quality checks still reject
+    # malformed, leaked, or structurally invalid generations.
+    if (
+        prompt_words and not social_prompt and not shared_subject
+        and not forbidden_words and not (explicit_code_request and has_code)
+    ):
         reasons.append("no-shared-subject")
     topic_starter = re.search(r"\bone useful way into ([a-z][a-z -]{1,40}) is\b", lowered)
     if topic_starter and topic_starter.group(1).strip() not in prompt.lower():

@@ -39,12 +39,18 @@ def main() -> None:
     service = PublicModelService(Path(args.checkpoint), args.device, assistance_enabled=True)
     results = []
     for index, (category, prompt, required, forbidden) in enumerate(CASES):
-        _, reply = service.chat(prompt, f"v20-{index}", 140, 0.55)
+        try:
+            _, reply = service.chat(prompt, f"v20-{index}", 140, 0.55)
+        except RuntimeError as error:
+            reply = f"ERROR: {error}"
         passed = bool(re.search(required, reply, re.I | re.S)) and not (forbidden and re.search(forbidden, reply, re.I))
         results.append({"category": category, "prompt": prompt, "reply": reply, "passed": passed})
         print(f"{category:12} {'PASS' if passed else 'FAIL'} {prompt!r} -> {reply!r}", flush=True)
     # Discord mode is evaluated separately from normal mode.
-    _, discord_reply = service.chat("What is a server role?", "discord-mode", 120, 0.55, "discord")
+    try:
+        _, discord_reply = service.chat("What is a server role?", "discord-mode", 120, 0.55, "discord")
+    except RuntimeError as error:
+        discord_reply = f"ERROR: {error}"
     discord_passed = bool(re.search(r"permission|member|server", discord_reply, re.I))
     results.append({"category": "discord_mode", "prompt": "What is a server role?", "reply": discord_reply, "passed": discord_passed})
     report = {"checkpoint": args.checkpoint, "passed": sum(row["passed"] for row in results), "total": len(results), "results": results}
