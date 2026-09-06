@@ -756,6 +756,10 @@ def test_help_pagination_view_has_interactive_navigation() -> None:
     assert requested_help_page("commands 3") == 3
     assert requested_help_page("hello") is None
     assert "page 4/4" in discord_help_page("!chud", 4)
+    first_page = discord_help_page("!chud", 1)
+    assert "`!chud models`" in first_page
+    assert "`!chud model <id>`" in first_page
+    assert all(f"`{model_id}`" in first_page for model_id in DISCORD_MODELS)
     async def make_view() -> HelpPaginationView:
         return HelpPaginationView("!chud", 2, requester_id=123)
 
