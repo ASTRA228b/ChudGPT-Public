@@ -121,6 +121,16 @@ def test_public_service_routes_canned_greeting_and_keeps_history(monkeypatch) ->
     assert service.last_assistance_reason == "canned_greeting"
 
 
+def test_plain_greetings_match_their_word_and_repeat_with_variety() -> None:
+    assert canned_greeting_response("hi") == "Hi! I'm ChudGPT-Public. What's up?"
+    assert canned_greeting_response("hello", []).startswith("Hello!")
+    assert canned_greeting_response("hey", []).startswith("Hey!")
+    assert canned_greeting_response("yo", []).startswith("Yo!")
+    first = canned_greeting_response("hi", [])
+    second = canned_greeting_response("hi", [{"role": "assistant", "content": first or ""}])
+    assert first != second
+
+
 def test_public_service_routes_unambiguous_arithmetic_through_exact_math(monkeypatch) -> None:
     service = object.__new__(PublicModelService)
     service.lock = __import__("threading").RLock()

@@ -51,8 +51,22 @@ def canned_greeting_response(
     if text in MULTILINGUAL_GREETINGS:
         return MULTILINGUAL_GREETINGS[text]
 
-    if re.fullmatch(r"(?:hi|hello|hey|yo)(?: there| mate| chudgpt| chud)?", text):
-        return "Hey, I'm ChudGPT-Public. What's up?"
+    plain_greeting = re.fullmatch(r"(hi|hello|hey|yo)(?: there| mate| chudgpt| chud)?", text)
+    if plain_greeting:
+        variants = (
+            "Hi! I'm ChudGPT-Public. What's up?",
+            "Hello! ChudGPT-Public here. What are we talking about today?",
+            "Hey! I'm ChudGPT-Public. How's it going?",
+            "Yo! ChudGPT-Public is online. What's going on?",
+        )
+        first_for_word = {"hi": 0, "hello": 1, "hey": 2, "yo": 3}
+        prior_plain_greetings = sum(
+            str(turn.get("role", "")) == "assistant"
+            and any(str(turn.get("content", "")).startswith(prefix) for prefix in ("Hi!", "Hello!", "Hey!", "Yo!"))
+            for turn in history
+        )
+        index = (first_for_word[plain_greeting.group(1)] + prior_plain_greetings) % len(variants)
+        return variants[index]
 
     if re.fullmatch(r"good (?:morning|afternoon|evening)", text):
         period = text.removeprefix("good ")
