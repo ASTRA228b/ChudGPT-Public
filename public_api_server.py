@@ -38,6 +38,7 @@ from chudlm.response_quality import (
 )
 from chudlm.text_normalization import normalize_user_text
 from music_instructions import MUSIC_MODEL_NAME, MUSIC_SYSTEM_PROMPT
+from public_greetings import canned_greeting_response
 from public_identity import project_identity_response
 from public_math import exact_math_response
 
@@ -83,7 +84,7 @@ class ClearRequest(BaseModel):
 
 
 class PublicModelService:
-    """Serve neural conversation plus narrowly scoped, auditable fact systems."""
+    """Serve neural conversation plus narrowly scoped, auditable response systems."""
 
     def __init__(self, checkpoint_path: Path, device_name: str, assistance_enabled: bool = True,
                  tokenizer_path: Path | None = None,
@@ -108,8 +109,8 @@ class PublicModelService:
         self.lock = threading.Lock()
         # Kept as a compatibility attribute for older callers and response
         # schemas. The legacy broad responder remains disabled. Exact math and
-        # immutable identity facts are routed explicitly in chat(), while all
-        # unknown and general requests remain neural.
+        # immutable identity facts and basic greetings are routed explicitly in
+        # chat(), while all unknown and general requests remain neural.
         self.assistance_enabled = False
         self.last_assistance_reason: str | None = None
         self.system_prompt = system_prompt
@@ -324,15 +325,20 @@ class PublicModelService:
                     reply = identity_reply
                     self.last_assistance_reason = "project_identity"
                 else:
-                    # A 21M model becomes self-contaminating when dozens of its own bad
-                    # generations remain in view. Keep the four most recent exchanges;
-                    # this is context selection only and never changes model output.
-                    generation_history = history[-8:]
-                    active_prompt = DISCORD_SYSTEM_PROMPT if context_mode == "discord" else self.system_prompt
-                    if context_mode == "discord" and discord_context:
-                        active_prompt += " Current Discord context: " + discord_context
-                    reply = self._generate_raw(generation_history, max_new_tokens, temperature, active_prompt)
-                    self.last_assistance_reason = None
+                    greeting_reply = canned_greeting_response(normalized_message, history[:-1])
+                    if greeting_reply is not None:
+                        reply = greeting_reply
+                        self.last_assistance_reason = "canned_greeting"
+                    else:
+                        # A 21M model becomes self-contaminating when dozens of its own bad
+                        # generations remain in view. Keep the four most recent exchanges;
+                        # this is context selection only and never changes model output.
+                        generation_history = history[-8:]
+                        active_prompt = DISCORD_SYSTEM_PROMPT if context_mode == "discord" else self.system_prompt
+                        if context_mode == "discord" and discord_context:
+                            active_prompt += " Current Discord context: " + discord_context
+                        reply = self._generate_raw(generation_history, max_new_tokens, temperature, active_prompt)
+                        self.last_assistance_reason = None
             history.append({"role": "assistant", "content": reply})
             self.sessions[active_session] = history
             self.sessions.move_to_end(active_session)
@@ -1330,8 +1336,8 @@ def create_app(checkpoint: Path, device: str, assistance_enabled: bool = True,
             "exact_math": True,
             "identity_grounding": True,
             "fallbacks": False,
-            "grounded_systems": ["exact_math", "project_identity"],
-            "generation_policy": "neural generation with narrow exact-math and immutable project-identity grounding; unknown and general requests remain neural",
+            "grounded_systems": ["exact_math", "project_identity", "canned_greeting"],
+            "generation_policy": "neural generation with narrow exact-math, immutable project-identity, and basic greeting systems; unknown and general requests remain neural",
             "emoji_awareness": {
                 "library": "emoji 2.15.0",
                 "unicode_emoji_version": service.emoji_database.max_emoji_version,

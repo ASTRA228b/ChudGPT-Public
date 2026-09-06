@@ -26,6 +26,7 @@ def test_music_chat_bypasses_every_public_answer_router() -> None:
     music_source = source[source.index("class MusicModelService"):source.index("def create_app(")]
     assert "exact_instruction_response(" not in music_source
     assert "exact_math_response(" not in music_source
+    assert "canned_greeting_response(" not in music_source
     assert "find_meme_fact(" not in music_source
     assert "emoji_semantic_response(" not in music_source
     assert "self.reliable.answer(" not in music_source

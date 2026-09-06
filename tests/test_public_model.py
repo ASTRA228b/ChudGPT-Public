@@ -9,6 +9,7 @@ from public_api_server import PublicModelService, selected_checkpoint
 from public_meme_facts import find_meme_fact
 from public_math import exact_integer_arithmetic, exact_math_response
 from public_identity import project_identity_response
+from public_greetings import canned_greeting_response
 from short_prompt_benchmark import CASES
 
 
@@ -45,7 +46,7 @@ def test_runtime_uses_only_approved_narrow_grounding_and_is_auditable() -> None:
     forbidden = (
             "ExampleRetriever", "classify_intent",
         "_calculate_arithmetic", "_reference_answer", "_comparison_answer",
-        "_self_answer", "_greeting", "_joke_answer", "_random_code_answer",
+        "_self_answer", "_joke_answer", "_random_code_answer",
         "_short_followup", "_correction_reply", "session_facts",
     )
     for symbol in forbidden:
@@ -54,6 +55,7 @@ def test_runtime_uses_only_approved_narrow_grounding_and_is_auditable() -> None:
     assert "PublicReliableResponder" not in source
     assert "exact_math_response" in source
     assert "project_identity_response" in source
+    assert "canned_greeting_response" in source
     assert "exact_instruction_response" not in source
     assert '"fallbacks": False' in source
     assert "_calculate_arithmetic" not in source
@@ -88,6 +90,35 @@ def test_public_service_routes_identity_facts_without_generic_fallback(monkeypat
     _, reply = service.chat("Who are you?", "identity-test")
     assert "ChudGPT-Public V20" in reply
     assert service.last_assistance_reason == "project_identity"
+
+
+def test_canned_greetings_are_reliable_and_do_not_capture_real_tasks() -> None:
+    for prompt in (
+        "hi", "Hello!", "Hey there", "yo", "Good morning", "How are you?",
+        "hru", "Hey mate, how is it going?", "what's up", "hola", "こんにちは",
+    ):
+        assert canned_greeting_response(prompt)
+    for prompt in (
+        "Hello, explain gravity", "How are you calculating that?", "Write a hello-world program",
+        "Good morning is the title of my story", "Tell me about greetings",
+    ):
+        assert canned_greeting_response(prompt) is None
+
+
+def test_public_service_routes_canned_greeting_and_keeps_history(monkeypatch) -> None:
+    service = object.__new__(PublicModelService)
+    service.lock = __import__("threading").RLock()
+    service.sessions = __import__("collections").OrderedDict()
+    service.system_prompt = DEFAULT_SYSTEM_PROMPT
+    service.last_assistance_reason = None
+    service.parameters = 20_999_184
+    service.model = type("Model", (), {"config": type("Config", (), {"context_length": 1024})()})()
+    monkeypatch.setattr(service, "_generate_raw", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("neural generation should not run")))
+    _, first = service.chat("hru", "greeting-test")
+    _, second = service.chat("good", "greeting-test")
+    assert "ready to chat" in first
+    assert second == "Glad to hear it. What's on your mind?"
+    assert service.last_assistance_reason == "canned_greeting"
 
 
 def test_public_service_routes_unambiguous_arithmetic_through_exact_math(monkeypatch) -> None:
