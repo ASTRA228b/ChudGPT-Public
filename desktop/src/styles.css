@@ -876,7 +876,8 @@ button {
   min-width: 0;
 }
 .composer-model select {
-  width: 158px;
+  width: 248px;
+  min-width: 248px;
   padding: 6px 24px 6px 8px;
   border: 1px solid rgba(78, 191, 255, 0.25);
   border-radius: 7px;
@@ -886,6 +887,13 @@ button {
 }
 .composer-model select:disabled {
   opacity: 0.55;
+}
+@media (max-width: 980px) {
+  .composer-model select {
+    width: 220px;
+    min-width: 220px;
+    font-size: 10px;
+  }
 }
 .welcome {
   height: 100%;
