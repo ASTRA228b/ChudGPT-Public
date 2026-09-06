@@ -15,6 +15,7 @@
     "v20": "checkpoints/public_v20_final/best.pt",
     "v20_quality": "checkpoints/public_v20_quality/best.pt",
     "v20_challenge_recovery": "checkpoints/public_v20_recovery_challenge/best.pt",
-    "v20_challenge_polish": "checkpoints/public_v20_challenge_polish/latest.pt"
+    "v20_challenge_polish": "checkpoints/public_v20_challenge_polish/latest.pt",
+    "v20_math_expert": "checkpoints/public_v20_math/latest.pt"
   }
 }

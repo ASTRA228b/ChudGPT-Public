@@ -39,7 +39,7 @@ def test_context_keeps_recent_history_and_system_prompt() -> None:
     assert len(ids) <= 1024
 
 
-def test_runtime_is_neural_only_and_auditable() -> None:
+def test_runtime_uses_only_the_approved_exact_math_tool_and_is_auditable() -> None:
     source = Path("public_api_server.py").read_text(encoding="utf-8")
     forbidden = (
             "ExampleRetriever", "classify_intent",
@@ -52,11 +52,23 @@ def test_runtime_is_neural_only_and_auditable() -> None:
     assert "raw_model_generation" in source
     assert "_assist_identity" not in source
     assert "PublicReliableResponder" not in source
-    assert "exact_math_response" not in source
+    assert "exact_math_response" in source
     assert "exact_instruction_response" not in source
     assert '"fallbacks": False' in source
     assert "_calculate_arithmetic" not in source
     assert "_random_code_answer" not in source
+
+
+def test_public_service_routes_unambiguous_arithmetic_through_exact_math(monkeypatch) -> None:
+    service = object.__new__(PublicModelService)
+    service.lock = __import__("threading").RLock()
+    service.sessions = __import__("collections").OrderedDict()
+    service.system_prompt = DEFAULT_SYSTEM_PROMPT
+    service.last_assistance_reason = None
+    monkeypatch.setattr(service, "_generate_raw", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("neural generation should not run")))
+    _, reply = service.chat("1 + 1", "math-test")
+    assert reply == "1 + 1 = 2"
+    assert service.last_assistance_reason == "exact_math"
 
 
 def test_technical_retry_never_uses_a_canned_answer() -> None:

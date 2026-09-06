@@ -38,6 +38,7 @@ from chudlm.response_quality import (
 )
 from chudlm.text_normalization import normalize_user_text
 from music_instructions import MUSIC_MODEL_NAME, MUSIC_SYSTEM_PROMPT
+from public_math import exact_math_response
 
 ROOT = Path(__file__).resolve().parent
 MAX_SESSIONS = 1_000
@@ -307,15 +308,20 @@ class PublicModelService:
                 include_discord=context_mode == "discord",
             )
             history.append({"role": "user", "content": model_message})
-            # A 21M model becomes self-contaminating when dozens of its own bad
-            # generations remain in view. Keep the four most recent exchanges;
-            # this is context selection only and never changes model output.
-            generation_history = history[-8:]
-            active_prompt = DISCORD_SYSTEM_PROMPT if context_mode == "discord" else self.system_prompt
-            if context_mode == "discord" and discord_context:
-                active_prompt += " Current Discord context: " + discord_context
-            reply = self._generate_raw(generation_history, max_new_tokens, temperature, active_prompt)
-            self.last_assistance_reason = None
+            math_reply = exact_math_response(normalized_message)
+            if math_reply is not None:
+                reply = math_reply
+                self.last_assistance_reason = "exact_math"
+            else:
+                # A 21M model becomes self-contaminating when dozens of its own bad
+                # generations remain in view. Keep the four most recent exchanges;
+                # this is context selection only and never changes model output.
+                generation_history = history[-8:]
+                active_prompt = DISCORD_SYSTEM_PROMPT if context_mode == "discord" else self.system_prompt
+                if context_mode == "discord" and discord_context:
+                    active_prompt += " Current Discord context: " + discord_context
+                reply = self._generate_raw(generation_history, max_new_tokens, temperature, active_prompt)
+                self.last_assistance_reason = None
             history.append({"role": "assistant", "content": reply})
             self.sessions[active_session] = history
             self.sessions.move_to_end(active_session)
@@ -1310,9 +1316,10 @@ def create_app(checkpoint: Path, device: str, assistance_enabled: bool = True,
             "context_length": service.model.config.context_length,
             "checkpoint": str(service.checkpoint_path.relative_to(ROOT)),
             "raw_model_generation": True,
+            "exact_math": True,
             "identity_assistance": False,
             "fallbacks": False,
-            "generation_policy": "neural-only; invalid samples are rejected, never replaced",
+            "generation_policy": "neural generation with conservative exact-math routing; invalid neural samples are rejected, never replaced",
             "emoji_awareness": {
                 "library": "emoji 2.15.0",
                 "unicode_emoji_version": service.emoji_database.max_emoji_version,
@@ -1399,7 +1406,8 @@ def create_app(checkpoint: Path, device: str, assistance_enabled: bool = True,
         if not keep_session:
             service.clear(session_id)
         return {"reply": reply, "session_id": session_id, "step": service.step,
-                "raw_model_generation": True, "assistance_used": service.last_assistance_reason is not None,
+                "raw_model_generation": service.last_assistance_reason is None,
+                "assistance_used": service.last_assistance_reason is not None,
                 "assistance_reason": service.last_assistance_reason}
 
     @app.post("/api/chat")

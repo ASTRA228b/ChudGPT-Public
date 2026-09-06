@@ -141,6 +141,40 @@ def test_v20_exact_math(prompt: str, expected: str) -> None:
 
 
 @pytest.mark.parametrize(
+    ("prompt", "expected"),
+    [
+        ("1 + 1", "1 + 1 = 2"),
+        ("What is (3 + 5) * 2?", "= 16"),
+        ("1/2 + 1/3", "= 5/6"),
+        ("2^10", "= 1024"),
+        ("Solve for x: 3x + 2 = 11", "x = 3"),
+        ("Solve 4x = 20", "x = 5"),
+        ("Find the median of 7, 2, 9, 4", "5.5"),
+        ("A rectangle is 8 by 5. Find its area and perimeter.", "Area = 8 × 5 = 40"),
+        ("A right triangle has legs 3 and 4. Find the hypotenuse.", "= 5"),
+        ("What is the square root of 144?", "√144 = 12"),
+        ("Calculate 8!", "40320"),
+        ("Find the GCD of 84 and 30", "= 6"),
+        ("Find the LCM of 12 and 18", "= 36"),
+        ("10 choose 3", "= 120"),
+        ("Is 97 a prime number?", "97 is prime"),
+        ("Solve x^2 - 5x + 6 = 0", "x = 3 or x = 2"),
+        ("Find the percent increase from 80 to 100", "25%"),
+        ("Find the area and circumference of a circle with radius 6", "Area = πr² = 36π"),
+    ],
+)
+def test_v20_extended_exact_math(prompt: str, expected: str) -> None:
+    assert expected in (exact_math_response(prompt) or "")
+
+
+def test_v20_expression_evaluator_remains_conservative() -> None:
+    assert exact_math_response("9/11") is None
+    assert exact_math_response("Calculate 9/11") == "9/11 = 9/11"
+    assert exact_math_response("write Python that calculates 1+1") is None
+    assert exact_math_response("2 ** 1000") is None
+
+
+@pytest.mark.parametrize(
     "prompt",
     [
         "Hello",
