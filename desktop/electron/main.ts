@@ -12,6 +12,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const API_BASE = "https://chudgpt-public.vercel.app";
+const MAIN_API_BASE = "https://chudgpt-xi.vercel.app";
 const ALLOWED_LINKS = new Set([
   "https://chudgpt-public.vercel.app/",
   "https://chudgpt-landing.vercel.app/",
@@ -65,26 +66,30 @@ function createWindow(): void {
 }
 
 async function requestApi(
-  endpoint:
-    | "status"
-    | "chat"
-    | "generate"
-    | "clear"
-    | "music/status"
-    | "music/chat"
-    | "music/clear",
+  endpoint: string,
   method: "GET" | "POST",
   body: unknown,
   requestId: string,
 ): Promise<unknown> {
+  const mainService = endpoint.startsWith("main/");
+  const cleanEndpoint = mainService ? endpoint.slice(5) : endpoint;
+  if (
+    !/^(?:status|chat|generate|clear|music\/(?:status|chat|clear)|models\/[a-z0-9]+(?:\/(?:chat|generate|clear))?)$/.test(
+      cleanEndpoint,
+    )
+  )
+    throw new Error("Invalid ChudGPT API endpoint.");
+  const apiBase = mainService ? MAIN_API_BASE : API_BASE;
   const controller = new AbortController();
   requests.set(requestId, controller);
   const timeout = setTimeout(
     () => controller.abort("timeout"),
-    endpoint.endsWith("status") ? 12_000 : 90_000,
+    !cleanEndpoint.endsWith("/chat") && !cleanEndpoint.endsWith("/generate")
+      ? 12_000
+      : 90_000,
   );
   try {
-    const response = await fetch(`${API_BASE}/api/${endpoint}`, {
+    const response = await fetch(`${apiBase}/api/${cleanEndpoint}`, {
       method,
       headers: { "Content-Type": "application/json" },
       body: method === "POST" ? JSON.stringify(body ?? {}) : undefined,

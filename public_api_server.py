@@ -346,6 +346,10 @@ class PublicModelService:
                 "degenerate-repetition", "repeated-clause", "identity-repetition",
                 "broken-identity-grammar", "recursive-self-definition",
                 "wrong-programming-language", "mixed-programming-languages", "code-only-constraint",
+                "missing-requested-code", "no-shared-subject", "missing-story-subject",
+                "wrong-item-count", "sentence-count-constraint", "yes-no-constraint",
+                "generic-uncertainty-fallback", "unrelated-topic-starter",
+                "unrequested-technical-topic", "technical-reply-to-emotional-prompt",
             }
             usable: list[str] = []
             for candidate in candidates:
@@ -360,8 +364,12 @@ class PublicModelService:
                     key=lambda reply: score_generated_reply(prompt, reply)
                     + self._candidate_score(prompt, reply),
                 )
-            raise RuntimeError("Model produced no displayable output after generation attempts")
-        raise RuntimeError("Model produced empty output after generation attempts")
+            # A healthy model request should not become a 503 just because all
+            # sampled candidates failed relevance or format checks. Be honest
+            # about the failed generation and invite one clearer retry instead
+            # of exposing unrelated text or reporting a server outage.
+            return "I couldn't form a relevant answer to that. Try rewording the request with the exact result you want."
+        return "I couldn't generate an answer to that request. Please try wording it another way."
 
     @staticmethod
     def _candidate_score(message: str, reply: str) -> float:
@@ -498,6 +506,10 @@ class PublicModelService:
     def clear(self, session_id: str) -> None:
         with self.lock:
             self.sessions.pop(session_id, None)
+
+
+class MusicGenerationRejected(RuntimeError):
+    """The Music server is healthy, but its neural draft failed quality checks."""
 
 
 class MusicModelService(PublicModelService):
@@ -760,7 +772,11 @@ class MusicModelService(PublicModelService):
         else:
             requested_tokens = max(120, min(max_new_tokens, 300))
             minimum_draft_tokens = 20
-        profiles = self.generation_profiles
+        # Long drafts dominate inference cost on the 21M checkpoint. Two
+        # diverse full-song samples leave useful choice for ranking without
+        # pushing Discord requests toward its 120-second timeout. Shorter
+        # requests retain the wider six-profile search.
+        profiles = self.generation_profiles[:2] if wants_complete_song else self.generation_profiles
         candidates: list[tuple[str, list[str]]] = []
         for sample_temperature, top_k, top_p in profiles:
             output = generate(
@@ -828,6 +844,11 @@ class MusicModelService(PublicModelService):
         selected_score, selected, corrections = max(scored, key=lambda item: item[0])
         selected, filter_corrections = self._safely_filter_repetition(selected, validation_message)
         corrections = [*corrections, *filter_corrections]
+        if wants_complete_song and not self._candidate_meets_music_shape(validation_message, selected):
+            # Do not present a malformed fragment as a completed song. Music
+            # has no canned answer fallback: a failed quality gate remains an
+            # explicit generation failure for the API/client to report.
+            raise MusicGenerationRejected("Music model did not produce a complete, relevant neural draft")
         title_match = re.search(r"(?im)^title\s*:\s*([^\n]+)", selected)
         style_match = re.search(r"(?im)^style\s*:\s*([^\n]+)", selected)
         selected_lines = self._lyric_lines(selected)
@@ -868,12 +889,19 @@ class MusicModelService(PublicModelService):
         min_tokens: int = 0,
     ) -> str:
         """Ask the same Music checkpoint for one compositional component."""
-        stage_prompt = system_prompt + " " + instruction
+        del system_prompt
+        # Music V1 was fine-tuned to follow musical work in the user turn.
+        # Appending stage work to an already long system prompt made the 21M
+        # model ignore the subject and regress to memorized phrases. Replace
+        # only the current user turn with the compact stage request while
+        # retaining earlier conversation context and the normal Music system
+        # prompt. The checkpoint still generates every output token.
+        stage_history = [*history[:-1], {"role": "user", "content": instruction}]
         _, prompt_ids = build_context_token_ids(
             self.tokenizer,
-            history,
+            stage_history,
             self.model.config.context_length,
-            system_prompt=stage_prompt,
+            system_prompt=self.system_prompt,
         )
         prompt_tensor = torch.tensor([prompt_ids], device=self.device)
         output = generate(
@@ -895,12 +923,19 @@ class MusicModelService(PublicModelService):
         """Keep model-generated content while removing conflicting wrappers."""
         lines = []
         for line in text.splitlines():
-            if re.match(r"(?i)^\s*(?:title|style)\s*:", line):
+            if re.match(r"(?i)^\s*(?:title|style|styp|styl|styse|styles?|genre|hook)\s*:", line):
                 continue
             if re.match(r"^\s*\[[^]]+\]\s*$", line):
                 continue
-            if line.strip():
-                lines.append(line.strip())
+            cleaned = line.strip()
+            if not cleaned:
+                continue
+            # Numbered option lists and code fragments are common failure
+            # modes for the tiny checkpoint and are not lyric lines. This
+            # only removes wrappers; it never supplies replacement lyrics.
+            if re.match(r"^\d+[.)]\s+", cleaned) or re.search(r"(?:==|\bdef\s+|\breturn\s+|\bimport\s+)", cleaned):
+                continue
+            lines.append(cleaned.lstrip("-*•> "))
         return "\n".join(lines).strip()
 
     @staticmethod
@@ -932,7 +967,8 @@ class MusicModelService(PublicModelService):
             self._sample_neural_piece(
                 history,
                 system_prompt,
-                "For this composition stage, generate only a new topic-relevant Title: line and a detailed Style: line.",
+                "Generate only a new Title: line and detailed Style: line for this exact request: "
+                f"{current_message[:300]}. Do not write lyrics or alternatives.",
                 80,
                 10,
             )
@@ -994,17 +1030,34 @@ class MusicModelService(PublicModelService):
                   "paraphrase any existing line, except when intentionally developing a short hook."
                 if prior_lyrics else ""
             )
-            generated = self._sample_neural_piece(
-                history,
-                system_prompt,
-                f"For this composition stage, generate only the lyric lines for [{section_name}]. "
-                f"Keep them tightly relevant to this request: {current_message[:300]}.{source_guidance}"
-                f"{novelty_guidance} "
-                "Do not output a title, style, explanation, or alternate options.",
-                90 if section_name not in {"Pre-Chorus", "Outro"} else 65,
-                24,
+            options: list[str] = []
+            # This path already follows several rejected whole-song drafts.
+            # Two candidates per section avoids accepting the first collapsed
+            # motif without multiplying worst-case latency unnecessarily.
+            for _attempt in range(2):
+                generated = self._sample_neural_piece(
+                    history,
+                    system_prompt,
+                    f"For this composition stage, generate only the lyric lines for [{section_name}]. "
+                    f"Keep them tightly relevant to this request: {current_message[:300]}.{source_guidance}"
+                    f"{novelty_guidance} "
+                    "Do not output a title, style, explanation, option list, or another section label.",
+                    90 if section_name not in {"Pre-Chorus", "Outro"} else 65,
+                    24,
+                )
+                content = self._piece_content(generated)
+                if content:
+                    options.append(content)
+            prior_lines = set(self._lyric_lines("\n".join(pieces)))
+            content = max(
+                options,
+                key=lambda option: (
+                    self._topic_relevance(current_message, option) * 20.0
+                    - len(prior_lines & set(self._lyric_lines(option))) * 6.0
+                    - self._overrepresented_phrase_hits(option, current_message) * 5.0
+                ),
+                default="",
             )
-            content = self._piece_content(generated)
             if content:
                 pieces.append(f"[{section_name}]\n{content}")
         if len(pieces) < 5:
@@ -1017,6 +1070,7 @@ class MusicModelService(PublicModelService):
         """Suppress memorized lines without destroying the neural draft."""
         filtered, intra_removed = self._remove_intra_song_repetition(reply)
         filtered, removed = self._remove_overrepresented_lines(filtered, prompt)
+        filtered = self._remove_empty_sections(filtered)
         filter_corrections: list[str] = []
         if intra_removed:
             filter_corrections.append(f"removed-intra-song-repetitions:{intra_removed}")
@@ -1066,6 +1120,18 @@ class MusicModelService(PublicModelService):
             kept.append(line)
         return "\n".join(kept).strip(), removed
 
+    @staticmethod
+    def _remove_empty_sections(reply: str) -> str:
+        """Drop labels whose generated section contains no lyric text."""
+        blocks = re.split(r"(?m)(^\[[^]\n]+\]\s*$)", reply)
+        kept = [blocks[0]]
+        for index in range(1, len(blocks), 2):
+            label = blocks[index]
+            body = blocks[index + 1] if index + 1 < len(blocks) else ""
+            if re.search(r"[A-Za-z0-9]", body):
+                kept.extend((label, body))
+        return "".join(kept).strip()
+
     def _remove_overrepresented_lines(self, reply: str, prompt: str = "") -> tuple[str, int]:
         """Remove exact or paraphrased log-proven memorized lyric lines."""
         kept: list[str] = []
@@ -1094,9 +1160,9 @@ class MusicModelService(PublicModelService):
                 r"(?i),?\s*with a clear pulse and a slightly unwise finale\.?\s*$",
                 "",
                 fixed,
-            ).rstrip(" ,;.")
+            )
             if cleaned_memorized_suffix != fixed:
-                fixed = cleaned_memorized_suffix
+                fixed = cleaned_memorized_suffix.rstrip(" ,;.")
                 corrections.append("removed-memorized-style-suffix")
                 if not fixed:
                     continue
@@ -1174,7 +1240,7 @@ class MusicModelService(PublicModelService):
         # swapping one adjective (for example, tiny -> little) while repeating
         # the same memorized phrase family.
         frequent = sorted(
-            (phrase for phrase, count in counts.items() if count >= 8),
+            (phrase for phrase, count in counts.items() if count >= 4),
             key=lambda phrase: (len(phrase.split()), phrase),
         )
         selected: list[str] = []
@@ -1203,11 +1269,33 @@ class MusicModelService(PublicModelService):
         if intent in {"TITLE_IDEAS", "STYLE_IDEAS", "RHYME_HELP", "LYRIC_FEEDBACK"}:
             return words >= 3 and not sections
         if full:
+            metadata_lines = re.findall(r"(?im)^(?:title|style)\s*:\s*\S.*$", reply)
+            section_blocks = re.findall(
+                r"(?ims)^\[(?:intro|verse(?:\s+\d+)?|pre-chorus|chorus|hook|bridge|breakdown|final chorus|outro)\]\s*"
+                r"(.+?)(?=^\[[^]\n]+\]|\Z)",
+                reply,
+            )
+            meaningful_sections = [
+                block for block in section_blocks
+                if len(re.findall(r"\b\w+\b", block)) >= 4
+                and not re.search(r"(?im)^\s*(?:title|style|styp|styl|styse|styles?|genre)\s*:", block)
+            ]
+            topic_words = {
+                word for word in re.findall(r"[a-z]{4,}", request)
+                if word not in {"write", "make", "create", "generate", "song", "lyrics", "full", "complete", "about", "with", "original"}
+            }
+            # A full song must cover at least half of the meaningful subject
+            # concepts. The older 0.08 threshold let one generic word such as
+            # "machine" approve a song that completely omitted "garden".
+            topic_ok = not topic_words or MusicModelService._topic_relevance(message, reply) >= 0.5
             return (
                 bool(re.search(r"(?im)^title\s*:\s*\S", reply))
                 and bool(re.search(r"(?im)^style\s*:\s*\S", reply))
                 and len(sections) >= 5
+                and len(meaningful_sections) >= 5
+                and len(metadata_lines) == 2
                 and words >= 90
+                and topic_ok
             )
         if intent == "SHORT_SONG":
             return bool(sections) and len(sections) <= 3 and 8 <= words <= 120
@@ -1237,7 +1325,7 @@ class MusicModelService(PublicModelService):
         normalized_prompt = re.sub(r"\s+", " ", prompt.lower())
         return sum(
             phrase in normalized_reply and phrase not in normalized_prompt
-            for phrase in self.overrepresented_music_phrases
+            for phrase in getattr(self, "overrepresented_music_phrases", set())
         )
 
     @staticmethod
@@ -1354,15 +1442,17 @@ class MusicModelService(PublicModelService):
             "coding": {"coding", "code", "bug", "debug", "compile", "screen", "keyboard", "program"},
             "robot": {"robot", "metal", "circuit", "servo", "machine", "dance", "dancing"},
         }
-        expanded = set(request_words)
-        if re.search(r"\b(?:you|yourself)\b", message.lower()):
-            expanded |= concept_groups["yourself"]
-        for key, values in concept_groups.items():
-            if key in request_words or request_words & values:
-                expanded |= values
-        if not expanded:
+        if not request_words:
             return 0.5
-        return len(expanded & reply_words) / max(min(len(expanded), 8), 1)
+        covered = 0
+        for word in request_words:
+            if word in {"you", "yourself"}:
+                aliases = concept_groups["yourself"]
+            else:
+                aliases = concept_groups.get(word, {word})
+            if aliases & reply_words:
+                covered += 1
+        return covered / max(min(len(request_words), 8), 1)
 
 
 def create_app(checkpoint: Path, device: str, assistance_enabled: bool = True,
@@ -1386,6 +1476,7 @@ def create_app(checkpoint: Path, device: str, assistance_enabled: bool = True,
 
     @app.get("/api/status")
     @app.get("/api/info")
+    @app.get("/api/models/public")
     def info() -> dict[str, object]:
         return {
             "name": "ChudGPT-Public",
@@ -1413,6 +1504,7 @@ def create_app(checkpoint: Path, device: str, assistance_enabled: bool = True,
 
     @app.get("/api/music/status")
     @app.get("/api/music/info")
+    @app.get("/api/models/music")
     def music_info() -> dict[str, object]:
         if music_service is None:
             raise HTTPException(status_code=503, detail="ChudGPT-Public-Music V1 checkpoint is not loaded")
@@ -1434,7 +1526,38 @@ def create_app(checkpoint: Path, device: str, assistance_enabled: bool = True,
 
     @app.get("/api")
     def api_index() -> dict[str, object]:
-        return {"name": "ChudGPT-Public API", "endpoints": {"chat": "POST /api/chat", "generate": "POST /api/generate", "clear": "POST /api/clear", "info": "GET /api/info"}}
+        return {"name": "ChudGPT-Public API", "endpoints": {"models": "GET /api/models", "chat": "POST /api/chat", "generate": "POST /api/generate", "clear": "POST /api/clear", "info": "GET /api/info"}}
+
+    @app.get("/api/models")
+    def models() -> dict[str, object]:
+        entries: list[dict[str, object]] = [
+            {
+                "id": "public",
+                "name": "ChudGPT-Public V20",
+                "family": "public",
+                "ready": True,
+                "endpoints": {
+                    "info": "GET /api/models/public",
+                    "chat": "POST /api/models/public/chat",
+                    "generate": "POST /api/models/public/generate",
+                    "clear": "POST /api/models/public/clear",
+                },
+            }
+        ]
+        if music_service is not None:
+            entries.append({
+                "id": "music",
+                "name": MUSIC_MODEL_NAME,
+                "family": "public",
+                "ready": True,
+                "endpoints": {
+                    "info": "GET /api/models/music",
+                    "chat": "POST /api/models/music/chat",
+                    "generate": "POST /api/models/music/generate",
+                    "clear": "POST /api/models/music/clear",
+                },
+            })
+        return {"models": entries, "count": len(entries)}
 
     def run_chat(request: ChatRequest, keep_session: bool) -> dict[str, object]:
         try:
@@ -1457,32 +1580,39 @@ def create_app(checkpoint: Path, device: str, assistance_enabled: bool = True,
                 "assistance_reason": service.last_assistance_reason}
 
     @app.post("/api/chat")
+    @app.post("/api/models/public/chat")
     def chat(request: ChatRequest) -> dict[str, object]:
         return run_chat(request, True)
 
     @app.post("/api/generate")
+    @app.post("/api/models/public/generate")
     def generate_once(request: ChatRequest) -> dict[str, object]:
         return run_chat(request, False)
 
     @app.post("/api/clear")
+    @app.post("/api/models/public/clear")
     def clear(request: ClearRequest) -> dict[str, bool]:
         service.clear(request.session_id)
         return {"cleared": True}
 
-    @app.post("/api/music/chat")
-    def music_chat(request: ChatRequest) -> dict[str, object]:
+    def run_music_chat(request: ChatRequest, keep_session: bool) -> dict[str, object]:
         if music_service is None:
             raise HTTPException(status_code=503, detail="ChudGPT-Public-Music V1 checkpoint is not loaded")
         try:
+            requested_session = request.session_id if keep_session else uuid.uuid4().hex
             session_id, reply = music_service.chat(
                 request.message,
-                request.session_id,
+                requested_session,
                 min(request.max_new_tokens, 400),
                 request.temperature,
                 source=request.source,
             )
+        except MusicGenerationRejected as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
         except (ValueError, RuntimeError) as error:
             raise HTTPException(status_code=503, detail=str(error)) from error
+        if not keep_session:
+            music_service.clear(session_id)
         return {
             "reply": reply,
             "session_id": session_id,
@@ -1491,7 +1621,17 @@ def create_app(checkpoint: Path, device: str, assistance_enabled: bool = True,
             "music": True,
         }
 
+    @app.post("/api/music/chat")
+    @app.post("/api/models/music/chat")
+    def music_chat(request: ChatRequest) -> dict[str, object]:
+        return run_music_chat(request, True)
+
+    @app.post("/api/models/music/generate")
+    def music_generate(request: ChatRequest) -> dict[str, object]:
+        return run_music_chat(request, False)
+
     @app.post("/api/music/clear")
+    @app.post("/api/models/music/clear")
     def music_clear(request: ClearRequest) -> dict[str, bool]:
         if music_service is None:
             raise HTTPException(status_code=503, detail="ChudGPT-Public-Music V1 checkpoint is not loaded")

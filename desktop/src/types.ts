@@ -27,7 +27,19 @@ export type Density = "comfortable" | "compact";
 export type StatusPollSeconds = 0 | 30 | 60 | 120 | 300;
 export type RenderMessageLimit = 0 | 100 | 250 | 500;
 export type ContentWidth = 720 | 880 | 1080 | 1400;
-export type ModelProfile = "public" | "music";
+export type ModelProfile =
+  | "public"
+  | "music"
+  | "buggy"
+  | "700"
+  | "1300"
+  | "1500"
+  | "1600"
+  | "ultimate"
+  | "plus"
+  | "pro"
+  | "code"
+  | "mega";
 
 export interface ChatMessage {
   id: string;

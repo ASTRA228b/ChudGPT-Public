@@ -1,11 +1,15 @@
 import asyncio
+import json
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import discord
+import pytest
+import requests
 
 from bot import (
-    BUILT_IN_BOT_ADMIN_IDS, ChudGPTClient, DISCORD_SYSTEM_PROMPT,
+    BUILT_IN_BOT_ADMIN_IDS, ChudGPTClient, DISCORD_MODELS, DISCORD_SYSTEM_PROMPT,
     GoogleTranslateClient, HelpPaginationView, SoundboardListPaginationView,
     SERVER_ADMIN_HELP,
     add_recent_context, clean_prompt,
@@ -35,7 +39,36 @@ from bot import (
     discord_media_url_reply,
     create_music_lyrics_file,
     send_music_lyrics_file,
+    log_discord_failure,
+    model_command,
 )
+
+
+def test_model_command_lists_selects_and_rejects_models() -> None:
+    assert model_command("model", "plus") == ("list", "plus")
+    assert model_command("models", "public") == ("list", "public")
+    assert model_command("model MUSIC") == ("set", "music")
+    assert model_command("model not-real") == ("invalid", "not-real")
+    assert model_command("hello") is None
+    assert set(DISCORD_MODELS) == {
+        "public", "music", "buggy", "700", "1300", "1500", "1600",
+        "ultimate", "plus", "pro", "code", "mega",
+    }
+
+
+def test_failed_requests_are_written_to_conversation_log(tmp_path: Path) -> None:
+    message = SimpleNamespace(
+        guild=None,
+        channel=SimpleNamespace(id=22, name=None),
+        author=SimpleNamespace(id=33, name="tester", display_name="Tester", __str__=lambda self: "tester"),
+    )
+    error = RuntimeError("model produced no displayable output")
+    log_discord_failure(tmp_path, message, "write code", error, "ChudGPT-Public V20", 123.456)
+    record = json.loads(next(tmp_path.glob("discord-*.jsonl")).read_text(encoding="utf-8"))
+    assert record["event"] == "request_failure"
+    assert record["model"] == "ChudGPT-Public V20"
+    assert record["error_type"] == "RuntimeError"
+    assert record["latency_ms"] == 123.46
 
 
 def test_discord_reaction_label_preserves_unicode_sequence() -> None:
@@ -499,6 +532,49 @@ def test_music_chat_uses_separate_music_endpoint(monkeypatch) -> None:
             },
         "timeout": 120,
     }
+
+
+def test_chat_model_uses_main_model_specific_endpoint(monkeypatch) -> None:
+    client = ChudGPTClient("https://public.example/api/chat", 10)
+    captured = {}
+
+    class Response:
+        def raise_for_status(self) -> None: return None
+        def json(self) -> dict[str, str]: return {"reply": "Plus reply"}
+
+    def fake_post(url, json, timeout):
+        captured.update(url=url, json=json, timeout=timeout)
+        return Response()
+
+    monkeypatch.setattr(client.http, "post", fake_post)
+    assert client.chat_model("plus", "hello", "discord-session", "ignored") == "Plus reply"
+    assert captured["url"] == "http://127.0.0.1:8004/api/models/plus/chat"
+    assert captured["json"]["mode"] == "plus"
+
+
+def test_music_quality_rejection_does_not_retry_public_tunnel(monkeypatch) -> None:
+    client = ChudGPTClient("https://public.example/api/chat", 10)
+    called = []
+
+    class Response:
+        status_code = 422
+
+        def raise_for_status(self) -> None:
+            error = requests.HTTPError("422")
+            error.response = self
+            raise error
+
+        def json(self) -> dict[str, str]:
+            return {"detail": "Music model did not produce a complete, relevant neural draft"}
+
+    def fake_post(url, json, timeout):
+        called.append(url)
+        return Response()
+
+    monkeypatch.setattr(client.http, "post", fake_post)
+    with pytest.raises(ValueError, match="complete, relevant"):
+        client.music_chat("write a full song", "music-session")
+    assert called == ["http://127.0.0.1:8010/api/music/chat"]
 
 
 def test_music_clear_uses_separate_music_endpoint(monkeypatch) -> None:

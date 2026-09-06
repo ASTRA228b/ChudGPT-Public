@@ -6,6 +6,7 @@ ChudGPT Desktop is the official native client for the independently trained Chud
 
 - Frameless, resizable, high-DPI desktop window with native minimize, maximize, and close controls
 - Persistent multi-chat library with one API `session_id` per conversation
+- An in-composer selector for all 12 published ChudGPT models
 - Instant local search across titles and messages
 - New, switch, rename, delete, and clear-all chat workflows
 - Markdown, multiline answers, selectable text, fenced code blocks, and copy actions
@@ -18,7 +19,7 @@ ChudGPT Desktop is the official native client for the independently trained Chud
 - First-launch explanation and experimental-model warning
 - No analytics, tracking, accounts, API keys, or code execution
 
-Chats remain in Electron's local application-data store. Only messages sent for generation leave the computer and go to `https://chudgpt-public.vercel.app/api/chat`.
+Chats remain in Electron's local application-data store. Only messages sent for generation leave the computer and go to the selected model's API at `https://chudgpt-public.vercel.app` or `https://chudgpt-xi.vercel.app`.
 
 ## Architecture
 

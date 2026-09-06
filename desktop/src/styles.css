@@ -863,10 +863,29 @@ button {
 }
 .composer-foot {
   display: flex;
+  align-items: center;
+  gap: 10px;
   justify-content: space-between;
   color: #526d82;
   font-size: 9px;
   padding: 6px 5px 0;
+}
+.composer-model {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+.composer-model select {
+  width: 158px;
+  padding: 6px 24px 6px 8px;
+  border: 1px solid rgba(78, 191, 255, 0.25);
+  border-radius: 7px;
+  background: #08131f;
+  color: #a9dff5;
+  font: inherit;
+}
+.composer-model select:disabled {
+  opacity: 0.55;
 }
 .welcome {
   height: 100%;

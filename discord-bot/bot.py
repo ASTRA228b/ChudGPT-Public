@@ -176,6 +176,34 @@ LANGUAGE_CODES = {
 }
 LANGUAGE_CODES.update({code.lower(): code for code in set(LANGUAGE_CODES.values())})
 
+DISCORD_MODELS = {
+    "public": "ChudGPT-Public V20",
+    "music": "ChudGPT-Public-Music V1",
+    "buggy": "ChudGPT Buggy",
+    "700": "ChudGPT 700",
+    "1300": "ChudGPT 1300",
+    "1500": "ChudGPT 1500",
+    "1600": "ChudGPT 1600",
+    "ultimate": "ChudGPT Ultimate",
+    "plus": "ChudGPT Plus",
+    "pro": "ChudGPT Pro",
+    "code": "ChudGPT Code",
+    "mega": "ChudGPT Mega",
+}
+
+
+def model_command(prompt: str, current: str = "public") -> tuple[str, str | None] | None:
+    """Parse model selection typed through Discord's normal message box."""
+    match = re.fullmatch(r"\s*models?\s*(.*?)\s*", prompt, re.I | re.S)
+    if not match:
+        return None
+    requested = match.group(1).lower()
+    if not requested:
+        return "list", current
+    if requested not in DISCORD_MODELS:
+        return "invalid", requested
+    return "set", requested
+
 
 class GoogleTranslateClient:
     """Bot-only Google translator with official-key and keyless modes."""
@@ -298,6 +326,9 @@ class ChudGPTClient:
     def __init__(self, chat_url: str, timeout: float) -> None:
         self.chat_url = chat_url
         self.local_chat_url = "http://127.0.0.1:8010/api/chat"
+        self.main_api_root = os.getenv(
+            "CHUDGPT_MAIN_API_URL", "https://chudgpt-xi.vercel.app/api"
+        ).rstrip("/")
         self.timeout = timeout
         self.http = requests.Session()
 
@@ -386,6 +417,15 @@ class ChudGPTClient:
             except (requests.RequestException, ValueError, RuntimeError) as error:
                 errors.append(error)
                 LOGGER.warning("Music endpoint failed (%s): %s", url, error)
+                status = getattr(getattr(error, "response", None), "status_code", None)
+                if status == 422:
+                    try:
+                        detail = error.response.json().get("detail", "Music V1 rejected the generated draft")
+                    except (ValueError, AttributeError):
+                        detail = "Music V1 rejected the generated draft"
+                    # A healthy quality rejection is not an outage and cannot
+                    # improve by sending the same request through the tunnel.
+                    raise ValueError(str(detail)) from error
         raise errors[-1] if errors else RuntimeError("Music V1 is unavailable")
 
     def clear_music(self, session_id: str) -> None:
@@ -428,6 +468,67 @@ class ChudGPTClient:
         payload: Any = response.json()
         if not isinstance(payload, dict) or payload.get("cleared") is not True:
             raise RuntimeError("ChudGPT-Public did not confirm that the conversation was cleared.")
+
+    def chat_model(
+        self, model_id: str, message: str, session_id: str, discord_context: str | None = None
+    ) -> str:
+        """Chat with any published ChudGPT model through its stable model route."""
+        if model_id == "public":
+            return self.chat(message, session_id, discord_context)
+        if model_id == "music":
+            return self.music_chat(message, "music-" + session_id)
+        if model_id not in DISCORD_MODELS:
+            raise ValueError("Unknown ChudGPT model")
+        payload = {
+            "message": message.strip()[-4_000:],
+            "session_id": session_id.strip()[:80],
+            "mode": model_id,
+        }
+        urls = (
+            f"http://127.0.0.1:8004/api/models/{model_id}/chat",
+            f"{self.main_api_root}/models/{model_id}/chat",
+        )
+        errors: list[Exception] = []
+        for url in dict.fromkeys(urls):
+            try:
+                response = self.http.post(url, json=payload, timeout=self.timeout)
+                response.raise_for_status()
+                data: Any = response.json()
+                reply = data.get("reply") if isinstance(data, dict) else None
+                if isinstance(reply, str) and reply.strip():
+                    return reply.strip()
+                raise RuntimeError(f"{DISCORD_MODELS[model_id]} returned an empty response")
+            except (requests.RequestException, ValueError, RuntimeError) as error:
+                errors.append(error)
+                LOGGER.warning("Model endpoint failed (%s): %s", url, error)
+        raise errors[-1] if errors else RuntimeError("No ChudGPT model endpoint is available")
+
+    def clear_model(self, model_id: str, session_id: str) -> None:
+        if model_id == "public":
+            self.clear(session_id)
+            return
+        if model_id == "music":
+            self.clear_music("music-" + session_id)
+            return
+        if model_id not in DISCORD_MODELS:
+            raise ValueError("Unknown ChudGPT model")
+        payload = {"session_id": session_id.strip()[:80]}
+        errors: list[Exception] = []
+        for url in (
+            f"http://127.0.0.1:8004/api/models/{model_id}/clear",
+            f"{self.main_api_root}/models/{model_id}/clear",
+        ):
+            try:
+                response = self.http.post(url, json=payload, timeout=self.timeout)
+                response.raise_for_status()
+                data: Any = response.json()
+                if isinstance(data, dict) and data.get("cleared") is True:
+                    return
+                raise RuntimeError("Model API did not confirm memory clearing")
+            except (requests.RequestException, ValueError, RuntimeError) as error:
+                errors.append(error)
+                LOGGER.warning("Model clear endpoint failed (%s): %s", url, error)
+        raise errors[-1]
 
 
 class SlidingWindowLimiter:
@@ -810,6 +911,7 @@ def discord_help_page(prefix: str, page: int) -> str:
             f"**ChudGPT commands - page 1/4: Core**\n"
             f"`{prefix} <message>` - chat with Public V20\n"
             f"`{prefix} music <prompt>` - create with ChudGPT-Public-Music V1\n"
+            f"`{prefix} model [name]` - list or switch your active model\n"
             f"`{prefix} help <1-4>` - open a command page\n"
             f"`{prefix} clear` - clear your memory and language mode\n"
             f"`{prefix} status` - check bot/API status\n"
@@ -1672,6 +1774,39 @@ def log_discord_exchange(log_dir: Path, message: discord.Message, prompt: str, r
         handle.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 
+def log_discord_failure(
+    log_dir: Path,
+    message: discord.Message,
+    prompt: str,
+    error: Exception,
+    model: str,
+    latency_ms: float,
+) -> None:
+    """Record failed requests beside successful exchanges for honest reliability metrics."""
+    response = getattr(error, "response", None)
+    record = {
+        "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+        "event": "request_failure",
+        "guild_id": message.guild.id if message.guild else None,
+        "guild_name": message.guild.name if message.guild else "Direct Messages",
+        "channel_id": message.channel.id,
+        "channel_name": getattr(message.channel, "name", None),
+        "user_id": message.author.id,
+        "user_name": str(message.author),
+        "display_name": getattr(message.author, "display_name", message.author.name),
+        "prompt": prompt,
+        "model": model,
+        "latency_ms": round(max(0.0, latency_ms), 2),
+        "error_type": type(error).__name__,
+        "status_code": getattr(response, "status_code", None),
+        "error": str(error)[:500],
+    }
+    destination = log_dir / f"discord-{datetime.now(timezone.utc):%Y-%m}.jsonl"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    with _CONVERSATION_LOG_LOCK, destination.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
 def discord_connection_ready(state: dict[str, Any]) -> bool:
     """Return live gateway readiness and repair stale state after a resume."""
     client = state.get("discord_client")
@@ -2260,6 +2395,7 @@ def main() -> None:
     recent_bot_messages: dict[tuple[int, int], deque[str]] = defaultdict(lambda: deque(maxlen=2))
     recent_reactions: dict[tuple[int, int], deque[str]] = defaultdict(lambda: deque(maxlen=3))
     language_preferences: dict[tuple[int, int], str] = {}
+    model_preferences: dict[tuple[int, int], str] = {}
     server_admin_confirmations: dict[
         tuple[int, int, str], tuple[str, float, int, dict[str, Any] | None]
     ] = {}
@@ -2355,16 +2491,45 @@ def main() -> None:
             return
         if not prompt:
             prompt = "[Discord media attachment]"
+        request_started = time.perf_counter()
+        selected_model = model_preferences.get(context_key, "public")
+        active_model = DISCORD_MODELS[selected_model]
+        selected_model_command = model_command(prompt, selected_model)
+        if selected_model_command is not None:
+            action, value = selected_model_command
+            if action == "set" and value is not None:
+                model_preferences[context_key] = value
+                await message.reply(
+                    f"Model switched to **{DISCORD_MODELS[value]}** for your conversation in this channel.",
+                    mention_author=False,
+                )
+            elif action == "invalid":
+                await message.reply(
+                    f"Unknown model `{value}`. Available model IDs: "
+                    + ", ".join(f"`{item}`" for item in DISCORD_MODELS),
+                    mention_author=False,
+                )
+            else:
+                await message.reply(
+                    f"Current model: **{DISCORD_MODELS[selected_model]}** (`{selected_model}`).\n"
+                    + "Available model IDs: "
+                    + ", ".join(f"`{item}`" for item in DISCORD_MODELS),
+                    mention_author=False,
+                )
+            return
         if is_memory_clear_request(prompt):
             try:
-                await __import__("asyncio").to_thread(public_api.clear, make_session_id(message))
+                await __import__("asyncio").to_thread(
+                    public_api.clear_model, selected_model, make_session_id(message)
+                )
                 recent_user_messages.pop(context_key, None)
                 recent_bot_messages.pop(context_key, None)
                 recent_reactions.pop(context_key, None)
                 language_preferences.pop(context_key, None)
                 state["api_status"] = "online"
                 await message.reply(
-                    "Memory cleared for our conversation in this channel.", mention_author=False
+                    f"Memory cleared for **{DISCORD_MODELS[selected_model]}** in this channel.",
+                    mention_author=False,
                 )
             except (requests.RequestException, RuntimeError, ValueError) as error:
                 state["api_status"] = "error"
@@ -2436,6 +2601,7 @@ def main() -> None:
                 return
             music_match = re.fullmatch(r"music(?:\s+(.+))?", prompt.strip(), re.I | re.S)
             if music_match:
+                active_model = "ChudGPT-Public-Music V1"
                 music_prompt = (music_match.group(1) or "").strip()
                 music_session_id = "music-" + make_session_id(message)
                 if music_prompt.lower() == "clear":
@@ -2591,7 +2757,11 @@ def main() -> None:
                     # produce avoidable local-model contention and timeout cascades.
                     async with api_semaphore:
                         reply = await __import__("asyncio").to_thread(
-                            public_api.chat, model_prompt, make_session_id(message), discord_context
+                            public_api.chat_model,
+                            selected_model,
+                            model_prompt,
+                            make_session_id(message),
+                            discord_context,
                         )
             if translator.enabled and response_language and response_language != "en" and not re.search(r"```|<@!?\d+>", reply):
                 reply, _ = await __import__("asyncio").to_thread(
@@ -2630,13 +2800,28 @@ def main() -> None:
                         await message.channel.send(content, allowed_mentions=safe_mentions)
                 else:
                     await message.channel.send(chunk, allowed_mentions=safe_mentions)
-        except requests.Timeout:
+        except requests.Timeout as error:
             state["api_status"] = "timeout"
-            await message.reply("ChudGPT-Public took too long to answer. Please try again.", mention_author=False)
+            await __import__("asyncio").to_thread(
+                log_discord_failure, settings.conversation_log_dir, message, prompt,
+                error, active_model, (time.perf_counter() - request_started) * 1000,
+            )
+            await message.reply(f"{active_model} took too long to answer. Please try again.", mention_author=False)
         except (requests.RequestException, RuntimeError, ValueError) as error:
             state["api_status"] = "error"
-            LOGGER.exception("Public API request failed: %s", error)
-            await message.reply("ChudGPT-Public is temporarily unavailable. Please try again shortly.", mention_author=False)
+            LOGGER.exception("%s request failed: %s", active_model, error)
+            await __import__("asyncio").to_thread(
+                log_discord_failure, settings.conversation_log_dir, message, prompt,
+                error, active_model, (time.perf_counter() - request_started) * 1000,
+            )
+            if active_model == "ChudGPT-Public-Music V1" and isinstance(error, (RuntimeError, ValueError)):
+                failure_message = (
+                    "Music V1 could not produce a complete, relevant result from that request. "
+                    "Try adding a specific topic, mood, or genre."
+                )
+            else:
+                failure_message = f"{active_model} is temporarily unavailable. Please try again shortly."
+            await message.reply(failure_message, mention_author=False)
 
     try:
         client.run(settings.discord_token, log_handler=None)

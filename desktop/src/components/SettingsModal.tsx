@@ -70,20 +70,6 @@ export function SettingsModal(props: Props): JSX.Element {
         </header>
         <div className="settings-scroll">
           <SettingsSection title="General">
-            <Setting label="Model profile">
-              <select
-                value={props.settings.modelProfile}
-                onChange={(event) =>
-                  set(
-                    "modelProfile",
-                    event.target.value as AppSettings["modelProfile"],
-                  )
-                }
-              >
-                <option value="public">ChudGPT-Public V20</option>
-                <option value="music">ChudGPT-Public-Music V1</option>
-              </select>
-            </Setting>
             <Setting label="Launch when I sign in">
               <Switch
                 checked={props.settings.launchAtLogin}

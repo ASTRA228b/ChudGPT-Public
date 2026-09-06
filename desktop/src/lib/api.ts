@@ -1,4 +1,5 @@
 import type { ApiStatus, ChatResponse, ModelProfile } from "../types";
+import { modelProfileInfo } from "./models";
 
 export const makeRequestId = (): string => crypto.randomUUID();
 
@@ -6,8 +7,9 @@ export function status(
   profile: ModelProfile,
   requestId = makeRequestId(),
 ): Promise<ApiStatus> {
+  const model = modelProfileInfo(profile);
   return window.chudDesktop.apiRequest<ApiStatus>(
-    profile === "music" ? "music/status" : "status",
+    `${model.family === "main" ? "main/" : ""}models/${profile}`,
     "GET",
     null,
     requestId,
@@ -20,8 +22,9 @@ export function chat(
   requestId: string,
   profile: ModelProfile,
 ): Promise<ChatResponse> {
+  const model = modelProfileInfo(profile);
   return window.chudDesktop.apiRequest<ChatResponse>(
-    profile === "music" ? "music/chat" : "chat",
+    `${model.family === "main" ? "main/" : ""}models/${profile}/chat`,
     "POST",
     { message, session_id: sessionId },
     requestId,
@@ -32,8 +35,9 @@ export function clearSession(
   sessionId: string,
   profile: ModelProfile,
 ): Promise<{ cleared: boolean }> {
+  const model = modelProfileInfo(profile);
   return window.chudDesktop.apiRequest(
-    profile === "music" ? "music/clear" : "clear",
+    `${model.family === "main" ? "main/" : ""}models/${profile}/clear`,
     "POST",
     { session_id: sessionId },
     makeRequestId(),

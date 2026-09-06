@@ -327,6 +327,12 @@ class WikipediaLookup:
             r"\b(?:word|mean|coding|computer|community|hacking|slang)\b", query, re.I
         ):
             expanded = "script kiddie skid computer hacking slang definition"
+        if re.fullmatch(r"\s*(?:what is|explain|define)?\s*ai\s*[?.!]*", query, re.I):
+            expanded = "artificial intelligence AI definition"
+        if re.search(r"\bunity\b", query, re.I) and re.search(
+            r"\b(?:game|engine|features?|release|version|editor|latest)\b", query, re.I
+        ):
+            expanded = "Unity game engine " + query
         return expanded
 
     @staticmethod
@@ -340,6 +346,10 @@ class WikipediaLookup:
             return "remote access trojan" in haystack or ("malware" in haystack and "rat" in haystack)
         if re.search(r"\bskid\b", lowered) and re.search(r"\b(?:word|mean|coding|computer|community|hacking|slang)\b", lowered):
             return "script kiddie" in haystack or ("hacker" in haystack and "skid" in haystack)
+        if re.fullmatch(r"\s*(?:what is|explain|define)?\s*ai\s*[?.!]*", lowered):
+            return "artificial intelligence" in haystack and not re.search(r"country code|top-level domain", haystack)
+        if re.search(r"\bunity\b", lowered) and re.search(r"\b(?:game|engine|features?|release|version|editor|latest)\b", lowered):
+            return "unity" in haystack and any(term in haystack for term in ("game engine", "unity technologies", "unity editor"))
         words = {
             word for word in re.findall(r"[a-z0-9]{3,}", lowered)
             if word not in {"what", "does", "mean", "latest", "features", "about", "word", "search"}

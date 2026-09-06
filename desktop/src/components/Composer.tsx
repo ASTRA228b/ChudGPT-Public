@@ -1,14 +1,18 @@
 import { Eraser, Send, Square } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
+import { modelProfiles } from "../lib/models";
+import type { ModelProfile } from "../types";
 
 interface Props {
   value: string;
   busy: boolean;
   sendWithEnter: boolean;
   focusKey: string | null;
+  modelProfile: ModelProfile;
   onChange: (value: string) => void;
   onSend: () => void;
   onStop: () => void;
+  onModelChange: (profile: ModelProfile) => void;
 }
 
 export function Composer({
@@ -16,9 +20,11 @@ export function Composer({
   busy,
   sendWithEnter,
   focusKey,
+  modelProfile,
   onChange,
   onSend,
   onStop,
+  onModelChange,
 }: Props): JSX.Element {
   const ref = useRef<HTMLTextAreaElement>(null);
   const focusComposer = useCallback(() => {
@@ -43,6 +49,22 @@ export function Composer({
   return (
     <div className="composer-wrap">
       <div className="composer">
+        <label className="composer-model">
+          <select
+            aria-label="Model"
+            value={modelProfile}
+            disabled={busy}
+            onChange={(event) =>
+              onModelChange(event.target.value as ModelProfile)
+            }
+          >
+            {modelProfiles.map((model) => (
+              <option key={model.id} value={model.id}>
+                {model.name}
+              </option>
+            ))}
+          </select>
+        </label>
         <textarea
           id="message-composer"
           ref={ref}

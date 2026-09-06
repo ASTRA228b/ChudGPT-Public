@@ -8,6 +8,7 @@ import torch
 
 from music_instructions import MUSIC_MODEL_NAME, MUSIC_SYSTEM_PROMPT
 from public_api_server import MusicModelService
+from build_music_v1_data import _normalized_training_lines, decontaminate
 from chudlm.generation import generate
 
 
@@ -41,9 +42,19 @@ def test_music_dataset_is_large_and_unique() -> None:
     path = Path(__file__).parents[1] / "data" / "music_v1_conversations.jsonl"
     records = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
     serialized = {json.dumps(record, sort_keys=True, ensure_ascii=False) for record in records}
-    assert len(records) >= 3_900
-    assert len(serialized) >= 3_900
+    assert len(records) >= 3_300
+    assert len(serialized) >= 3_300
     assert any("funny" in json.dumps(record).lower() or "ridiculous" in json.dumps(record).lower() for record in records)
+
+    line_counts: dict[str, int] = {}
+    for record in records:
+        assistant_text = "\n".join(
+            message["content"] for message in record["messages"]
+            if message["role"] == "assistant"
+        )
+        for line, occurrences in _normalized_training_lines(assistant_text).items():
+            line_counts[line] = line_counts.get(line, 0) + occurrences
+    assert max(line_counts.values()) <= 6
 
 
 def test_music_dataset_teaches_complete_song_contract_and_followups() -> None:
@@ -59,14 +70,14 @@ def test_music_dataset_teaches_complete_song_contract_and_followups() -> None:
     assert assistant_text.count("Style:") >= 500
     assert assistant_text.count("[Verse 1]") >= 500
     assert assistant_text.count("[Chorus]") >= 500
-    assert assistant_text.count("[Bridge]") >= 400
+    assert assistant_text.count("[Bridge]") >= 300
     assert assistant_text.count("[Outro]") >= 400
-    assert assistant_text.count("[Intro]") >= 300
+    assert assistant_text.count("[Intro]") >= 250
     assert assistant_text.count("[Pre-Chorus]") >= 100
     assert assistant_text.count("[Instrumental Break]") >= 100
-    assert sum(len(record["messages"]) >= 6 for record in records) >= 150
+    assert sum(len(record["messages"]) >= 6 for record in records) >= 100
     serialized_records = "\n".join(json.dumps(record, ensure_ascii=False).lower() for record in records)
-    assert serialized_records.count("mash those lyrics together") >= 150
+    assert serialized_records.count("mash those lyrics together") >= 100
     assert serialized_records.count("tiny 4-line song") >= 150
     assert serialized_records.count("continue it with a second verse") >= 150
 
@@ -239,6 +250,29 @@ def test_music_you_topic_means_chudgpt() -> None:
     ) > MusicModelService._topic_relevance(
         "Write me a song about you", "The hallway has a red light and an old chair."
     )
+
+
+def test_music_relevance_requires_combined_subject_not_one_generic_alias() -> None:
+    prompt = "Write me a full song about a robot learning to garden"
+    generic = "A machine starts dancing in a hallway beneath a light."
+    relevant = "A robot learns to garden, planting seeds in careful rows."
+    assert MusicModelService._topic_relevance(prompt, generic) < 0.5
+    assert MusicModelService._topic_relevance(prompt, relevant) >= 0.5
+
+
+def test_music_training_decontamination_caps_repeated_lines_and_titles() -> None:
+    rows = [
+        {"messages": [
+            {"role": "user", "content": f"song {index}"},
+            {"role": "assistant", "content": (
+                "Title: Same Name\n[Verse]\nThe same memorized lyric line appears right here.\n"
+                f"A distinct generated training line carries number {index}."
+            )},
+        ]}
+        for index in range(8)
+    ]
+    kept = decontaminate(rows, line_cap=2, title_cap=3)
+    assert len(kept) == 2
 
 
 def test_music_structure_validator_repairs_labels_and_outro_order() -> None:
@@ -433,10 +467,7 @@ def test_neural_song_assembly_uses_generated_parts_without_canned_lyrics(monkeyp
         "final chorus": "Final Chorus",
         "outro": "Outro",
     }
-    generated_parts = iter([
-        "Title: Copper Weather\nStyle: glitch rock with restless drums",
-        "Title: Copper Weather\nStyle: glitch rock with restless drums",
-        "Title: Copper Weather\nStyle: glitch rock with restless drums",
+    section_parts = [
         "The compiler wakes and throws its sparks across the room.\nI follow every warning while the cooling fans begin to bloom.",
         "The cursor holds its breath before the build begins again.\nA quiet error turns into a rhythm in the rain.",
         "Compile the night and carry every broken line along.\nTurn the red diagnostics into one electric song.",
@@ -444,6 +475,12 @@ def test_neural_song_assembly_uses_generated_parts_without_canned_lyrics(monkeyp
         "The stack trace twists sideways and reveals a hidden door.\nI change the old assumption that was breaking us before.",
         "Compile the night; the final run is brighter than before.\nEvery passing test becomes a heartbeat through the floor.",
         "The terminal grows quiet as the sunrise finds the screen.\nI save the final changes and the status light turns green.",
+    ]
+    generated_parts = iter([
+        "Title: Copper Weather\nStyle: glitch rock with restless drums",
+        "Title: Copper Weather\nStyle: glitch rock with restless drums",
+        "Title: Copper Weather\nStyle: glitch rock with restless drums",
+        *(part for part in section_parts for _ in range(2)),
     ])
 
     monkeypatch.setattr(service, "_sample_neural_piece", lambda *args, **kwargs: next(generated_parts))
@@ -474,7 +511,7 @@ def test_mash_intent_requests_preservation_from_neural_model(monkeypatch) -> Non
         "Title: Paper Satellites\nStyle: crooked synth pop",
         "Title: Paper Satellites\nStyle: crooked synth pop",
         "Title: Paper Satellites\nStyle: crooked synth pop",
-        *["Blue paper satellites cross the kitchen sky.\nBorrowed lines return with new connections as they fly."] * 7,
+        *["Blue paper satellites cross the kitchen sky.\nBorrowed lines return with new connections as they fly."] * 14,
     ])
 
     def sample(*args, **kwargs):
@@ -544,7 +581,7 @@ One two three four five six seven eight nine ten eleven twelve thirteen fourteen
     damaged = "Title: Copper Weather\nStyle: glitch rock\n\n[Verse 1]\nOnly one line remains."
     monkeypatch.setattr(service, "_remove_overrepresented_lines", lambda reply, prompt: (damaged, 6))
     filtered, corrections = service._safely_filter_repetition(
-        original, "Write a full song about coding"
+        original, "Write a full song"
     )
     assert filtered.lower().count("one two three") == 1
     assert corrections == [
@@ -566,3 +603,37 @@ The final window opens into morning."""
     assert filtered.lower().count("hallway hums") == 1
     assert filtered.lower().count("made one promise") == 1
     assert "final window" in filtered.lower()
+
+
+def test_structure_cleanup_preserves_punctuation_and_drops_empty_sections() -> None:
+    service = object.__new__(MusicModelService)
+    service.allowed_sections = {"verse 1": "Verse 1", "chorus": "Chorus", "outro": "Outro"}
+    fixed, corrections = service._validate_structure(
+        "Title: WiFi Funeral\nStyle: glitch pop.\n\n[Verse 1]\nThe router blinks.\n\n[Chorus]\n\n[Outro]\nSignal gone."
+    )
+    cleaned = service._remove_empty_sections(fixed)
+    assert "Style: glitch pop." in cleaned
+    assert "[Chorus]" not in cleaned
+    assert "removed-memorized-style-suffix" not in corrections
+
+
+def test_full_song_shape_rejects_empty_or_off_topic_sections() -> None:
+    malformed = """Title: Hallway
+Style: dark pop
+
+[Verse 1]
+The hallway light keeps judging me in tired static.
+[Chorus]
+
+[Verse 2]
+The hallway stays blue beneath a moon.
+[Bridge]
+The corridor bends behind an empty door.
+[Final Chorus]
+The ceiling fan continues through the night.
+[Outro]
+The room goes black and quiet at dawn.
+"""
+    assert not MusicModelService._candidate_meets_music_shape(
+        "Write a full song about my WiFi dying", malformed
+    )

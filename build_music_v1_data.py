@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 import json
 import random
 import re
@@ -165,6 +166,50 @@ def record(user: str, assistant: str) -> dict[str, object]:
     return {"messages": [{"role": "user", "content": user}, {"role": "assistant", "content": assistant}]}
 
 
+def _normalized_training_lines(text: str) -> Counter[str]:
+    """Return substantive lyric lines used for cross-record contamination checks."""
+    lines: Counter[str] = Counter()
+    for raw in text.splitlines():
+        line = re.sub(r"\s+", " ", raw.strip().lower())
+        if (
+            len(re.findall(r"[a-z0-9']+", line)) >= 4
+            and not line.startswith("[")
+            and not re.match(r"^(?:title|style)\s*:", line)
+            and not line.endswith("?")
+        ):
+            lines[line] += 1
+    return lines
+
+
+def decontaminate(rows: list[dict[str, object]], *, line_cap: int = 6,
+                  title_cap: int = 6) -> list[dict[str, object]]:
+    """Cap recurring training phrases without adding any runtime answer text."""
+    line_counts: Counter[str] = Counter()
+    title_counts: Counter[str] = Counter()
+    kept: list[dict[str, object]] = []
+    for row in rows:
+        assistant_text = "\n".join(
+            str(message.get("content", ""))
+            for message in row.get("messages", [])
+            if message.get("role") == "assistant"
+        )
+        lines = _normalized_training_lines(assistant_text)
+        titles = Counter(
+            value.strip().lower()
+            for value in re.findall(r"(?im)^title\s*:\s*(.+)$", assistant_text)
+        )
+        if any(line_counts[line] + occurrences > line_cap
+               for line, occurrences in lines.items()):
+            continue
+        if any(title_counts[title] + occurrences > title_cap
+               for title, occurrences in titles.items()):
+            continue
+        kept.append(row)
+        line_counts.update(lines)
+        title_counts.update(titles)
+    return kept
+
+
 def focus(subject: str) -> str:
     return re.sub(r"^(?:my|a|an|the)\s+", "", subject, flags=re.I).rstrip(".,")
 
@@ -199,6 +244,14 @@ def contextual_line(line: str, subject: str, salt: int) -> str:
         f"Inside a song about {subject_focus}, {lowered}",
         f"Under the shadow of {subject_focus}, {lowered}",
         f"While I remember {subject_focus}, {lowered}",
+        f"Against the backdrop of {subject_focus}, {lowered}",
+        f"With {subject_focus} on my mind, {lowered}",
+        f"At the edge of {subject_focus}, {lowered}",
+        f"Following the sound of {subject_focus}, {lowered}",
+        f"In the middle of {subject_focus}, {lowered}",
+        f"Past the last sign for {subject_focus}, {lowered}",
+        f"As the scene turns toward {subject_focus}, {lowered}",
+        f"Where everyone whispers about {subject_focus}, {lowered}",
     )
     return frames[salt % len(frames)]
 
@@ -246,7 +299,9 @@ def song(subject: str, genre: str, mood: str, index: int, *, include_title: bool
              ("Pre-Chorus", stanza(subject, index, 2)), ("Chorus", chorus(subject, index)),
              ("Verse 2", stanza(subject, index, 3)), ("Outro", contextual_block(OUTROS[(index * 7) % len(OUTROS)], subject, index + 2))],
             [("Verse 1", stanza(subject, index)), ("Chorus", chorus(subject, index)),
-             ("Instrumental Break", f"{TEXTURES[index % len(TEXTURES)].title()} circle the main motif."),
+             ("Instrumental Break", contextual_line(
+                 f"{TEXTURES[index % len(TEXTURES)].title()} circle the main motif.", subject, index
+             )),
              ("Bridge", contextual_block(BRIDGES[(index * 3) % len(BRIDGES)], subject, index)), ("Final Chorus", chorus(subject, index)),
              ("Outro", contextual_block(OUTROS[(index * 9) % len(OUTROS)], subject, index + 2))]]
     # Divide by the curriculum cycle so a request mode does not become locked
@@ -390,7 +445,11 @@ def build(seed: int = 2401) -> list[dict[str, object]]:
         ]})
     unique = {json.dumps(item, sort_keys=True, ensure_ascii=False): item for item in rows}
     rows = list(unique.values())
-    if len(rows) < 3_200:
+    # Select the retained examples from a seeded shuffle so the frequency cap
+    # does not always favor the first template/subject combinations.
+    rng.shuffle(rows)
+    rows = decontaminate(rows)
+    if len(rows) < 3_000:
         raise RuntimeError(f"Music corpus produced only {len(rows):,} unique conversations")
     rng.shuffle(rows)
     return rows

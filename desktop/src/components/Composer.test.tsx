@@ -33,9 +33,11 @@ describe("Composer focus", () => {
           busy={false}
           sendWithEnter
           focusKey={focusKey}
+          modelProfile="public"
           onChange={vi.fn()}
           onSend={vi.fn()}
           onStop={vi.fn()}
+          onModelChange={vi.fn()}
         />,
       ),
     );

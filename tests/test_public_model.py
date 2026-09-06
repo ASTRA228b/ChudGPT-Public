@@ -57,13 +57,12 @@ def test_runtime_assistance_is_narrow_and_auditable() -> None:
     assert "_random_code_answer" not in source
 
 
-def test_technical_retry_does_not_invent_content() -> None:
+def test_technical_retry_does_not_expose_invented_content_or_raise_a_false_outage() -> None:
     source = Path("public_api_server.py").read_text(encoding="utf-8")
-    assert "Model produced no displayable output after generation attempts" in source
     assert "Model repeatedly generated only rejected uncertainty templates" not in source
     assert "never_expose" in source
     assert 'reply = "..."' not in source
-    assert "could not form a useful answer" not in source.lower()
+    assert "I couldn't form a relevant answer" in source
     assert "try asking another way" not in source.lower()
 
 

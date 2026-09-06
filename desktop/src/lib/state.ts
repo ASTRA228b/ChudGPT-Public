@@ -4,6 +4,7 @@ import type {
   PersistedState,
   ThemeName,
 } from "../types";
+import { modelProfileIds } from "./models";
 
 export const themeNames: readonly ThemeName[] = [
   "neon",
@@ -93,7 +94,7 @@ export function normalizeState(value: unknown): PersistedState {
   const settings = { ...defaultSettings, ...(candidate.settings ?? {}) };
   if (!themeNames.includes(settings.theme))
     settings.theme = defaultSettings.theme;
-  if (!["public", "music"].includes(settings.modelProfile))
+  if (!modelProfileIds.includes(settings.modelProfile))
     settings.modelProfile = defaultSettings.modelProfile;
   if (!["comfortable", "compact"].includes(settings.density))
     settings.density = defaultSettings.density;

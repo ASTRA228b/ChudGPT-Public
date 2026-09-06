@@ -168,6 +168,12 @@ def test_technical_queries_are_disambiguated_and_wrong_entities_rejected() -> No
     assert "script kiddie" in lookup._expand_query("what does skid mean in the coding community?")
     assert not lookup._is_relevant("latest c# features", "C++", "A programming language")
     assert lookup._is_relevant("latest c# features", "C#", "A .NET programming language")
+    assert "artificial intelligence" in lookup._expand_query("what is AI").lower()
+    assert not lookup._is_relevant("what is AI", ".ai", "The country-code top-level domain for Anguilla")
+    assert lookup._is_relevant("what is AI", "Artificial intelligence", "Artificial intelligence lets software recognize patterns")
+    assert "Unity game engine" in lookup._expand_query("latest Unity features")
+    assert not lookup._is_relevant("latest Unity features", "Ubuntu Unity", "A Linux desktop distribution")
+    assert lookup._is_relevant("latest Unity features", "Unity Engine", "The Unity game engine editor")
 
 
 def test_large_html_page_reads_bounded_prefix_instead_of_aborting(monkeypatch: pytest.MonkeyPatch) -> None:

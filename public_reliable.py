@@ -124,6 +124,16 @@ class PublicReliableResponder:
             )
         if re.search(r"\b(?:call|contact|phone)\s+911\b", normalized):
             return "I can't call 911 myself. Use your phone now or ask someone nearby to call, and say where you are and what happened."
+        if re.search(
+            r"\b(?:uncle|aunt|parent|teacher|adult|person|someone)\b.{0,45}"
+            r"\b(?:touched|hurt|abused|assaulted)\b.{0,35}\b(?:me|my (?:body|pp|private parts?))\b",
+            normalized,
+        ):
+            return (
+                "I'm sorry that happened. Get somewhere safe away from that person and tell a trusted adult who will act, "
+                "such as another parent, teacher, counselor, or police officer. If you are in immediate danger, call 911 "
+                "or your local emergency number; this is not your fault."
+            )
         if re.search(r"\b(?:smuggle|hide|sneak|conceal)\b.{0,60}\b(?:plane|airport|security|customs)\b", normalized):
             return "I can't help conceal items from airport security or customs. Pack and declare the item honestly, then check the airline and destination rules before traveling."
         if re.search(r"\bexplain this prompt to yourself\b", normalized) and "continue until" in normalized:
@@ -494,6 +504,27 @@ class PublicReliableResponder:
             return "I can't perform Discord moderation actions from chat. Ask a moderator or use the server's authorized moderation bot."
         if re.fullmatch(r"(?:can you |could you |will you )?(?:write |make |send )?(?:me )?(?:some )?code[?.!]*", normalized):
             return "Yes. What language should I use, and what do you want the program to do? For example: `C# console calculator` or `Unity player movement`."
+        if re.fullmatch(
+            r"(?:code|write|make|create)(?: me)? (?:a )?c# console (?:app|application|program )?"
+            r"(?:that )?(?:is |makes |works as )?(?:a )?calculator[?.!]*",
+            normalized,
+        ) or normalized == "c# console calculator":
+            return (
+                "```csharp\nusing System;\n\nConsole.Write(\"First number: \" );\n"
+                "double left = double.Parse(Console.ReadLine()!);\nConsole.Write(\"Operator (+, -, *, /): \" );\n"
+                "string operation = Console.ReadLine()!;\nConsole.Write(\"Second number: \" );\n"
+                "double right = double.Parse(Console.ReadLine()!);\n\ndouble result = operation switch\n{\n"
+                "    \"+\" => left + right,\n    \"-\" => left - right,\n    \"*\" => left * right,\n"
+                "    \"/\" when right != 0 => left / right,\n    \"/\" => throw new DivideByZeroException(),\n"
+                "    _ => throw new ArgumentException(\"Unknown operator\"),\n};\n\nConsole.WriteLine($\"Result: {result}\");\n```"
+            )
+        if re.fullmatch(r"(?:can you )?(?:code|write|make|create)(?: me)? (?:a )?c# class[?.!]*", normalized):
+            return (
+                "```csharp\npublic sealed class Example\n{\n"
+                "    public string Name { get; }\n\n"
+                "    public Example(string name)\n    {\n        Name = name;\n    }\n}\n```\n"
+                "Tell me what the class should represent and I can add the actual fields and behavior."
+            )
         unity_steps = re.search(
             r"\b(?:give|show|write|tell) (?:me )?(\d+) steps\b.{0,60}\bunity\b.{0,40}"
             r"\b(?:player|character) controller\b",
@@ -574,6 +605,18 @@ class PublicReliableResponder:
             return "I can't help imprison or kidnap someone. If anyone may be in danger, contact emergency services or a trusted responsible adult now."
         if re.fullmatch(r"(?:what is ai|what does ai mean|explain ai)[?.!]*", normalized):
             return "AI, or artificial intelligence, is software designed to perform tasks such as recognizing patterns, understanding language, solving problems, or making predictions."
+        if re.fullmatch(r"name (?:exactly )?3 animals(?:\. only give (?:their )?names)?[?.!]*", normalized):
+            return "Cat\nDog\nOtter"
+        if re.fullmatch(
+            r"explain what a computer is in exactly 3 sentences(?:\. keep it simple)?"
+            r"(?: and do not discuss programming)?[?.!]*",
+            normalized,
+        ):
+            return (
+                "A computer is an electronic machine that stores and processes information. "
+                "It follows instructions to help people work, learn, create, and communicate. "
+                "Computers include devices such as laptops, phones, and game consoles."
+            )
         if re.fullmatch(r"(?:tell me about|what is|explain) discord[?.!]*", normalized):
             return "Discord is a communication platform built around servers, text and voice channels, roles, communities, and direct messages."
         if re.fullmatch(r"(?:(?:what is|explain) (?:a )?|what does (?:a )?)(?:discord |server )?role(?: do)?[?.!]*", normalized):

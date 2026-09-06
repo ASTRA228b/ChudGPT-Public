@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cancel, chat, clearSession, makeRequestId, status } from "./lib/api";
+import { modelProfileInfo } from "./lib/models";
 import {
   createConversation,
   defaultSettings,
@@ -42,6 +43,7 @@ const message = (role: ChatMessage["role"], content: string): ChatMessage => ({
 
 export default function App(): JSX.Element {
   const [state, setState] = useState<PersistedState>(emptyState);
+  const selectedModel = modelProfileInfo(state.settings.modelProfile);
   const [loaded, setLoaded] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -379,18 +381,9 @@ export default function App(): JSX.Element {
             </button>
             <div>
               <h1>
-                ChudGPT{" "}
-                <span>
-                  {state.settings.modelProfile === "music"
-                    ? "Music V1"
-                    : "Public"}
-                </span>
+                ChudGPT <span>{selectedModel.shortName}</span>
               </h1>
-              <p>
-                {state.settings.modelProfile === "music"
-                  ? "Independent experimental music model"
-                  : "Independent experimental language model"}
-              </p>
+              <p>{selectedModel.description}</p>
             </div>
             <button
               className={`status-pill ${connection}`}
@@ -404,10 +397,8 @@ export default function App(): JSX.Element {
                 <Wifi />
               )}
               <span>
-                {state.settings.modelProfile === "music"
-                  ? "Music V1"
-                  : "Public"}{" "}
-                · {connection[0].toUpperCase() + connection.slice(1)}
+                {selectedModel.shortName} ·{" "}
+                {connection[0].toUpperCase() + connection.slice(1)}
               </span>
             </button>
           </header>
@@ -458,9 +449,16 @@ export default function App(): JSX.Element {
               busy={busy}
               sendWithEnter={state.settings.sendWithEnter}
               focusKey={state.activeConversationId}
+              modelProfile={state.settings.modelProfile}
               onChange={setDraft}
               onSend={() => void send()}
               onStop={stop}
+              onModelChange={(modelProfile) =>
+                setState((current) => ({
+                  ...current,
+                  settings: { ...current.settings, modelProfile },
+                }))
+              }
             />
           </section>
         </main>
