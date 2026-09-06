@@ -3,13 +3,27 @@ import { modelProfileInfo } from "./models";
 
 export const makeRequestId = (): string => crypto.randomUUID();
 
+function endpointFor(
+  profile: ModelProfile,
+  action: "status" | "chat" | "clear",
+): string {
+  const model = modelProfileInfo(profile);
+  if (model.family === "main") {
+    return `main/models/${profile}${action === "status" ? "" : `/${action}`}`;
+  }
+  // Keep the desktop compatible with the stable Public Vercel routes. The
+  // canonical /api/models/* aliases are exposed by the CUDA server, but older
+  // Vercel deployments only publish /api/chat and /api/music/*.
+  if (profile === "music") return `music/${action}`;
+  return action;
+}
+
 export function status(
   profile: ModelProfile,
   requestId = makeRequestId(),
 ): Promise<ApiStatus> {
-  const model = modelProfileInfo(profile);
   return window.chudDesktop.apiRequest<ApiStatus>(
-    `${model.family === "main" ? "main/" : ""}models/${profile}`,
+    endpointFor(profile, "status"),
     "GET",
     null,
     requestId,
@@ -22,9 +36,8 @@ export function chat(
   requestId: string,
   profile: ModelProfile,
 ): Promise<ChatResponse> {
-  const model = modelProfileInfo(profile);
   return window.chudDesktop.apiRequest<ChatResponse>(
-    `${model.family === "main" ? "main/" : ""}models/${profile}/chat`,
+    endpointFor(profile, "chat"),
     "POST",
     { message, session_id: sessionId },
     requestId,
@@ -35,9 +48,8 @@ export function clearSession(
   sessionId: string,
   profile: ModelProfile,
 ): Promise<{ cleared: boolean }> {
-  const model = modelProfileInfo(profile);
   return window.chudDesktop.apiRequest(
-    `${model.family === "main" ? "main/" : ""}models/${profile}/clear`,
+    endpointFor(profile, "clear"),
     "POST",
     { session_id: sessionId },
     makeRequestId(),

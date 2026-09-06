@@ -1,6 +1,6 @@
 {
   "name": "chudgpt-desktop",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Official native desktop client for ChudGPT-Public",
   "author": {
     "name": "ASTRA228b",
@@ -62,10 +62,25 @@
       "output": "release"
     },
     "files": [
-      "dist/**/*",
-      "dist-electron/**/*",
-      "assets/**/*",
-      "package.json"
+      {
+        "from": "dist",
+        "to": "dist"
+      },
+      {
+        "from": "dist-electron",
+        "to": "dist-electron"
+      },
+      {
+        "from": "assets",
+        "to": "assets"
+      },
+      {
+        "from": ".",
+        "to": ".",
+        "filter": [
+          "package.json"
+        ]
+      }
     ],
     "win": {
       "target": [
