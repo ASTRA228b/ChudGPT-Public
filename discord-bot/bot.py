@@ -71,6 +71,33 @@ BUILT_IN_BOT_ADMIN_IDS = frozenset({
 DEFAULT_BLACKLIST_MESSAGE = "You are blacklisted from using ChudGPT."
 
 
+class ChudGPTAPIError(RuntimeError):
+    """A healthy Discord client received an unusable API response."""
+
+    def __init__(self, message: str, *, kind: str, attempts: list[dict[str, Any]]) -> None:
+        super().__init__(message)
+        self.failure_kind = kind
+        self.attempts = attempts
+
+
+class RecentMessageIds:
+    """Bounded idempotency guard for duplicate Discord gateway deliveries."""
+
+    def __init__(self, limit: int = 4_096) -> None:
+        self.limit = max(1, limit)
+        self.order: deque[int] = deque()
+        self.ids: set[int] = set()
+
+    def accept(self, message_id: int) -> bool:
+        if message_id in self.ids:
+            return False
+        self.ids.add(message_id)
+        self.order.append(message_id)
+        while len(self.order) > self.limit:
+            self.ids.discard(self.order.popleft())
+        return True
+
+
 def load_user_blacklist(path: Path) -> tuple[frozenset[int], str]:
     """Load a hot-reloadable user-ID blacklist without retaining bad state."""
     try:
@@ -331,6 +358,19 @@ class ChudGPTClient:
         ).rstrip("/")
         self.timeout = timeout
         self.http = requests.Session()
+        self._request_state = threading.local()
+
+    @property
+    def last_request_metadata(self) -> dict[str, Any]:
+        return dict(getattr(self._request_state, "metadata", {}))
+
+    def _record_success(self, url: str, attempts: list[dict[str, Any]], data: dict[str, Any]) -> None:
+        self._request_state.metadata = {
+            "response_origin": "local_api" if "127.0.0.1" in url else "public_api",
+            "attempts": attempts,
+            "assistance_reason": data.get("assistance_reason"),
+            "raw_model_generation": data.get("raw_model_generation"),
+        }
 
     def chat(self, message: str, session_id: str, discord_context: str | None = None) -> str:
         # Keep these limits below public_api_server.ChatRequest's validation
@@ -354,8 +394,8 @@ class ChudGPTClient:
                 "system_instruction": DISCORD_SYSTEM_PROMPT,
                 "discord_context": discord_context,
             }
-        response = None
         errors: list[Exception] = []
+        attempt_records: list[dict[str, Any]] = []
         # This bot runs beside the CUDA server.  Prefer localhost so Discord
         # traffic does not depend on Vercel + Cloudflare making a round trip
         # back to the same PC.  The public URL remains the failover endpoint.
@@ -368,11 +408,27 @@ class ChudGPTClient:
                 try:
                     response = self.http.post(url, json=payload, timeout=self.timeout)
                     response.raise_for_status()
-                    break
+                    data: Any = response.json()
+                    reply = data.get("reply") if isinstance(data, dict) else None
+                    if not isinstance(reply, str) or not reply.strip():
+                        raise RuntimeError("empty or malformed reply")
+                    attempt_records.append({
+                        "origin": "local_api" if url == self.local_chat_url else "public_api",
+                        "attempt": attempt + 1,
+                        "status_code": getattr(response, "status_code", 200),
+                        "result": "success",
+                    })
+                    self._record_success(url, attempt_records, data)
+                    return reply.strip()
                 except requests.RequestException as error:
                     errors.append(error)
-                    response = None
                     status = getattr(getattr(error, "response", None), "status_code", None)
+                    attempt_records.append({
+                        "origin": "local_api" if url == self.local_chat_url else "public_api",
+                        "attempt": attempt + 1,
+                        "status_code": status,
+                        "result": type(error).__name__,
+                    })
                     if status == 422:
                         detail = getattr(error.response, "text", "")[:500]
                         LOGGER.error("Chat request validation failed at %s: %s", url, detail)
@@ -382,16 +438,29 @@ class ChudGPTClient:
                     if attempt + 1 < attempts:
                         LOGGER.warning("Local chat request failed; retrying once (%s)", error)
                         time.sleep(0.2)
-            if response is not None:
-                break
+                except (ValueError, RuntimeError) as error:
+                    errors.append(error)
+                    attempt_records.append({
+                        "origin": "local_api" if url == self.local_chat_url else "public_api",
+                        "attempt": attempt + 1,
+                        "status_code": getattr(locals().get("response"), "status_code", None),
+                        "result": "malformed_response",
+                    })
+                    LOGGER.warning("Chat endpoint returned unusable JSON (%s): %s", url, error)
+                    if attempt + 1 < attempts:
+                        time.sleep(0.2)
             LOGGER.warning("Chat endpoint failed (%s); trying next endpoint", url)
-        if response is None:
-            raise errors[-1] if errors else RuntimeError("No ChudGPT chat endpoint is available.")
-        payload: Any = response.json()
-        reply = payload.get("reply") if isinstance(payload, dict) else None
-        if not isinstance(reply, str) or not reply.strip():
-            raise RuntimeError("ChudGPT-Public returned an empty or malformed reply.")
-        return reply.strip()
+        if errors:
+            final = errors[-1]
+            if isinstance(final, requests.RequestException):
+                setattr(final, "attempts", attempt_records)
+                setattr(final, "failure_kind", "timeout" if isinstance(final, requests.Timeout) else "unavailable")
+                raise final
+        raise ChudGPTAPIError(
+            "ChudGPT-Public returned empty, malformed, or non-JSON responses.",
+            kind="malformed_response",
+            attempts=attempt_records,
+        )
 
     def music_chat(self, message: str, session_id: str) -> str:
         """Route Music commands to the separately loaded Music V1 checkpoint."""
@@ -412,6 +481,12 @@ class ChudGPTClient:
                 data: Any = response.json()
                 reply = data.get("reply") if isinstance(data, dict) else None
                 if isinstance(reply, str) and reply.strip():
+                    self._record_success(url, [{
+                        "origin": "local_api" if "127.0.0.1" in url else "public_api",
+                        "attempt": 1,
+                        "status_code": getattr(response, "status_code", 200),
+                        "result": "success",
+                    }], data)
                     return reply.strip()
                 raise RuntimeError("Music V1 returned an empty response")
             except (requests.RequestException, ValueError, RuntimeError) as error:
@@ -448,26 +523,23 @@ class ChudGPTClient:
         raise errors[-1] if errors else RuntimeError("Music V1 clear endpoint is unavailable")
 
     def clear(self, session_id: str) -> None:
-        response = None
         errors: list[Exception] = []
-        chat_urls = [self.chat_url]
+        chat_urls = [self.local_chat_url]
         if self.local_chat_url != self.chat_url:
-            chat_urls.append(self.local_chat_url)
+            chat_urls.append(self.chat_url)
         for chat_url in chat_urls:
             clear_url = f"{chat_url.rsplit('/', 1)[0]}/clear"
             try:
                 response = self.http.post(clear_url, json={"session_id": session_id}, timeout=self.timeout)
                 response.raise_for_status()
-                break
-            except requests.RequestException as error:
+                data: Any = response.json()
+                if isinstance(data, dict) and data.get("cleared") is True:
+                    return
+                raise RuntimeError("clear endpoint returned an invalid confirmation")
+            except (requests.RequestException, ValueError, RuntimeError) as error:
                 errors.append(error)
                 LOGGER.warning("Clear endpoint failed (%s); trying next endpoint", clear_url)
-                response = None
-        if response is None:
-            raise errors[-1] if errors else RuntimeError("No ChudGPT clear endpoint is available.")
-        payload: Any = response.json()
-        if not isinstance(payload, dict) or payload.get("cleared") is not True:
-            raise RuntimeError("ChudGPT-Public did not confirm that the conversation was cleared.")
+        raise errors[-1] if errors else RuntimeError("No ChudGPT clear endpoint is available.")
 
     def chat_model(
         self, model_id: str, message: str, session_id: str, discord_context: str | None = None
@@ -496,6 +568,12 @@ class ChudGPTClient:
                 data: Any = response.json()
                 reply = data.get("reply") if isinstance(data, dict) else None
                 if isinstance(reply, str) and reply.strip():
+                    self._record_success(url, [{
+                        "origin": "local_api" if "127.0.0.1" in url else "public_api",
+                        "attempt": 1,
+                        "status_code": getattr(response, "status_code", 200),
+                        "result": "success",
+                    }], data)
                     return reply.strip()
                 raise RuntimeError(f"{DISCORD_MODELS[model_id]} returned an empty response")
             except (requests.RequestException, ValueError, RuntimeError) as error:
@@ -1756,11 +1834,22 @@ async def delete_all_guild_channels(guild: discord.Guild, command_channel_id: in
 _CONVERSATION_LOG_LOCK = threading.Lock()
 
 
-def log_discord_exchange(log_dir: Path, message: discord.Message, prompt: str, reply: str) -> None:
+def log_discord_exchange(
+    log_dir: Path,
+    message: discord.Message,
+    prompt: str,
+    reply: str,
+    model: str | None = None,
+    latency_ms: float | None = None,
+    response_origin: str | None = None,
+    assistance_reason: str | None = None,
+) -> None:
     """Append one Discord-only exchange as UTF-8 JSONL for later review."""
     log_dir.mkdir(parents=True, exist_ok=True)
     record = {
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+        "event": "exchange",
+        "message_id": getattr(message, "id", None),
         "guild_id": message.guild.id if message.guild else None,
         "guild_name": message.guild.name if message.guild else "Direct Messages",
         "channel_id": message.channel.id,
@@ -1770,6 +1859,10 @@ def log_discord_exchange(log_dir: Path, message: discord.Message, prompt: str, r
         "display_name": getattr(message.author, "display_name", message.author.name),
         "prompt": prompt,
         "reply": reply,
+        "model": model,
+        "latency_ms": round(max(0.0, latency_ms), 2) if latency_ms is not None else None,
+        "response_origin": response_origin,
+        "assistance_reason": assistance_reason,
     }
     destination = log_dir / f"discord-{datetime.now(timezone.utc):%Y-%m}.jsonl"
     with _CONVERSATION_LOG_LOCK, destination.open("a", encoding="utf-8") as handle:
@@ -1789,6 +1882,7 @@ def log_discord_failure(
     record = {
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
         "event": "request_failure",
+        "message_id": getattr(message, "id", None),
         "guild_id": message.guild.id if message.guild else None,
         "guild_name": message.guild.name if message.guild else "Direct Messages",
         "channel_id": message.channel.id,
@@ -1801,6 +1895,8 @@ def log_discord_failure(
         "latency_ms": round(max(0.0, latency_ms), 2),
         "error_type": type(error).__name__,
         "status_code": getattr(response, "status_code", None),
+        "failure_kind": getattr(error, "failure_kind", "request_error"),
+        "attempts": getattr(error, "attempts", None),
         "error": str(error)[:500],
     }
     destination = log_dir / f"discord-{datetime.now(timezone.utc):%Y-%m}.jsonl"
@@ -2390,6 +2486,7 @@ def main() -> None:
     web_lookup = WikipediaLookup()
     translator = GoogleTranslateClient(settings.google_translate_api_key)
     limiter = SlidingWindowLimiter(settings.max_requests_per_minute)
+    processed_messages = RecentMessageIds()
     blacklist_cache = BlacklistCache(settings.blacklist_file)
     api_semaphore = __import__("asyncio").Semaphore(1)
     safe_mentions = discord.AllowedMentions(users=True, roles=False, everyone=False, replied_user=True)
@@ -2478,6 +2575,9 @@ def main() -> None:
             if message.content.strip():
                 recent_user_messages[context_key].append(message.content.strip())
             return
+        if not processed_messages.accept(message.id):
+            LOGGER.warning("Ignored duplicate Discord gateway delivery for message %s", message.id)
+            return
         blacklisted_ids, blacklist_message = blacklist_cache.get()
         if message.author.id in blacklisted_ids:
             await message.reply(
@@ -2496,6 +2596,8 @@ def main() -> None:
         request_started = time.perf_counter()
         selected_model = model_preferences.get(context_key, "public")
         active_model = DISCORD_MODELS[selected_model]
+        response_origin = "bot_handler"
+        assistance_reason: str | None = None
         selected_model_command = model_command(prompt, selected_model)
         if selected_model_command is not None:
             action, value = selected_model_command
@@ -2637,6 +2739,10 @@ def main() -> None:
                     message,
                     prompt,
                     music_reply,
+                    active_model,
+                    (time.perf_counter() - request_started) * 1000,
+                    public_api.last_request_metadata.get("response_origin", "model_api"),
+                    public_api.last_request_metadata.get("assistance_reason"),
                 )
                 if len(music_reply) <= 2_000:
                     await message.reply(
@@ -2741,15 +2847,18 @@ def main() -> None:
             media_url_reply = discord_media_url_reply(public_url)
             if media_url_reply is not None:
                 reply = media_url_reply
+                response_origin = "media_handler"
             elif public_url is not None:
                 try:
                     reply = await __import__("asyncio").to_thread(web_lookup.read_url, public_url)
+                    response_origin = "web_read"
                 except (requests.RequestException, ValueError, KeyError) as error:
                     LOGGER.warning("Public URL read failed for %r: %s", public_url, error)
                     reply = f"I couldn't safely read that link: {error}"
             elif web_query is not None:
                 try:
                     reply = await __import__("asyncio").to_thread(web_lookup.lookup, web_query)
+                    response_origin = "web_lookup"
                 except (requests.RequestException, ValueError, KeyError) as error:
                     LOGGER.warning("Web lookup failed for %r: %s", web_query, error)
                     reply = "The live web lookup failed, but ordinary ChudGPT chat is still online."
@@ -2765,13 +2874,25 @@ def main() -> None:
                             make_session_id(message),
                             discord_context,
                         )
+                request_metadata = public_api.last_request_metadata
+                response_origin = str(request_metadata.get("response_origin") or "model_api")
+                reason = request_metadata.get("assistance_reason")
+                assistance_reason = str(reason) if reason is not None else None
             if translator.enabled and response_language and response_language != "en" and not re.search(r"```|<@!?\d+>", reply):
                 reply, _ = await __import__("asyncio").to_thread(
                     translator.translate, reply, response_language, "en"
                 )
             state["api_status"] = "online"
             await __import__("asyncio").to_thread(
-                log_discord_exchange, settings.conversation_log_dir, message, prompt, reply
+                log_discord_exchange,
+                settings.conversation_log_dir,
+                message,
+                prompt,
+                reply,
+                active_model,
+                (time.perf_counter() - request_started) * 1000,
+                response_origin,
+                assistance_reason,
             )
             recent_bot_messages[context_key].append(reply)
             help_page = requested_help_page(prompt)
@@ -2822,7 +2943,13 @@ def main() -> None:
                     "Try adding a specific topic, mood, or genre."
                 )
             else:
-                failure_message = f"{active_model} is temporarily unavailable. Please try again shortly."
+                kind = getattr(error, "failure_kind", "unavailable")
+                if kind == "malformed_response":
+                    failure_message = (
+                        f"{active_model} returned an invalid response. No model text was sent; please try again."
+                    )
+                else:
+                    failure_message = f"{active_model} is temporarily unavailable. Please try again shortly."
             await message.reply(failure_message, mention_author=False)
 
     try:

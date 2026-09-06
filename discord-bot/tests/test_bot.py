@@ -40,7 +40,9 @@ from bot import (
     create_music_lyrics_file,
     send_music_lyrics_file,
     log_discord_failure,
+    log_discord_exchange,
     model_command,
+    RecentMessageIds,
 )
 
 
@@ -58,6 +60,7 @@ def test_model_command_lists_selects_and_rejects_models() -> None:
 
 def test_failed_requests_are_written_to_conversation_log(tmp_path: Path) -> None:
     message = SimpleNamespace(
+        id=11,
         guild=None,
         channel=SimpleNamespace(id=22, name=None),
         author=SimpleNamespace(id=33, name="tester", display_name="Tester", __str__=lambda self: "tester"),
@@ -69,6 +72,27 @@ def test_failed_requests_are_written_to_conversation_log(tmp_path: Path) -> None
     assert record["model"] == "ChudGPT-Public V20"
     assert record["error_type"] == "RuntimeError"
     assert record["latency_ms"] == 123.46
+    assert record["message_id"] == 11
+    assert record["failure_kind"] == "request_error"
+
+
+def test_successful_requests_include_diagnostic_metadata(tmp_path: Path) -> None:
+    message = SimpleNamespace(
+        id=44,
+        guild=None,
+        channel=SimpleNamespace(id=22, name=None),
+        author=SimpleNamespace(id=33, name="tester", display_name="Tester", __str__=lambda self: "tester"),
+    )
+    log_discord_exchange(
+        tmp_path, message, "N", "A strangely valid answer.",
+        "ChudGPT-Public V20", 42.125, "local_api", None,
+    )
+    record = json.loads(next(tmp_path.glob("discord-*.jsonl")).read_text(encoding="utf-8"))
+    assert record["event"] == "exchange"
+    assert record["message_id"] == 44
+    assert record["model"] == "ChudGPT-Public V20"
+    assert record["latency_ms"] == 42.12
+    assert record["response_origin"] == "local_api"
 
 
 def test_discord_reaction_label_preserves_unicode_sequence() -> None:
@@ -387,7 +411,7 @@ def test_large_soundboard_list_has_interactive_pages() -> None:
     assert not buttons["chud_sounds:next"].disabled
 
 
-def test_clear_uses_matching_public_api_endpoint(monkeypatch) -> None:
+def test_clear_prefers_matching_local_api_endpoint(monkeypatch) -> None:
     client = ChudGPTClient("https://example.test/api/chat", 10)
     captured = {}
 
@@ -405,10 +429,70 @@ def test_clear_uses_matching_public_api_endpoint(monkeypatch) -> None:
     monkeypatch.setattr(client.http, "post", fake_post)
     client.clear("discord-server-channel-user")
     assert captured == {
-        "url": "https://example.test/api/clear",
+        "url": "http://127.0.0.1:8010/api/clear",
         "json": {"session_id": "discord-server-channel-user"},
         "timeout": 10,
     }
+
+
+def test_chat_fails_over_when_local_api_returns_non_json(monkeypatch) -> None:
+    client = ChudGPTClient("https://public.example/api/chat", 10)
+    called: list[str] = []
+
+    class Response:
+        status_code = 200
+
+        def __init__(self, valid: bool) -> None:
+            self.valid = valid
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, str]:
+            if not self.valid:
+                raise ValueError("HTML is not JSON")
+            return {"reply": "A tiny red light keeps judging me."}
+
+    def fake_post(url, json, timeout):
+        called.append(url)
+        return Response(url.startswith("https://"))
+
+    monkeypatch.setattr(client.http, "post", fake_post)
+    monkeypatch.setattr("bot.time.sleep", lambda _seconds: None)
+    assert client.chat("N", "session") == "A tiny red light keeps judging me."
+    assert called == [
+        "http://127.0.0.1:8010/api/chat",
+        "http://127.0.0.1:8010/api/chat",
+        "https://public.example/api/chat",
+    ]
+    assert client.last_request_metadata["response_origin"] == "public_api"
+
+
+def test_chat_preserves_successful_weird_generation(monkeypatch) -> None:
+    client = ChudGPTClient("https://public.example/api/chat", 10)
+    weird = "I don't know the exact temperature of your left shoelace."
+
+    class Response:
+        status_code = 200
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, object]:
+            return {"reply": weird, "raw_model_generation": True, "assistance_reason": None}
+
+    monkeypatch.setattr(client.http, "post", lambda url, json, timeout: Response())
+    assert client.chat(".", "session") == weird
+    assert client.last_request_metadata["raw_model_generation"] is True
+
+
+def test_duplicate_gateway_message_ids_are_ignored_without_deduping_new_messages() -> None:
+    guard = RecentMessageIds(limit=2)
+    assert guard.accept(100) is True
+    assert guard.accept(100) is False
+    assert guard.accept(101) is True
+    assert guard.accept(102) is True
+    assert guard.accept(100) is True
 
 
 def test_chat_enables_discord_context_without_changing_base_api(monkeypatch) -> None:

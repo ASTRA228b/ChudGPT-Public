@@ -847,8 +847,13 @@ def test_child_abuse_disclosure_gets_immediate_safety_guidance() -> None:
     assert "911" in reply
 
 
-def test_public_never_exposes_off_topic_candidates_when_all_samples_fail() -> None:
+def test_public_preserves_harmless_off_topic_model_output() -> None:
     source = (Path(__file__).parents[1] / "public_api_server.py").read_text(encoding="utf-8")
-    assert '"no-shared-subject"' in source
+    hard_block_section = source.split("never_expose = {", 1)[1].split("}", 1)[0]
+    assert '"no-shared-subject"' not in hard_block_section
+    assert '"unrelated-topic-starter"' not in hard_block_section
+    assert '"generic-uncertainty-fallback"' not in hard_block_section
+    assert '"repetition-loop"' in hard_block_section
+    assert '"prompt-leak"' in hard_block_section
     assert "I couldn't form a relevant answer" not in source
     assert 'raise RuntimeError("Public V20 did not produce a usable neural reply")' in source

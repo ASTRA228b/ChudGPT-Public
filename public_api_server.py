@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import re
 import threading
@@ -49,6 +50,7 @@ SERVING_CONFIG_PATH = ROOT / "serving_config.json"
 PUBLIC_VERSION = "20.0"
 DISCORD_BOT_INSTRUCTION = (ROOT / "discord_bot_instruction.txt").read_text(encoding="utf-8").strip()
 DISCORD_SYSTEM_PROMPT = DEFAULT_SYSTEM_PROMPT + " " + DISCORD_BOT_INSTRUCTION
+LOGGER = logging.getLogger("chudgpt-public-api")
 
 
 def selected_checkpoint() -> str:
@@ -182,7 +184,7 @@ class PublicModelService:
             # Draw fresh candidates.  A small model can legitimately miss the
             # complete quality gate several times in a row; that must not turn
             # an otherwise healthy API request into HTTP 503.
-            for retry in range(8):
+            for retry in range(2):
                 output = generate(
                     self.model,
                     prompt_tensor,
@@ -201,23 +203,16 @@ class PublicModelService:
                 if retry_reply:
                     candidates.append(retry_reply)
 
-            # The complete gate is intentionally conservative.  If it rejects
-            # every draw, retain its ranking signal but distinguish repairable
-            # relevance/style faults from output that must never be exposed.
-            # This keeps Public generative and available without allowing
-            # prompt/training leaks, malformed text, broken code, or loops.
+            # Relevance, grammar, constraint-following, and harmless topic
+            # jumps are ranking signals, not availability failures. Public V20
+            # is intentionally a tiny, strange model; if every draw misses the
+            # broad quality gate, return the least-broken neural draw exactly
+            # as generated. Only output-integrity failures remain hard blocks.
             never_expose = {
                 "prompt-leak", "emoji-context-leak", "training-data-leak", "replacement-character",
                 "broken-code-fence", "corrupt-fragment", "repetition-loop",
-                "degenerate-repetition", "repeated-clause", "identity-repetition",
-                "broken-identity-grammar", "recursive-self-definition",
-                "wrong-programming-language", "mixed-programming-languages", "broken-csharp-integrity",
-                "code-only-constraint",
-                "missing-requested-code", "no-shared-subject", "missing-story-subject",
-                "wrong-item-count", "sentence-count-constraint", "forbidden-word-constraint",
-                "line-count-constraint", "yes-no-constraint",
-                "generic-uncertainty-fallback", "unrelated-topic-starter",
-                "unrequested-technical-topic", "technical-reply-to-emotional-prompt",
+                "degenerate-repetition", "repeated-clause", "recursive-self-definition",
+                "known-template-leak", "meme-template-leak",
             }
             usable: list[str] = []
             for candidate in candidates:
@@ -1420,6 +1415,12 @@ def create_app(checkpoint: Path, device: str, assistance_enabled: bool = True,
                 request.context_mode, request.discord_context,
             )
         except (ValueError, RuntimeError) as error:
+            LOGGER.warning(
+                "Public V20 generation failed (source=%s session=%s): %s",
+                request.source,
+                request.session_id or "ephemeral",
+                error,
+            )
             raise HTTPException(status_code=503, detail=str(error)) from error
         if not keep_session:
             service.clear(session_id)
