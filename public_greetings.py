@@ -60,12 +60,12 @@ def canned_greeting_response(
             "Yo! ChudGPT-Public is online. What's going on?",
         )
         first_for_word = {"hi": 0, "hello": 1, "hey": 2, "yo": 3}
-        prior_plain_greetings = sum(
-            str(turn.get("role", "")) == "assistant"
-            and any(str(turn.get("content", "")).startswith(prefix) for prefix in ("Hi!", "Hello!", "Hey!", "Yo!"))
+        repeated_same_greeting = sum(
+            str(turn.get("role", "")) == "user"
+            and _normalized(str(turn.get("content", ""))) == text
             for turn in history
         )
-        index = (first_for_word[plain_greeting.group(1)] + prior_plain_greetings) % len(variants)
+        index = (first_for_word[plain_greeting.group(1)] + repeated_same_greeting) % len(variants)
         return variants[index]
 
     if re.fullmatch(r"good (?:morning|afternoon|evening)", text):

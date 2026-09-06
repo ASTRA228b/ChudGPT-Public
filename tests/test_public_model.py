@@ -128,7 +128,12 @@ def test_plain_greetings_match_their_word_and_repeat_with_variety() -> None:
     assert canned_greeting_response("yo", []).startswith("Yo!")
     first = canned_greeting_response("hi", [])
     second = canned_greeting_response("hi", [{"role": "assistant", "content": first or ""}])
-    assert first != second
+    assert first == second
+    repeated = canned_greeting_response("hi", [
+        {"role": "user", "content": "hi"},
+        {"role": "assistant", "content": first or ""},
+    ])
+    assert first != repeated
 
 
 def test_public_service_routes_unambiguous_arithmetic_through_exact_math(monkeypatch) -> None:
