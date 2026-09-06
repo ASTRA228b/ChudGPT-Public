@@ -4,11 +4,14 @@ import json
 from collections import Counter
 from pathlib import Path
 
+import pytest
+
 from chudlm.prompts import DEFAULT_SYSTEM_PROMPT, build_context_token_ids, format_conversation
 from public_api_server import PublicModelService, selected_checkpoint
 from public_meme_facts import find_meme_fact
 from public_math import exact_integer_arithmetic, exact_math_response
 from public_identity import project_identity_response
+from public_lgbtq import lgbtq_identity_response
 from public_greetings import canned_greeting_response
 from short_prompt_benchmark import CASES
 
@@ -55,6 +58,7 @@ def test_runtime_uses_only_approved_narrow_grounding_and_is_auditable() -> None:
     assert "PublicReliableResponder" not in source
     assert "exact_math_response" in source
     assert "project_identity_response" in source
+    assert "lgbtq_identity_response" in source
     assert "canned_greeting_response" in source
     assert "exact_instruction_response" not in source
     assert '"fallbacks": False' in source
@@ -78,6 +82,34 @@ def test_project_identity_grounding_is_detailed_and_narrow() -> None:
     assert project_identity_response("florble snax 992") is None
 
 
+@pytest.mark.parametrize(
+    "prompt",
+    ["Are you gay?", "ur gay", "What is your sexuality?", "Do you like boys?"],
+)
+def test_public_ai_lgbtq_identity_is_direct_and_grounded(prompt: str) -> None:
+    reply = lgbtq_identity_response(prompt) or ""
+    assert reply.startswith("No—I'm an AI")
+    assert "can't feel attraction" in reply
+
+
+@pytest.mark.parametrize(
+    "prompt",
+    ["Am I gay?", "Do you think I'm lesbian?", "Can you tell if I am trans?"],
+)
+def test_public_does_not_guess_the_users_identity(prompt: str) -> None:
+    reply = lgbtq_identity_response(prompt) or ""
+    assert "can't determine" in reply
+    assert "describe for yourself" in reply
+
+
+def test_public_acknowledges_identity_without_treating_it_as_a_problem() -> None:
+    assert lgbtq_identity_response("I'm gay") == (
+        "Thanks for telling me. I'll respect how you describe yourself."
+    )
+    assert "Being LGBTQ+ is okay" in (lgbtq_identity_response("Is it wrong to be gay?") or "")
+    assert lgbtq_identity_response("Explain LGBTQ history") is None
+
+
 def test_public_service_routes_identity_facts_without_generic_fallback(monkeypatch) -> None:
     service = object.__new__(PublicModelService)
     service.lock = __import__("threading").RLock()
@@ -90,6 +122,24 @@ def test_public_service_routes_identity_facts_without_generic_fallback(monkeypat
     _, reply = service.chat("Who are you?", "identity-test")
     assert "ChudGPT-Public V20" in reply
     assert service.last_assistance_reason == "project_identity"
+
+
+def test_public_service_routes_lgbtq_identity_without_neural_drift(monkeypatch) -> None:
+    service = object.__new__(PublicModelService)
+    service.lock = __import__("threading").RLock()
+    service.sessions = __import__("collections").OrderedDict()
+    service.system_prompt = DEFAULT_SYSTEM_PROMPT
+    service.last_assistance_reason = None
+    service.parameters = 20_999_184
+    service.model = type("Model", (), {"config": type("Config", (), {"context_length": 1024})()})()
+    monkeypatch.setattr(
+        service,
+        "_generate_raw",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("neural generation should not run")),
+    )
+    _, reply = service.chat("Are you gay?", "lgbtq-test")
+    assert reply.startswith("No—I'm an AI")
+    assert service.last_assistance_reason == "lgbtq_identity"
 
 
 def test_canned_greetings_are_reliable_and_do_not_capture_real_tasks() -> None:

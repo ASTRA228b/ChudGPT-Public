@@ -41,6 +41,7 @@ from chudlm.text_normalization import normalize_user_text
 from music_instructions import MUSIC_MODEL_NAME, MUSIC_SYSTEM_PROMPT
 from public_greetings import canned_greeting_response
 from public_identity import project_identity_response
+from public_lgbtq import lgbtq_identity_response
 from public_math import exact_math_response
 
 ROOT = Path(__file__).resolve().parent
@@ -310,30 +311,35 @@ class PublicModelService:
                 reply = math_reply
                 self.last_assistance_reason = "exact_math"
             else:
-                identity_reply = project_identity_response(
-                    normalized_message,
-                    history[:-1],
-                    parameters=self.parameters,
-                    context_length=self.model.config.context_length,
-                )
-                if identity_reply is not None:
-                    reply = identity_reply
-                    self.last_assistance_reason = "project_identity"
+                lgbtq_reply = lgbtq_identity_response(normalized_message, history[:-1])
+                if lgbtq_reply is not None:
+                    reply = lgbtq_reply
+                    self.last_assistance_reason = "lgbtq_identity"
                 else:
-                    greeting_reply = canned_greeting_response(normalized_message, history[:-1])
-                    if greeting_reply is not None:
-                        reply = greeting_reply
-                        self.last_assistance_reason = "canned_greeting"
+                    identity_reply = project_identity_response(
+                        normalized_message,
+                        history[:-1],
+                        parameters=self.parameters,
+                        context_length=self.model.config.context_length,
+                    )
+                    if identity_reply is not None:
+                        reply = identity_reply
+                        self.last_assistance_reason = "project_identity"
                     else:
-                        # A 21M model becomes self-contaminating when dozens of its own bad
-                        # generations remain in view. Keep the four most recent exchanges;
-                        # this is context selection only and never changes model output.
-                        generation_history = history[-8:]
-                        active_prompt = DISCORD_SYSTEM_PROMPT if context_mode == "discord" else self.system_prompt
-                        if context_mode == "discord" and discord_context:
-                            active_prompt += " Current Discord context: " + discord_context
-                        reply = self._generate_raw(generation_history, max_new_tokens, temperature, active_prompt)
-                        self.last_assistance_reason = None
+                        greeting_reply = canned_greeting_response(normalized_message, history[:-1])
+                        if greeting_reply is not None:
+                            reply = greeting_reply
+                            self.last_assistance_reason = "canned_greeting"
+                        else:
+                            # A 21M model becomes self-contaminating when dozens of its own bad
+                            # generations remain in view. Keep the four most recent exchanges;
+                            # this is context selection only and never changes model output.
+                            generation_history = history[-8:]
+                            active_prompt = DISCORD_SYSTEM_PROMPT if context_mode == "discord" else self.system_prompt
+                            if context_mode == "discord" and discord_context:
+                                active_prompt += " Current Discord context: " + discord_context
+                            reply = self._generate_raw(generation_history, max_new_tokens, temperature, active_prompt)
+                            self.last_assistance_reason = None
             history.append({"role": "assistant", "content": reply})
             self.sessions[active_session] = history
             self.sessions.move_to_end(active_session)
