@@ -33,3 +33,30 @@ def test_training_keeps_complete_answer_after_long_history():
     _, targets = dataset[0]
     learned = targets[targets != -100].tolist()
     assert learned == tokenizer.encode(" " + answer).ids + [tokenizer.token_to_id("<eos>")]
+
+
+def test_short_fact_survives_beyond_four_exchanges_when_it_fits():
+    tokenizer = Tokenizer.from_file("artifacts/tokenizer.json")
+    history = [{"role": "user", "content": "My game is named Marigold."},
+               {"role": "assistant", "content": "Got it."}]
+    for i in range(7):
+        history.extend([{"role": "user", "content": f"Let's discuss feature {i}."},
+                        {"role": "assistant", "content": "Tell me more."}])
+    history.append({"role": "user", "content": "What is my game called?"})
+    prompt, ids = build_context_token_ids(tokenizer, history, 1024)
+    assert "My game is named Marigold." in prompt
+    assert "What is my game called?" in prompt
+    assert len(ids) <= 1024
+
+
+def test_very_long_conversation_still_fits_model_window():
+    tokenizer = Tokenizer.from_file("artifacts/tokenizer.json")
+    history = []
+    for i in range(80):
+        history.extend([{"role": "user", "content": f"Explain feature {i} for my game."},
+                        {"role": "assistant", "content": "A long answer " * 30}])
+    history.append({"role": "user", "content": "Let's discuss the camera now."})
+    prompt, ids = build_context_token_ids(tokenizer, history, 1024)
+    assert "Let's discuss the camera now." in prompt
+    assert "Explain feature 0 for my game." not in prompt
+    assert len(ids) <= 1024

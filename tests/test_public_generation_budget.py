@@ -36,7 +36,7 @@ def test_short_tasks_keep_requested_generation_budget(monkeypatch, prompt):
     assert budgets and all(budget == 200 for budget in budgets)
 
 
-def test_context_slice_keeps_four_complete_exchanges(monkeypatch):
+def test_context_keeps_more_than_four_complete_exchanges(monkeypatch):
     service = object.__new__(api.PublicModelService)
     service.sessions = OrderedDict()
     service.lock = RLock()
@@ -52,5 +52,14 @@ def test_context_slice_keeps_four_complete_exchanges(monkeypatch):
     captured = []
     monkeypatch.setattr(service, "_generate_raw", lambda history, *args: captured.extend(history) or "A generated answer.")
     service.chat("Describe a quiet forest.", "test")
-    assert [message["role"] for message in captured] == ["user", "assistant"] * 4 + ["user"]
-    assert captured[0]["content"] == "Question 1"
+    assert [message["role"] for message in captured] == ["user", "assistant"] * 5 + ["user"]
+    assert captured[0]["content"] == "Question 0"
+
+
+def test_repetition_ranking_preserves_requested_quotes():
+    previous = ["A CPU has a few powerful cores for complicated decisions."]
+    repeated = "A CPU has a few powerful cores for complicated decisions today."
+    fresh = "What part of your game are you working on?"
+    penalty = api.PublicModelService._conversation_repetition_penalty
+    assert penalty("Tell me more", repeated, previous) > penalty("Tell me more", fresh, previous)
+    assert penalty("Repeat that verbatim", repeated, previous) == 0

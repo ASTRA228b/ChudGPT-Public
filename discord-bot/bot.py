@@ -2804,8 +2804,8 @@ def main() -> None:
             visible_speaker = getattr(message.author, "display_name", None) or message.author.name
             if recent_context:
                 discord_context += "; recent same-user messages=" + " | ".join(recent_context[-2:])
-            if recent_bot_messages[context_key]:
-                discord_context += "; recent bot replies=" + " | ".join(recent_bot_messages[context_key])
+            # API session history already contains neural replies. Repeating
+            # them in the system prompt wastes context and reinforces loops.
             if recent_reactions[context_key]:
                 discord_context += "; recent user reactions=" + " | ".join(recent_reactions.pop(context_key))
             recent_user_messages[context_key].append(prompt)

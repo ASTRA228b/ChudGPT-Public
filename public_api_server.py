@@ -46,6 +46,7 @@ from public_math import exact_math_response
 
 ROOT = Path(__file__).resolve().parent
 MAX_SESSIONS = 1_000
+MAX_SESSION_TURNS = 128
 MAX_MESSAGE_CHARS = 8_000
 SERVING_CONFIG_PATH = ROOT / "serving_config.json"
 PUBLIC_VERSION = "20.0"
@@ -192,7 +193,8 @@ class PublicModelService:
                 prompt, candidate, previous_replies, conversation_context
             )[0]]
             if valid:
-                return max(valid, key=lambda reply: score_generated_reply(prompt, reply) + self._candidate_score(prompt, reply))
+                return max(valid, key=lambda reply: score_generated_reply(prompt, reply) + self._candidate_score(prompt, reply)
+                           - self._conversation_repetition_penalty(prompt, reply, previous_replies))
             # Draw fresh candidates.  A small model can legitimately miss the
             # complete quality gate several times in a row; that must not turn
             # an otherwise healthy API request into HTTP 503.
@@ -237,13 +239,29 @@ class PublicModelService:
                 return max(
                     usable,
                     key=lambda reply: score_generated_reply(prompt, reply)
-                    + self._candidate_score(prompt, reply),
+                    + self._candidate_score(prompt, reply)
+                    - self._conversation_repetition_penalty(prompt, reply, previous_replies),
                 )
             # Never substitute a canned answer when every neural sample fails.
             # The API reports a generation failure so clients can retry without
             # presenting hand-written text as model output.
             raise RuntimeError("Public V20 did not produce a usable neural reply")
         raise RuntimeError("Public V20 produced empty neural output")
+
+    @staticmethod
+    def _conversation_repetition_penalty(message: str, reply: str, previous: list[str]) -> float:
+        """Prefer fresh generated wording without rejecting or rewriting text."""
+        if re.search(r"\b(?:repeat|quote|verbatim|exactly the same|say that again)\b", message, re.I):
+            return 0.0
+        words = re.findall(r"\w+", reply.casefold())
+        phrases = {tuple(words[i:i + 4]) for i in range(len(words) - 3)}
+        if not phrases:
+            return 0.0
+        old_phrases = set()
+        for old in previous[-8:]:
+            old_words = re.findall(r"\w+", old.casefold())
+            old_phrases.update(tuple(old_words[i:i + 4]) for i in range(len(old_words) - 3))
+        return 6.0 * len(phrases & old_phrases) / len(phrases)
 
     @staticmethod
     def _candidate_score(message: str, reply: str) -> float:
@@ -342,17 +360,16 @@ class PublicModelService:
                             reply = greeting_reply
                             self.last_assistance_reason = "canned_greeting"
                         else:
-                            # A 21M model becomes self-contaminating when dozens of its own bad
-                            # generations remain in view. Keep the four most recent exchanges;
-                            # this is context selection only and never changes model output.
-                            generation_history = history[-9:]
+                            # Fit whole exchanges to the tokenizer's actual budget rather
+                            # than forgetting everything after four short exchanges.
+                            generation_history = history
                             active_prompt = DISCORD_SYSTEM_PROMPT if context_mode == "discord" else self.system_prompt
                             if context_mode == "discord" and discord_context:
                                 active_prompt += " Current Discord context: " + discord_context
                             reply = self._generate_raw(generation_history, max_new_tokens, temperature, active_prompt)
                             self.last_assistance_reason = None
             history.append({"role": "assistant", "content": reply})
-            self.sessions[active_session] = history
+            self.sessions[active_session] = history[-MAX_SESSION_TURNS:]
             self.sessions.move_to_end(active_session)
             while len(self.sessions) > MAX_SESSIONS:
                 self.sessions.popitem(last=False)
