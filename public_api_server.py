@@ -132,7 +132,18 @@ class PublicModelService:
         """Generate neural candidates and select the least broken relevant reply."""
         current_message = strip_emoji_context(history[-1]["content"])
         structured_request = requests_structured_response(current_message)
-        conversational = len(re.findall(r"[a-z0-9']+", current_message.lower())) <= 8 and not structured_request
+        # Brevity alone does not make a request casual: short questions and
+        # instructions still need their requested generation budget.
+        task_request = bool(re.search(
+            r"\b(?:write|generate|create|make|build|implement|explain|describe|compare|"
+            r"summarize|summarise|translate|debug|fix|solve|calculate|analyze|analyse|"
+            r"list|show|prove|derive|why|how|what|when|where|which|who)\b|\?",
+            current_message, re.I,
+        ))
+        conversational = (
+            len(re.findall(r"[a-z0-9']+", current_message.lower())) <= 8
+            and not structured_request and not task_request
+        )
         if conversational and self.shorten_casual_generation:
             system_prompt += (
                 " This is casual conversation. Reply naturally and directly in one to three short sentences. "
@@ -334,7 +345,7 @@ class PublicModelService:
                             # A 21M model becomes self-contaminating when dozens of its own bad
                             # generations remain in view. Keep the four most recent exchanges;
                             # this is context selection only and never changes model output.
-                            generation_history = history[-8:]
+                            generation_history = history[-9:]
                             active_prompt = DISCORD_SYSTEM_PROMPT if context_mode == "discord" else self.system_prompt
                             if context_mode == "discord" and discord_context:
                                 active_prompt += " Current Discord context: " + discord_context
