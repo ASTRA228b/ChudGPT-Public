@@ -117,9 +117,19 @@ def split_records(
 ) -> tuple[list[list[dict[str, str]]], list[list[dict[str, str]]]]:
     if not 0.0 < validation_fraction < 1.0:
         raise ValueError("validation_fraction must be between zero and one")
-    shuffled = records.copy()
+    # Related prefixes of a conversation must stay in the same partition.
+    # Otherwise validation can contain an answer already shown in training
+    # as the history of a longer example.
+    groups: dict[str, list[list[dict[str, str]]]] = {}
+    for record in records:
+        first_user = next(message["content"] for message in record if message["role"] == "user")
+        key = " ".join(first_user.casefold().split())
+        groups.setdefault(key, []).append(record)
+    if len(groups) < 2:
+        raise ValueError("Validation requires at least two distinct conversation prompts")
+    shuffled = list(groups.values())
     random.Random(seed).shuffle(shuffled)
-    validation_count = max(1, round(len(shuffled) * validation_fraction))
-    if validation_count >= len(shuffled):
-        validation_count = len(shuffled) - 1
-    return shuffled[validation_count:], shuffled[:validation_count]
+    validation_count = min(len(shuffled) - 1, max(1, round(len(shuffled) * validation_fraction)))
+    training = [record for group in shuffled[validation_count:] for record in group]
+    validation = [record for group in shuffled[:validation_count] for record in group]
+    return training, validation
