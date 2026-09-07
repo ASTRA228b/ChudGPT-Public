@@ -122,8 +122,8 @@ def main() -> None:
     # emphasized. These are training examples, never runtime answer routes.
     retention: list[str] = []
     retention.extend(Path("data/public_v20_focused.jsonl").read_text(encoding="utf-8").splitlines())
-    challenge = Path("data/public_v20_challenge_sft.jsonl").read_text(encoding="utf-8").splitlines()
-    retention.extend(challenge * 10)
+    # Acceptance benchmarks are evaluation-only.  Never mix their prompts or
+    # reference answers into training; that measures memorization, not math.
     with TRAINING_OUTPUT.open("w", encoding="utf-8", newline="\n") as handle:
         for row in rows:
             handle.write(json.dumps(row, ensure_ascii=False) + "\n")
