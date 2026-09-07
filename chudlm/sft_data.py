@@ -72,10 +72,18 @@ class SupervisedConversationDataset(Dataset[tuple[torch.Tensor, torch.Tensor]]):
             normalized = normalize_messages(messages)
             response = normalized[-1]["content"]
             prompt_messages = normalized[:-1]
-            _, prompt_ids = build_context_token_ids(
-                tokenizer, prompt_messages, context_length, system_prompt=system_prompt
-            )
             response_ids = tokenizer.encode(f" {response}").ids + [int(eos_id)]
+            # Reserve room for the complete supervised answer. Otherwise a
+            # long history can leave only one or two answer tokens to learn.
+            prompt_budget = context_length + 1 - len(response_ids)
+            if prompt_budget <= 0:
+                continue
+            try:
+                _, prompt_ids = build_context_token_ids(
+                    tokenizer, prompt_messages, prompt_budget, system_prompt=system_prompt
+                )
+            except ValueError:
+                continue
             available = context_length + 1 - len(prompt_ids)
             if available < 2:
                 continue

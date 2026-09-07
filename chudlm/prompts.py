@@ -106,6 +106,16 @@ def build_context_token_ids(
                 "The base system prompt does not fit in the configured context length. "
                 "Increase context_length or shorten DEFAULT_SYSTEM_PROMPT."
             )
+        if len(turns) == 1:
+            # Keep the current request, including instructions often placed at
+            # its end. Never silently turn a long request into a system-only
+            # prompt. Re-encode each reduction to respect tokenizer boundaries.
+            content = turns[0]["content"]
+            if len(content) <= 2:
+                raise ValueError("The system prompt and current turn do not fit in context_length")
+            keep = max(1, len(content) * 3 // 8)
+            turns[0] = {**turns[0], "content": content[:keep] + content[-keep:]}
+            continue
         # Drop the oldest whole exchange where possible, never the system prompt.
         turns.pop(0)
         if turns and turns[0]["role"] == "assistant":
