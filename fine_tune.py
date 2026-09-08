@@ -50,6 +50,7 @@ class FineTuneConfig:
     save_interval: int = 250
     num_workers: int = 0
     amp: bool = True
+    batch_delay_ms: int = 0
     resume_from: str | None = None
     system_prompt: str | None = None
 
@@ -113,6 +114,8 @@ def state(
 def main() -> None:
     args = parse_args()
     config = dataclass_from_dict(FineTuneConfig, load_yaml(args.config))
+    if config.batch_delay_ms < 0:
+        raise ValueError("batch_delay_ms cannot be negative")
     model_config = dataclass_from_dict(ModelConfig, load_yaml(config.model_config))
     seed_everything(config.seed)
     device = select_device(args.device)
@@ -223,6 +226,8 @@ def main() -> None:
                 (batch_index + 1) % config.gradient_accumulation_steps == 0
                 or batch_index + 1 == len(training_loader)
             )
+            if config.batch_delay_ms:
+                time.sleep(config.batch_delay_ms / 1000)
             if not update:
                 continue
             scaler.unscale_(optimizer)

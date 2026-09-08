@@ -1,0 +1,10 @@
+input_path: data/public_foundation_conversations.jsonl
+output_dir: data/processed_public_foundation
+tokenizer_path: artifacts/tokenizer.json
+vocab_size: 8192
+validation_fraction: 0.01
+seed: 20260910
+text_field: text
+dialogue_field: messages
+min_characters: 80
+max_characters: 12000

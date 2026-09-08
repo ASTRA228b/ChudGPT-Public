@@ -15,6 +15,9 @@ logs/music/*.jsonl
 *_background.err.log
 data/raw_v*/
 data/processed_v*/
+data/processed_public_foundation/
+data/external/tinystories_train_00000.parquet
+data/public_foundation_conversations.jsonl
 data/public_v15_conversations.jsonl
 data/public_v16_sft.jsonl
 data/public_v17_conversations.jsonl

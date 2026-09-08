@@ -7,6 +7,7 @@ from pathlib import Path
 
 import torch
 
+from chudlm.prompts import TRAINING_SYSTEM_PROMPT
 from public_api_server import PublicModelService, selected_checkpoint
 
 
@@ -24,8 +25,10 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", required=True)
     parser.add_argument("--checkpoint", default=None)
+    parser.add_argument("--compact-system", action="store_true")
     args = parser.parse_args()
     service = PublicModelService(Path(args.checkpoint or selected_checkpoint()), "cuda")
+    system_prompt = TRAINING_SYSTEM_PROMPT if args.compact_system else service.system_prompt
     results = []
     for index, turns in enumerate(CASES):
         history = []
@@ -33,7 +36,7 @@ def main() -> None:
             torch.manual_seed(9100 + index * 10 + turn)
             history.append({"role": "user", "content": prompt})
             try:
-                reply = service._generate_raw(history, 200, 0.6, service.system_prompt)
+                reply = service._generate_raw(history, 200, 0.6, system_prompt)
                 error = None
             except RuntimeError as exc:
                 reply, error = "", str(exc)

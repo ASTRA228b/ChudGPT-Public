@@ -45,6 +45,7 @@ class TrainConfig:
     num_workers: int = 0
     amp: bool = True
     compile: bool = False
+    step_delay_ms: int = 0
     resume_from: str | None = None
     initialize_from: str | None = None
 
@@ -116,6 +117,8 @@ def main() -> None:
     model_config = dataclass_from_dict(ModelConfig, load_yaml(config.model_config))
     if config.gradient_accumulation_steps < 1 or config.batch_size < 1:
         raise ValueError("batch_size and gradient_accumulation_steps must be positive")
+    if config.step_delay_ms < 0:
+        raise ValueError("step_delay_ms cannot be negative")
     seed_everything(config.seed)
     device = select_device(args.device)
     amp_enabled = config.amp and device.type == "cuda"
@@ -172,6 +175,8 @@ def main() -> None:
             running_loss += loss.item()
             running_batches += 1
             should_update = (batch_index + 1) % config.gradient_accumulation_steps == 0 or batch_index + 1 == len(train_loader)
+            if config.step_delay_ms:
+                time.sleep(config.step_delay_ms / 1000)
             if not should_update:
                 continue
             scaler.unscale_(optimizer)
