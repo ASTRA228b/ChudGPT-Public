@@ -2765,7 +2765,6 @@ def main() -> None:
                             allowed_mentions=safe_mentions,
                         )
                 return
-            recent_context = list(recent_user_messages[context_key])
             model_prompt = prompt
             translation_command = parse_translation_command(prompt)
             if translation_command:
@@ -2802,10 +2801,9 @@ def main() -> None:
             visible_roles = [item.name for item in getattr(message.author, "roles", []) if item.name != "@everyone"]
             visible_server = message.guild.name if message.guild is not None else "a private Discord DM"
             visible_speaker = getattr(message.author, "display_name", None) or message.author.name
-            if recent_context:
-                discord_context += "; recent same-user messages=" + " | ".join(recent_context[-2:])
-            # API session history already contains neural replies. Repeating
-            # them in the system prompt wastes context and reinforces loops.
+            # The API session owns conversation history and selects relevant
+            # follow-up turns. Duplicating recent messages in this system
+            # metadata caused stale topics to overpower new requests.
             if recent_reactions[context_key]:
                 discord_context += "; recent user reactions=" + " | ".join(recent_reactions.pop(context_key))
             recent_user_messages[context_key].append(prompt)

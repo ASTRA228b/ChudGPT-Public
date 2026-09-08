@@ -54,6 +54,55 @@ DISCORD_BOT_INSTRUCTION = (ROOT / "discord_bot_instruction.txt").read_text(encod
 DISCORD_SYSTEM_PROMPT = DEFAULT_SYSTEM_PROMPT + " " + DISCORD_BOT_INSTRUCTION
 LOGGER = logging.getLogger("chudgpt-public-api")
 
+_CONTEXT_REFERENCE_RE = re.compile(
+    r"\b(?:it|its|that|this|these|those|they|them|their|he|him|his|she|her|"
+    r"earlier|previous|above|before|continue|continuing|again|more|same|"
+    r"rewrite|revise|expand|shorter|longer)\b|"
+    r"\b(?:what|which)\s+(?:did|was|is)\s+(?:i|we)\s+(?:say|ask|tell|mention)\b|"
+    r"\bmy\s+(?:name|favorite|project|game|robot|idea)\b|"
+    r"^\s*(?:why|how|how so|what next)\s*[?.!]*\s*$",
+    re.I,
+)
+_TOPIC_STOP_WORDS = {
+    "about", "after", "also", "and", "answer", "are", "can", "could", "describe",
+    "does", "explain", "for", "from", "give", "have", "how", "into", "make", "more",
+    "please", "should", "show", "tell", "than", "that", "the", "then", "this", "through",
+    "want", "what", "when", "where", "which", "who", "why", "will", "with", "would", "write",
+    "you", "your",
+}
+
+
+def _topic_words(text: str) -> set[str]:
+    """Return content-bearing words used only to decide whether history is relevant."""
+    return {
+        word for word in re.findall(r"[a-z0-9+#]+", strip_emoji_context(text).casefold())
+        if len(word) >= 3 and word not in _TOPIC_STOP_WORDS
+    }
+
+
+def select_generation_history(history: list[dict[str, str]], max_turns: int = 12) -> list[dict[str, str]]:
+    """Keep relevant follow-up context while isolating an explicit change of topic.
+
+    Session storage remains intact. This only controls which recent turns are
+    shown to the neural generator, and never supplies or rewrites an answer.
+    """
+    if len(history) <= 1:
+        return history
+    current = history[-1]
+    current_text = strip_emoji_context(current.get("content", ""))
+    recent = history[-max_turns:]
+    if _CONTEXT_REFERENCE_RE.search(current_text):
+        return recent
+    previous_user = next(
+        (turn for turn in reversed(history[:-1]) if turn.get("role") == "user"),
+        None,
+    )
+    if previous_user and (_topic_words(current_text) & _topic_words(previous_user.get("content", ""))):
+        return recent
+    # A complete prompt on a different subject starts a fresh neural context.
+    # The full session is still retained for later explicit references.
+    return [current]
+
 
 def selected_checkpoint() -> str:
     """Load the selected relative checkpoint without moving archived models."""
@@ -360,9 +409,9 @@ class PublicModelService:
                             reply = greeting_reply
                             self.last_assistance_reason = "canned_greeting"
                         else:
-                            # Fit whole exchanges to the tokenizer's actual budget rather
-                            # than forgetting everything after four short exchanges.
-                            generation_history = history
+                            # Keep recent turns for genuine follow-ups, but do not let an
+                            # unrelated old answer steer a complete new request.
+                            generation_history = select_generation_history(history)
                             active_prompt = DISCORD_SYSTEM_PROMPT if context_mode == "discord" else self.system_prompt
                             if context_mode == "discord" and discord_context:
                                 active_prompt += " Current Discord context: " + discord_context
