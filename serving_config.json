@@ -1,5 +1,5 @@
 {
-  "selected_checkpoint": "checkpoints/public_v20_challenge_polish/latest.pt",
+  "selected_checkpoint": "checkpoints/public_general_acceptance_v1/latest.pt",
   "archived_checkpoints": {
     "v8": "checkpoints/public_v8/best.pt",
     "v9": "checkpoints/public_v9/best.pt",
@@ -16,6 +16,7 @@
     "v20_quality": "checkpoints/public_v20_quality/best.pt",
     "v20_challenge_recovery": "checkpoints/public_v20_recovery_challenge/best.pt",
     "v20_challenge_polish": "checkpoints/public_v20_challenge_polish/latest.pt",
-    "v20_math_expert": "checkpoints/public_v20_math/latest.pt"
+    "v20_math_expert": "checkpoints/public_v20_math/latest.pt",
+    "v20_general_acceptance_v1": "checkpoints/public_general_acceptance_v1/latest.pt"
   }
 }
