@@ -2765,6 +2765,10 @@ def main() -> None:
                             allowed_mentions=safe_mentions,
                         )
                 return
+            # Social-response helpers may use recent same-user messages, but
+            # this context is intentionally not injected into the model's
+            # system prompt; the Public API owns neural conversation history.
+            recent_context = list(recent_user_messages[context_key])
             model_prompt = prompt
             translation_command = parse_translation_command(prompt)
             if translation_command:
