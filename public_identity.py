@@ -92,7 +92,7 @@ def project_identity_response(
     if _has(text, r"^(?:what|describe|explain|tell me about).*\bchudgpt (?:700|1300|1500|1600)\b.*[?.!]*$"):
         return FAMILY_FACTS["archived"]
 
-    if _has(text, r"\bwhat is chudgpt(?:-public)?\b"):
+    if _has(text, r"^what is chudgpt(?:-public)?[?.!]*$"):
         return (
             "ChudGPT is Astra's custom experimental AI and model family. I am ChudGPT-Public V20, "
             "the public-facing language model and API in that family."

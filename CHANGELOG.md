@@ -1,5 +1,26 @@
 # ChudGPT-Public changelog
 
+## 2026-09-23 — Games retrain and response variation
+
+- Completed 600 + 1,600 + 800 CUDA fine-tuning steps; selected `public_games_v3/latest.pt`, preserving recovery-v5 for rollback.
+- Added 716 final focus examples and 630 filtered replay examples, including Gorilla Tag, modding communities, Unity tools, and the ChudGPT family.
+- Varied supported repeated grounded replies while keeping generated output intact. No new generic apology or fabricated-model fallback.
+- Preserved the compact Public chat layout and updated landing, model guide, API guide, and developer copy.
+- See `reports/GAMES_RETRAIN_20260923.md` for raw generations, limitations, and verification.
+
+## 2026-09-22 — LGBTQIA+ and emoji recovery
+
+- Added direct geography answers for all 50 U.S. states and 123 countries, continent/location queries, and common physical-geography questions. Verified 180/180 serving checks with the selected checkpoint loaded on CUDA, including the user's Australia example and retained awareness behaviors.
+
+- Read all 1,519 records in both Discord JSONL logs and traced the reported regressions to the Public serving path.
+- Reconnected the existing emoji semantic responder, including explicit meaning questions, pride flags, Discord aliases, and emoticons.
+- Restored casual disclosures such as `im gay`, expanded LGBTQIA+ definitions and acceptance responses, and added session-local pronoun recall.
+- Preserved neural handling for substantive requests, code, and non-English text beside emoji; never infer identity from a flag or custom emoji.
+- Updated the shared prompt to encourage occasional appropriate emoji and respectful identity/pronoun handling.
+- Verified with the selected recovery-v5 checkpoint (step 129) loaded on CUDA. This is a runtime repair; checkpoint weights and selection are unchanged. Restart the Public API to load these changes.
+
+Audit and checkpoint smoke responses: `reports/awareness_recovery_20260922.json`. Original Discord logs and personal identifiers are not copied into the repository.
+
 ## V20 — Expanded emoji awareness
 
 - Added complete cached Emoji 17.0 sequence metadata through `emoji` 2.15.0.

@@ -13,6 +13,8 @@ COLON_ALIAS_RE = re.compile(r"(?<![\w/]):(?P<name>[A-Za-z0-9_+\-]{2,40}):(?![/\w
 SKIN_TONES = tuple(chr(value) for value in range(0x1F3FB, 0x1F400))
 
 INTERNET_HINTS = {
+    "🏳️‍🌈": "rainbow pride flag; LGBTQIA+ pride, community, or support, not evidence of the sender's identity",
+    "🏳️‍⚧️": "transgender pride flag; trans pride, community, or support, not evidence of the sender's identity",
     "😭": "sadness, intense laughter, disbelief, or dramatic frustration",
     "💀": "death/skull; online often extremely funny, disbelief, or embarrassment",
     "🔥": "literal fire, heat, excitement, praise, or impressive quality",
@@ -214,6 +216,11 @@ def emoji_semantic_response(text: str, *, include_discord: bool = True) -> str |
     This deliberately avoids becoming a general keyword responder. Mixed
     content with a substantive question still goes through the language model.
     """
+    if "```" in text or "`" in text:
+        return None
+    stripped = text.strip()
+    if stripped in EMOTICONS:
+        return f"That emoticon usually means {EMOTICONS[stripped]}. What's the context?"
     matches = emoji_lib.emoji_list(text)
     custom = list(DISCORD_CUSTOM_RE.finditer(text)) if include_discord else []
     aliases = [
@@ -229,9 +236,23 @@ def emoji_semantic_response(text: str, *, include_discord: bool = True) -> str |
     remaining = DISCORD_CUSTOM_RE.sub(" ", remaining)
     for match in aliases:
         remaining = remaining.replace(match.group(0), " ")
-    words = re.findall(r"[A-Za-z0-9']+", remaining)
+    words = re.findall(r"[\w']+", remaining)
+    # Only explicit meaning questions and short reactions qualify. Word count
+    # alone allowed short tasks such as 'Explain fire safety 🔥' to be hijacked.
+    meaning_question = bool(re.fullmatch(
+        r"\s*(?:what (?:does|do|is|are)\s*(?:this|that|these|those)?\s*(?:emoji|emojis|flag|flags)?\s*(?:mean)?|"
+        r"(?:explain|identify)\s*(?:this|that|these|those)?\s*(?:emoji|emojis|flag|flags)?)\s*[?.!]*\s*",
+        remaining, re.I,
+    ))
+    reaction = bool(re.fullmatch(
+        r"\s*(?:bro(?: what(?: is this)?)?|deadass|lol|lmao|wow|thanks|thank you|"
+        r"my dog died|this update is amazing|the update is amazing)\s*[.!?]*\s*",
+        remaining, re.I,
+    ))
+    if words and not meaning_question and not reaction:
+        return None
     context = _context_hint(text, [match["emoji"] for match in matches])
-    if context and len(words) <= 7:
+    if context and reaction and not meaning_question:
         if "sadness, grief" in context:
             return "That reads as real sadness or grief here. I'm sorry—what happened?"
         if "humorous" in context:
@@ -242,13 +263,14 @@ def emoji_semantic_response(text: str, *, include_discord: bool = True) -> str |
 
     # For a pure emoji/custom-emoji turn, describe the visible reaction name
     # instead of forcing the small neural checkpoint to infer a missing topic.
-    if not words:
+    if not words or meaning_question:
         if custom:
             names = ", ".join(_plain_name(match.group("name")) for match in custom[:2])
-            return f"That custom emoji reads as a {names} reaction. What's the context?"
+            return f"The custom emoji name is {names}. I can read its name, but its image and server-specific meaning aren't available here."
         records = [emoji_database().get(match["emoji"]) for match in matches]
+        records.extend(emoji_database().from_alias(match.group("name")) for match in aliases)
         records = [record for record in records if record is not None]
         if records:
-            descriptions = ", ".join(record.usage_hint or record.name for record in records[:2])
+            descriptions = ", ".join(list(dict.fromkeys(record.usage_hint or record.name for record in records))[:2])
             return f"That reads as {descriptions}. What's the context?"
     return None

@@ -1,5 +1,5 @@
 {
-  "selected_checkpoint": "checkpoints/public_general_recovery_v5/latest.pt",
+  "selected_checkpoint": "checkpoints/public_games_v3/latest.pt",
   "archived_checkpoints": {
     "v8": "checkpoints/public_v8/best.pt",
     "v9": "checkpoints/public_v9/best.pt",

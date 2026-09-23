@@ -106,7 +106,7 @@ def test_public_acknowledges_identity_without_treating_it_as_a_problem() -> None
     assert lgbtq_identity_response("I'm gay") == (
         "Thanks for telling me. I'll respect how you describe yourself."
     )
-    assert "Being LGBTQ+ is okay" in (lgbtq_identity_response("Is it wrong to be gay?") or "")
+    assert "Being LGBTQIA+ is okay" in (lgbtq_identity_response("Is it wrong to be gay?") or "")
     assert lgbtq_identity_response("Explain LGBTQ history") is None
 
 
@@ -239,7 +239,8 @@ def test_public_model_service_has_raw_generation_method() -> None:
 
 def test_serving_config_selects_v20_and_keeps_v8_archived() -> None:
     config = json.loads(Path("serving_config.json").read_text(encoding="utf-8"))
-    assert selected_checkpoint() == "checkpoints/public_general_recovery_v5/latest.pt"
+    assert selected_checkpoint() == "checkpoints/public_games_v3/latest.pt"
+    assert config["archived_checkpoints"]["v20_general_recovery_v5_step_129"] == "checkpoints/public_general_recovery_v5/latest.pt"
     assert config["archived_checkpoints"]["v8"] == "checkpoints/public_v8/best.pt"
     assert config["archived_checkpoints"]["v10_balanced"] == "checkpoints/public_v10_balanced/best.pt"
     assert config["archived_checkpoints"]["v18"] == "checkpoints/public_v18_sft/best.pt"

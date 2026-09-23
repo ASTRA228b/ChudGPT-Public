@@ -26,6 +26,7 @@ from chudlm.checkpoint import load_checkpoint
 from chudlm.emoji_awareness import (
     add_emoji_context,
     emoji_database,
+    emoji_semantic_response,
     strip_emoji_context,
 )
 from chudlm.generation import generate
@@ -40,9 +41,11 @@ from chudlm.response_quality import (
 from chudlm.text_normalization import normalize_user_text
 from music_instructions import MUSIC_MODEL_NAME, MUSIC_SYSTEM_PROMPT
 from public_greetings import canned_greeting_response
+from public_geography import geography_response
 from public_identity import project_identity_response
 from public_lgbtq import lgbtq_identity_response
 from public_math import exact_math_response
+from public_response_variants import vary_grounded_response
 
 ROOT = Path(__file__).resolve().parent
 MAX_SESSIONS = 1_000
@@ -385,9 +388,18 @@ class PublicModelService:
             )
             history.append({"role": "user", "content": model_message})
             math_reply = exact_math_response(normalized_message)
+            emoji_reply = emoji_semantic_response(normalized_message, include_discord=context_mode == "discord")
+            # Preserve abbreviations such as U.S.; slang normalization expands U.
+            geography_reply = geography_response(clean_message, history[:-1])
             if math_reply is not None:
                 reply = math_reply
                 self.last_assistance_reason = "exact_math"
+            elif emoji_reply is not None:
+                reply = emoji_reply
+                self.last_assistance_reason = "emoji_semantics"
+            elif geography_reply is not None:
+                reply = geography_reply
+                self.last_assistance_reason = "geography"
             else:
                 lgbtq_reply = lgbtq_identity_response(normalized_message, history[:-1])
                 if lgbtq_reply is not None:
@@ -417,6 +429,7 @@ class PublicModelService:
                                 active_prompt += " Current Discord context: " + discord_context
                             reply = self._generate_raw(generation_history, max_new_tokens, temperature, active_prompt)
                             self.last_assistance_reason = None
+            reply = vary_grounded_response(normalized_message, reply, self.last_assistance_reason, history[:-1])
             history.append({"role": "assistant", "content": reply})
             self.sessions[active_session] = history[-MAX_SESSION_TURNS:]
             self.sessions.move_to_end(active_session)
@@ -1414,8 +1427,8 @@ def create_app(checkpoint: Path, device: str, assistance_enabled: bool = True,
             "exact_math": True,
             "identity_grounding": True,
             "fallbacks": False,
-            "grounded_systems": ["exact_math", "project_identity", "canned_greeting"],
-            "generation_policy": "neural generation with narrow exact-math, immutable project-identity, and basic greeting systems; unknown and general requests remain neural",
+            "grounded_systems": ["exact_math", "project_identity", "canned_greeting", "geography", "lgbtq_identity", "emoji_semantics"],
+            "generation_policy": "neural generation with narrow math, identity, greeting, geography, LGBTQIA+, and emoji systems; supported repeat answers vary wording; games and unknown requests remain neural",
             "emoji_awareness": {
                 "library": "emoji 2.15.0",
                 "unicode_emoji_version": service.emoji_database.max_emoji_version,

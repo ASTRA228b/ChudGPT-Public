@@ -6,6 +6,10 @@ The native ChudGPT Desktop client now lives entirely in [`desktop/`](desktop/REA
 
 ChudGPT-Public is an independently trained, experimental conversational language model and public web API. It has **20,999,184 trainable parameters** and is designed for general conversation, basic facts, arithmetic, and simple Python, C#, JavaScript, and Unity questions.
 
+### September 2026 game and awareness update
+
+The selected checkpoint is `public_games_v3/latest.pt` (step 800 in the final pass), following 3,000 CUDA fine-tuning steps across three passes. Training adds game/modding knowledge and model-family identity with filtered replay data. Narrow LGBTQIA+, emoji, and geography handlers are restored; supported repeated grounded answers vary wording. Games and unknown model names remain neural, with no new generic nonanswer or invented-model fallback. Humor is occasional and factual answers can still be wrong. See [training and evaluation report](reports/GAMES_RETRAIN_20260923.md).
+
 ### ChudGPT-Public-Music V1
 
 Music V1 is a separate 20,999,184-parameter checkpoint fine-tuned for original lyrics, hooks, titles, song concepts, and musical style ideas. It has isolated conversation sessions and does not replace the standard Public V20 checkpoint. Its personality deliberately permits funny, chaotic, and occasionally nonsensical writing. It remains a very small experimental model: rhyme, factual music knowledge, and instruction following are not dependable.
@@ -36,6 +40,10 @@ V20 is the current strongest Public serving profile. It combines the independent
 The current V20 corpus contains 6,912 unique cleaned conversations after removing 2,080 topic/template leaks and 151 malformed or low-quality rows. Its balanced quality tune used 1,719 conversations: 719 Public-authored conversations, 700 reviewed prose conversations, 120 legitimate structured requests, and 180 reviewed code tasks. Earlier V20 checkpoints remain archived and selectable.
 
 ### Expanded emoji awareness
+
+The September 22 recovery reconnects explicit emoji reactions and meaning questions to the local semantic responder. LGBTQIA+ definitions, acceptance questions, casual disclosures (`im gay`), and session-local pronoun recall are handled explicitly. Pride flags indicate possible pride or support, never the sender's identity. General questions and writing tasks containing emoji still use neural generation. The recovery was checked against the selected `public_general_recovery_v5/latest.pt` checkpoint at step 129; it changes runtime behavior, not checkpoint weights. Restart the Public API process after updating. See `reports/awareness_recovery_20260922.json` for the two-file, 1,519-record Discord audit and CUDA serving checks.
+
+The same update adds local geography answers for all 50 U.S. state capitals, 123 country capitals, country locations, and common world questions about oceans, continents, mountains, and deserts. For example, `What is the capital of Australia` returns `The capital of Australia is Canberra.` Explicit capital questions support state abbreviations and immediate follow-ups such as `What about Canada?`. See `reports/GEOGRAPHY_RECOVERY_20260922.md` for sources and coverage limits.
 
 Public V20 uses the complete cached metadata shipped by `emoji` 2.15.0: 5,225 Unicode sequences through Emoji 17.0. It recognizes emoji-only messages, multi-codepoint ZWJ sequences, skin-tone variants, flags, common colon aliases, classic emoticons, and Discord static/animated custom emoji names. A compact model-only annotation supplies possible meanings while preserving the original message; surrounding conversation still decides whether `😭`, `💀`, or `🔥` is literal, serious, sarcastic, celebratory, or meme-like. Reactions to recent bot messages are remembered as context for the next turn but do not trigger automatic replies.
 
