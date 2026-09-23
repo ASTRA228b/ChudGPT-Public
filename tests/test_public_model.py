@@ -239,7 +239,7 @@ def test_public_model_service_has_raw_generation_method() -> None:
 
 def test_serving_config_selects_v20_and_keeps_v8_archived() -> None:
     config = json.loads(Path("serving_config.json").read_text(encoding="utf-8"))
-    assert selected_checkpoint() == "checkpoints/public_games_v2/step_800.pt"
+    assert selected_checkpoint() == "checkpoints/public_assistant_rebalance/latest.pt"
     assert config["archived_checkpoints"]["v20_general_recovery_v5_step_129"] == "checkpoints/public_general_recovery_v5/latest.pt"
     assert config["archived_checkpoints"]["v8"] == "checkpoints/public_v8/best.pt"
     assert config["archived_checkpoints"]["v10_balanced"] == "checkpoints/public_v10_balanced/best.pt"

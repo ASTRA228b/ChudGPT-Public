@@ -1,5 +1,12 @@
 # ChudGPT-Public changelog
 
+## 2026-09-23 — General assistant rebalance
+
+- Selected the 1,400-step assistant rebalance on 1,347 examples; game retention is approximately 6% of the data.
+- The 22-prompt development check retained game knowledge and improved titles, basic facts, and simple Python, without unprompted Gorilla Tag material in the 20 non-game checks. Unseen-task failures remain documented.
+- A further 1,200-step candidate was trained and evaluated but not selected because general-help and Python outputs regressed.
+- Every existing fallback, grounded handler, and the LGBTQIA+ specialist remain unchanged.
+
 ## 2026-09-23 — Focused LGBTQIA+ conversation repair
 
 - Trained a separate neural conversation checkpoint for LGBTQIA+ disclosures and related follow-ups (500 + 350 CUDA steps).

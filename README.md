@@ -6,13 +6,17 @@ The native ChudGPT Desktop client now lives entirely in [`desktop/`](desktop/REA
 
 ChudGPT-Public is an independently trained, experimental conversational language model and public web API. It has **20,999,184 trainable parameters** and is designed for general conversation, basic facts, arithmetic, and simple Python, C#, JavaScript, and Unity questions.
 
+### General assistant rebalance
+
+The current main checkpoint is `public_assistant_rebalance/latest.pt` (step 1,400), trained on 1,347 examples with about 6% game retention. It improves titles, basic explanations, math-help requests, and simple Python over the game-heavy checkpoint. All existing fallbacks and grounded handlers are unchanged, including the focused LGBTQIA+ checkpoint. It still fails some unseen extraction, rewriting, and creative constraints; this is not a broadly reliable assistant. See [evaluation report](reports/ASSISTANT_REBALANCE.md).
+
 ### September 2026 game and awareness update
 
-The selected checkpoint is `public_games_v2/step_800.pt`, an earlier snapshot after 1,400 cumulative fine-tuning steps. The full experiment ran 3,000 steps, but the earlier snapshot preserves rougher V20 behavior. Casual identity conversations use neural generation and the first usable draft, rather than canned acknowledgments or best-of-five selection. Training adds game/modding knowledge and model-family identity with filtered replay data. Narrow LGBTQIA+, emoji, and geography handlers are restored; supported repeated grounded answers vary wording. Games and unknown model names remain neural, with no new generic nonanswer or invented-model fallback. Humor is occasional and factual answers can still be wrong. See [training and evaluation report](reports/GAMES_RETRAIN_20260923.md).
+The previous checkpoint was `public_games_v2/step_800.pt`, an earlier snapshot after 1,400 cumulative fine-tuning steps. The full experiment ran 3,000 steps, but the earlier snapshot preserves rougher V20 behavior. Casual identity conversations use neural generation and the first usable draft, rather than canned acknowledgments or best-of-five selection. Training adds game/modding knowledge and model-family identity with filtered replay data. Narrow LGBTQIA+, emoji, and geography handlers are restored; supported repeated grounded answers vary wording. Games and unknown model names remain neural, with no new generic nonanswer or invented-model fallback. Humor is occasional and factual answers can still be wrong. See [training and evaluation report](reports/GAMES_RETRAIN_20260923.md).
 
 ### Focused LGBTQIA+ conversation repair
 
-`serving_config.json` now loads `public_lgbtq_chat_v2/latest.pt` for neural LGBTQIA+ conversation only. It was fine-tuned for 500 + 350 CUDA steps on original disclosures and follow-ups. Casual replies are generated, not selected from an acknowledgment table. The main `public_games_v2/step_800.pt` model and all other topics remain unchanged. API replies expose `neural_profile` and `generation_step`; status exposes `lgbtq_neural_checkpoint`. This small specialist can still misunderstand paraphrases and repeat learned wording. See [focused report](reports/LGBTQ_CHAT_REPAIR.md).
+`serving_config.json` now loads `public_lgbtq_chat_v2/latest.pt` for neural LGBTQIA+ conversation only. It was fine-tuned for 500 + 350 CUDA steps on original disclosures and follow-ups. Casual replies are generated, not selected from an acknowledgment table. Other topics use the separately selected main checkpoint. API replies expose `neural_profile` and `generation_step`; status exposes `lgbtq_neural_checkpoint`. This small specialist can still misunderstand paraphrases and repeat learned wording. See [focused report](reports/LGBTQ_CHAT_REPAIR.md).
 
 ### ChudGPT-Public-Music V1
 
@@ -121,7 +125,7 @@ cd /d C:\Users\admin\OneDrive\Documents\ChudGPT\ChudGPT-Public
 start_training.cmd
 ```
 
-That runs data preparation, base pretraining, response-only fine-tuning, and evaluation. Timestamped logs are stored in `reports`. The Public API checkpoint is selected in `serving_config.json`; V20 currently uses `checkpoints/public_v20_quality/best.pt`. The previous V20 checkpoint, V8 through V18, and the rejected broad V20 candidate remain archived and selectable.
+That runs data preparation, base pretraining, response-only fine-tuning, and evaluation. Timestamped logs are stored in `reports`. The Public API checkpoint is selected in `serving_config.json`; the current selection is recorded in that configuration file. The previous V20 checkpoint, V8 through V18, and the rejected broad V20 candidate remain archived and selectable.
 
 The official Discord bot sends a protected Discord-only system instruction plus scoped server, channel, and speaker metadata. It securely treats the Discord application owner as Astra/the developer; `CHUDGPT_DEVELOPER_USER_ID` can explicitly override that account. Its conversations are logged as monthly JSONL files under `D:\ChudGPT-Discord-Logs` by default; set `CHUDGPT_DISCORD_LOG_DIR` to change that location. Tell server members if their bot messages are being logged.
 

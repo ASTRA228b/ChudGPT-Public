@@ -1,5 +1,5 @@
 {
-  "selected_checkpoint": "checkpoints/public_games_v2/step_800.pt",
+  "selected_checkpoint": "checkpoints/public_assistant_rebalance/latest.pt",
   "archived_checkpoints": {
     "v8": "checkpoints/public_v8/best.pt",
     "v9": "checkpoints/public_v9/best.pt",
@@ -20,7 +20,8 @@
     "v20_general_acceptance_v1": "checkpoints/public_general_acceptance_v1/latest.pt",
     "v20_core_polish_step_450": "checkpoints/public_core_polish_v1/step_450.pt",
     "v20_general_recovery_v5_step_129": "checkpoints/public_general_recovery_v5/latest.pt",
-    "public_games_v3_final": "checkpoints/public_games_v3/latest.pt"
+    "public_games_v3_final": "checkpoints/public_games_v3/latest.pt",
+    "public_games_v2_step_800": "checkpoints/public_games_v2/step_800.pt"
   },
   "lgbtq_checkpoint": "checkpoints/public_lgbtq_chat_v2/latest.pt"
 }
