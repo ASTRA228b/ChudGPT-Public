@@ -21,5 +21,6 @@
     "v20_core_polish_step_450": "checkpoints/public_core_polish_v1/step_450.pt",
     "v20_general_recovery_v5_step_129": "checkpoints/public_general_recovery_v5/latest.pt",
     "public_games_v3_final": "checkpoints/public_games_v3/latest.pt"
-  }
+  },
+  "lgbtq_checkpoint": "checkpoints/public_lgbtq_chat_v2/latest.pt"
 }

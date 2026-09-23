@@ -1,5 +1,11 @@
 # ChudGPT-Public changelog
 
+## 2026-09-23 — Focused LGBTQIA+ conversation repair
+
+- Trained a separate neural conversation checkpoint for LGBTQIA+ disclosures and related follow-ups (500 + 350 CUDA steps).
+- Select it by input topic, with no generated-answer replacement or new canned acknowledgments. Main model, math, games, Music, and UI behavior remain unchanged.
+- Verified screenshot prompts in both web and Discord serving modes.
+
 ## 2026-09-23 — Restore rougher neural conversation
 
 - Selected games-v2 step 800 after comparing the screenshot prompts against recovery-v5 and games-v3; keeps learned Gorilla Tag knowledge with less polished, sometimes off-topic conversation.

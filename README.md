@@ -10,6 +10,10 @@ ChudGPT-Public is an independently trained, experimental conversational language
 
 The selected checkpoint is `public_games_v2/step_800.pt`, an earlier snapshot after 1,400 cumulative fine-tuning steps. The full experiment ran 3,000 steps, but the earlier snapshot preserves rougher V20 behavior. Casual identity conversations use neural generation and the first usable draft, rather than canned acknowledgments or best-of-five selection. Training adds game/modding knowledge and model-family identity with filtered replay data. Narrow LGBTQIA+, emoji, and geography handlers are restored; supported repeated grounded answers vary wording. Games and unknown model names remain neural, with no new generic nonanswer or invented-model fallback. Humor is occasional and factual answers can still be wrong. See [training and evaluation report](reports/GAMES_RETRAIN_20260923.md).
 
+### Focused LGBTQIA+ conversation repair
+
+`serving_config.json` now loads `public_lgbtq_chat_v2/latest.pt` for neural LGBTQIA+ conversation only. It was fine-tuned for 500 + 350 CUDA steps on original disclosures and follow-ups. Casual replies are generated, not selected from an acknowledgment table. The main `public_games_v2/step_800.pt` model and all other topics remain unchanged. API replies expose `neural_profile` and `generation_step`; status exposes `lgbtq_neural_checkpoint`. This small specialist can still misunderstand paraphrases and repeat learned wording. See [focused report](reports/LGBTQ_CHAT_REPAIR.md).
+
 ### ChudGPT-Public-Music V1
 
 Music V1 is a separate 20,999,184-parameter checkpoint fine-tuned for original lyrics, hooks, titles, song concepts, and musical style ideas. It has isolated conversation sessions and does not replace the standard Public V20 checkpoint. Its personality deliberately permits funny, chaotic, and occasionally nonsensical writing. It remains a very small experimental model: rhyme, factual music knowledge, and instruction following are not dependable.

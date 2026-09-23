@@ -1,0 +1,11 @@
+# Focused LGBTQIA+ conversation repair
+
+The main games-v2 step-800 checkpoint remains selected. A separate copy was fine-tuned on original LGBTQIA+ conversations and is selected only for that topic, before generation. Casual disclosures remain neural. Existing explicit definitions, pronoun recall, and other narrow handlers retain their behavior. Code, translation, poems, math, game questions, and unrelated conversation retain the normal path. There is no generated-answer detector, apology replacement, or canned acknowledgment lookup.
+
+Training completed 500 steps on an initial 291 examples, then 350 on a revised 237-example set that gives more weight to disclosures than bot-self follow-ups. Both passes used CUDA and response-only supervised fine-tuning. The checked-in builder and dataset represent the final revised set. Checkpoint binaries remain local under the existing Git exclusion. Selected specialist: `checkpoints/public_lgbtq_chat_v2/latest.pt`. Final validation loss was 0.0047; overlapping paraphrases make this unsuitable as a generalization estimate.
+
+`evaluate_lgbtq_chat.py` tested eight prompts in web and Discord modes. The final run answered the screenshot's “I'm trans,” “im gay,” “Im a femboy,” and “are you not gay” topically, without broken code or the generic ChudGPT introduction. A femboy/orientation question correctly distinguished presentation from attraction. All of those replies reported a neural profile and no grounded assistance. The Discord nonbinary example still sometimes assumes coming-out stress unnecessarily. Wording can repeat because this remains a small trained model; unseen phrasings and longer conversations can fail.
+
+Full suite after initial integration: 654 passing tests. Topic tests passed again after extending recognized LGBTQIA+ terms. Live endpoint checks verify activation separately. Runtime responses expose `neural_profile` and `generation_step`; `/api/status` exposes the specialist checkpoint, while the existing `step` remains the main checkpoint's step for compatibility.
+
+Local evidence: `reports/lgbtq_training.log`, `lgbtq_training_v2.log`, `lgbtq_neural_v2_smoke.json`, and `lgbtq_tests.log`. No raw Discord logs or personal identifiers are included in training or committed artifacts.

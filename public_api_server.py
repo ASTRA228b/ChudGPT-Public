@@ -44,6 +44,7 @@ from public_greetings import canned_greeting_response
 from public_geography import geography_response
 from public_identity import project_identity_response
 from public_lgbtq import lgbtq_identity_response
+from public_lgbtq_topic import lgbtq_conversation
 from public_math import exact_math_response
 from public_response_variants import vary_grounded_response
 
@@ -389,6 +390,8 @@ class PublicModelService:
         active_session = session_id or uuid.uuid4().hex
         with self.lock:
             history = list(self.sessions.get(active_session, []))
+            self.last_neural_profile = None
+            self.last_generation_step = None
             normalized_message = normalize_user_text(clean_message, include_emoji_hints=False)
             model_message = add_emoji_context(
                 normalized_message,
@@ -435,7 +438,13 @@ class PublicModelService:
                             active_prompt = DISCORD_SYSTEM_PROMPT if context_mode == "discord" else self.system_prompt
                             if context_mode == "discord" and discord_context:
                                 active_prompt += " Current Discord context: " + discord_context
-                            reply = self._generate_raw(generation_history, max_new_tokens, temperature, active_prompt)
+                            generator = self
+                            specialist = getattr(self, "lgbtq_service", None)
+                            if specialist is not None and lgbtq_conversation(normalized_message, history[:-1]):
+                                generator = specialist
+                            self.last_neural_profile = "lgbtq" if generator is specialist else "public"
+                            self.last_generation_step = getattr(generator, "step", None)
+                            reply = generator._generate_raw(generation_history, max_new_tokens, temperature, active_prompt)
                             self.last_assistance_reason = None
             reply = vary_grounded_response(normalized_message, reply, self.last_assistance_reason, history[:-1])
             history.append({"role": "assistant", "content": reply})
@@ -1402,6 +1411,10 @@ def create_app(checkpoint: Path, device: str, assistance_enabled: bool = True,
                music_checkpoint: Path | None = None) -> FastAPI:
     service = PublicModelService(checkpoint, device, assistance_enabled=assistance_enabled,
                                  tokenizer_path=tokenizer_path)
+    serving_options = json.loads(SERVING_CONFIG_PATH.read_text(encoding="utf-8"))
+    lgbtq_checkpoint = serving_options.get("lgbtq_checkpoint")
+    service.lgbtq_service = (PublicModelService(ROOT / lgbtq_checkpoint, device, tokenizer_path=tokenizer_path)
+                            if lgbtq_checkpoint else None)
     music_service = (
         MusicModelService(music_checkpoint, device, tokenizer_path=tokenizer_path)
         if music_checkpoint is not None and music_checkpoint.is_file()
@@ -1435,6 +1448,7 @@ def create_app(checkpoint: Path, device: str, assistance_enabled: bool = True,
             "exact_math": True,
             "identity_grounding": True,
             "fallbacks": False,
+            "lgbtq_neural_checkpoint": lgbtq_checkpoint,
             "grounded_systems": ["exact_math", "project_identity", "canned_greeting", "geography", "lgbtq_identity", "emoji_semantics"],
             "generation_policy": "neural generation with narrow math, identity, greeting, geography, LGBTQIA+, and emoji systems; supported repeat answers vary wording; games and unknown requests remain neural",
             "emoji_awareness": {
@@ -1529,6 +1543,8 @@ def create_app(checkpoint: Path, device: str, assistance_enabled: bool = True,
         if not keep_session:
             service.clear(session_id)
         return {"reply": reply, "session_id": session_id, "step": service.step,
+                "neural_profile": service.last_neural_profile,
+                "generation_step": service.last_generation_step,
                 "raw_model_generation": service.last_assistance_reason is None,
                 "assistance_used": service.last_assistance_reason is not None,
                 "assistance_reason": service.last_assistance_reason}
