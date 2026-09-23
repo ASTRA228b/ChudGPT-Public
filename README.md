@@ -8,7 +8,7 @@ ChudGPT-Public is an independently trained, experimental conversational language
 
 ### September 2026 game and awareness update
 
-The selected checkpoint is `public_games_v3/latest.pt` (step 800 in the final pass), following 3,000 CUDA fine-tuning steps across three passes. Training adds game/modding knowledge and model-family identity with filtered replay data. Narrow LGBTQIA+, emoji, and geography handlers are restored; supported repeated grounded answers vary wording. Games and unknown model names remain neural, with no new generic nonanswer or invented-model fallback. Humor is occasional and factual answers can still be wrong. See [training and evaluation report](reports/GAMES_RETRAIN_20260923.md).
+The selected checkpoint is `public_games_v2/step_800.pt`, an earlier snapshot after 1,400 cumulative fine-tuning steps. The full experiment ran 3,000 steps, but the earlier snapshot preserves rougher V20 behavior. Casual identity conversations use neural generation and the first usable draft, rather than canned acknowledgments or best-of-five selection. Training adds game/modding knowledge and model-family identity with filtered replay data. Narrow LGBTQIA+, emoji, and geography handlers are restored; supported repeated grounded answers vary wording. Games and unknown model names remain neural, with no new generic nonanswer or invented-model fallback. Humor is occasional and factual answers can still be wrong. See [training and evaluation report](reports/GAMES_RETRAIN_20260923.md).
 
 ### ChudGPT-Public-Music V1
 

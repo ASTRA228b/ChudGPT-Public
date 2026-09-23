@@ -195,7 +195,7 @@ class PublicModelService:
         ))
         conversational = (
             len(re.findall(r"[a-z0-9']+", current_message.lower())) <= 8
-            and not structured_request and not task_request
+            and not structured_request and (not task_request or bool(re.match(r"(?:are|do|can|would) you\b", current_message, re.I)))
         )
         if conversational and self.shorten_casual_generation:
             system_prompt += (
@@ -217,6 +217,8 @@ class PublicModelService:
             (max(0.86, temperature), 60, 0.90),
             (max(0.54, temperature - 0.04), 40, 0.84),
         )
+        if conversational:
+            sampling_profiles = ((max(0.85, temperature) if temperature > 0 else 0.0, 80, 0.95),) + sampling_profiles
         candidates: list[str] = []
         for attempt_temperature, top_k, top_p in sampling_profiles:
             output = generate(
@@ -230,6 +232,12 @@ class PublicModelService:
                 eos_token_id=self.eos_id,
             )[0, len(prompt_ids):].tolist()
             reply = self.tokenizer.decode(output, skip_special_tokens=True).strip()
+            if reply and conversational:
+                # Casual V20 chat keeps the first usable draw, including awkward
+                # grammar and mistaken facts, rather than selecting the best of five.
+                _, reasons = assess_generated_reply(current_message, reply, [], "")
+                if not {"prompt-leak", "emoji-context-leak", "training-data-leak", "replacement-character", "repetition-loop", "degenerate-repetition"}.intersection(reasons):
+                    return reply
             if reply:
                 candidates.append(reply)
         if candidates:
@@ -401,7 +409,7 @@ class PublicModelService:
                 reply = geography_reply
                 self.last_assistance_reason = "geography"
             else:
-                lgbtq_reply = lgbtq_identity_response(normalized_message, history[:-1])
+                lgbtq_reply = lgbtq_identity_response(normalized_message, history[:-1], factual_only=True)
                 if lgbtq_reply is not None:
                     reply = lgbtq_reply
                     self.last_assistance_reason = "lgbtq_identity"

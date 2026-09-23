@@ -45,9 +45,16 @@ def _clean(text: str) -> str:
 def lgbtq_identity_response(
     message: str,
     history: Sequence[Mapping[str, str]] = (),
+    *,
+    factual_only: bool = False,
 ) -> str | None:
     """Answer only explicit LGBTQ identity/acceptance cases, else ``None``."""
     text = _clean(message)
+    # The live chat uses this module for explicit facts and recalled pronouns,
+    # not acknowledgments or the model's conversational persona.
+    if factual_only and re.search(rf"\b(?:{IDENTITY})\b|sexuality|sexual orientation|gender identity|attracted to|crush on", text):
+        if re.match(r"(?:i(?:'m| am| identify| think)|(?:are|r) (?:you|u)|you|ur\b|your\b|u r\b|do you (?:like|love|think)|would you say you|who are you attracted|what(?: is|'s) your)", text):
+            return None
 
     if re.fullmatch(r"(?:what are my pronouns|do you remember my pronouns)[?.!]*", text):
         for turn in reversed(history):

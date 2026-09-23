@@ -1,6 +1,10 @@
 # Public games retrain — September 2026
 
-## Selected model
+## Follow-up selection: rougher V20 conversation
+
+After the user reported the canned disclosure and repeated neural introduction, the selected checkpoint changed to `public_games_v2/step_800.pt` (1,400 cumulative steps). Games-v3 remains archived. Casual identity requests bypass the acknowledgment handler, and short casual chat takes the first usable neural draw with broader sampling rather than the most polished of five. Recovery-v5 lost Gorilla Tag knowledge; games-v2 step 800 retained it and produced awkward/off-topic identity replies in the comparison. This deliberately accepts lower reliability, without inserting errors or catching invented models. The repeated introduction in v3 was genuinely neural and persisted across three screenshot-sequence tests. Logs: `casual_neural_smoke.json` and `casual_checkpoint_comparison.json`. Full suite after casual routing changes: 642 passing tests.
+
+## Initial selected model
 
 `checkpoints/public_games_v3/latest.pt`, final-pass step 800, is selected in `serving_config.json` and loaded on the existing CUDA API. The public `/api/status` endpoint confirmed this selection. Architecture remains 20,999,184 parameters and 1,024 model tokens. Recovery-v5 remains archived for rollback. Music and sibling model weights were not retrained.
 

@@ -124,7 +124,7 @@ def test_public_service_routes_identity_facts_without_generic_fallback(monkeypat
     assert service.last_assistance_reason == "project_identity"
 
 
-def test_public_service_routes_lgbtq_identity_without_neural_drift(monkeypatch) -> None:
+def test_public_service_leaves_casual_identity_neural(monkeypatch) -> None:
     service = object.__new__(PublicModelService)
     service.lock = __import__("threading").RLock()
     service.sessions = __import__("collections").OrderedDict()
@@ -135,11 +135,11 @@ def test_public_service_routes_lgbtq_identity_without_neural_drift(monkeypatch) 
     monkeypatch.setattr(
         service,
         "_generate_raw",
-        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("neural generation should not run")),
+        lambda *args, **kwargs: "An awkward neural reply.",
     )
     _, reply = service.chat("Are you gay?", "lgbtq-test")
-    assert reply.startswith("No—I'm an AI")
-    assert service.last_assistance_reason == "lgbtq_identity"
+    assert reply == "An awkward neural reply."
+    assert service.last_assistance_reason is None
 
 
 def test_canned_greetings_are_reliable_and_do_not_capture_real_tasks() -> None:
@@ -239,7 +239,7 @@ def test_public_model_service_has_raw_generation_method() -> None:
 
 def test_serving_config_selects_v20_and_keeps_v8_archived() -> None:
     config = json.loads(Path("serving_config.json").read_text(encoding="utf-8"))
-    assert selected_checkpoint() == "checkpoints/public_games_v3/latest.pt"
+    assert selected_checkpoint() == "checkpoints/public_games_v2/step_800.pt"
     assert config["archived_checkpoints"]["v20_general_recovery_v5_step_129"] == "checkpoints/public_general_recovery_v5/latest.pt"
     assert config["archived_checkpoints"]["v8"] == "checkpoints/public_v8/best.pt"
     assert config["archived_checkpoints"]["v10_balanced"] == "checkpoints/public_v10_balanced/best.pt"

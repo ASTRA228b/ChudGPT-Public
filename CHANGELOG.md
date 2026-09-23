@@ -1,5 +1,11 @@
 # ChudGPT-Public changelog
 
+## 2026-09-23 — Restore rougher neural conversation
+
+- Selected games-v2 step 800 after comparing the screenshot prompts against recovery-v5 and games-v3; keeps learned Gorilla Tag knowledge with less polished, sometimes off-topic conversation.
+- Casual identity disclosures and questions now bypass canned identity replies. Short casual chats return the first usable neural draft with broader sampling. Explicit facts and pronoun recall remain available.
+- No canned replacement for the repeated model introduction; no injected mistakes.
+
 ## 2026-09-23 — Games retrain and response variation
 
 - Completed 600 + 1,600 + 800 CUDA fine-tuning steps; selected `public_games_v3/latest.pt`, preserving recovery-v5 for rollback.

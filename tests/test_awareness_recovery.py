@@ -24,9 +24,6 @@ def service():
 
 
 @pytest.mark.parametrize("prompt,fragment", [
-    ("im gay", "respect"), ("I’m gay", "respect"),
-    ("I'm trans 🏳️‍⚧️", "respect"), ("I'm intersex", "respect"),
-    ("are u gay? ~uwu~", "AI"), ("ur gay", "AI"),
     ("am I gay be honesyt", "can't determine"),
     ("do you support LGBTQIA+?", "equal treatment"),
     ("What does LGBTQIA+ stand for?", "intersex"),
@@ -62,6 +59,7 @@ def test_disclosure_and_pronouns_recalled_with_emoji_annotations(service):
 
 
 @pytest.mark.parametrize("prompt", [
+    "Im a femboy", "are you not gay", "im gay", "I’m gay", "I'm trans 🏳️‍⚧️", "I'm intersex", "are u gay? ~uwu~", "ur gay",
     "Explain fire safety 🔥", "Write a pride poem 🏳️‍🌈", "I'm not gay",
     "Explain binary search", "Translate gay into French", "What is pride in a novel?",
     "Why is my code broken 😭", "Draw a heart ❤️", "print('🔥')",
