@@ -6,6 +6,14 @@ The native ChudGPT Desktop client now lives entirely in [`desktop/`](desktop/REA
 
 ChudGPT-Public is an independently trained, experimental conversational language model and public web API. It has **20,999,184 trainable parameters** and is designed for general conversation, basic facts, arithmetic, and simple Python, C#, JavaScript, and Unity questions.
 
+### Offline browser chat
+
+The API now serves its bundled Public chat at `http://127.0.0.1:8010/` and Music at `http://127.0.0.1:8010/music`, with local assets and same-origin API requests. In the parent ChudGPT checkout, `Open Public Offline.cmd` starts or reuses Public; `Open ChudGPT Offline.cmd` offers all 12 locally installed models. No download or tunnel is needed. This PC has launchers in `D:\ChudGPT-Offline`.
+
+### Recipe library
+
+Ask `How do I make pancakes?`, `Recipe for rice for 6 people`, or `What recipes do you know?`. The structured library contains 12 starter recipes with ingredients, steps, approximate times, and scaling for 1–20 servings. Follow up with `just ingredients`, `steps`, or `make it for 4 people`. API replies use `assistance_reason: recipe_library`; these are library answers, not neural output. Unsupported dishes and dietary modifications retain the normal model path and are not verified library recipes. Data lives in `data/recipes.json`. No checkpoint retraining is needed.
+
 ### General assistant rebalance
 
 The current main checkpoint is `public_assistant_rebalance/latest.pt` (step 1,400), trained on 1,347 examples with about 6% game retention. It improves titles, basic explanations, math-help requests, and simple Python over the game-heavy checkpoint. All existing fallbacks and grounded handlers are unchanged, including the focused LGBTQIA+ checkpoint. It still fails some unseen extraction, rewriting, and creative constraints; this is not a broadly reliable assistant. See [evaluation report](reports/ASSISTANT_REBALANCE.md).

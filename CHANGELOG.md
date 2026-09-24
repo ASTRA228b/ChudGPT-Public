@@ -1,5 +1,11 @@
 # ChudGPT-Public changelog
 
+## 2026-09-23 — Recipe library
+
+- Added explicit local routes for the bundled Public and Music chat pages and their assets. The parent project supplies offline .cmd launchers.
+- Added 12 structured starter recipes, proportional ingredient scaling, catalog discovery, and session-local ingredients/steps follow-ups.
+- Exposed `recipe_library` assistance metadata; retained all existing handlers and checkpoints. Unsupported dishes, dietary adaptations, and non-cooking tasks keep their normal route.
+
 ## 2026-09-23 — General assistant rebalance
 
 - Selected the 1,400-step assistant rebalance on 1,347 examples; game retention is approximately 6% of the data.

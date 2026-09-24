@@ -18,6 +18,7 @@ from typing import Literal
 import torch
 import uvicorn
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from tokenizers import Tokenizer
@@ -47,6 +48,7 @@ from public_lgbtq import lgbtq_identity_response
 from public_lgbtq_topic import lgbtq_conversation
 from public_math import exact_math_response
 from public_response_variants import vary_grounded_response
+from public_recipes import recipe_response, RECIPES
 
 ROOT = Path(__file__).resolve().parent
 MAX_SESSIONS = 1_000
@@ -402,6 +404,7 @@ class PublicModelService:
             emoji_reply = emoji_semantic_response(normalized_message, include_discord=context_mode == "discord")
             # Preserve abbreviations such as U.S.; slang normalization expands U.
             geography_reply = geography_response(clean_message, history[:-1])
+            recipe_reply = recipe_response(clean_message, history[:-1])
             if math_reply is not None:
                 reply = math_reply
                 self.last_assistance_reason = "exact_math"
@@ -411,6 +414,9 @@ class PublicModelService:
             elif geography_reply is not None:
                 reply = geography_reply
                 self.last_assistance_reason = "geography"
+            elif recipe_reply is not None:
+                reply = recipe_reply
+                self.last_assistance_reason = "recipe_library"
             else:
                 lgbtq_reply = lgbtq_identity_response(normalized_message, history[:-1], factual_only=True)
                 if lgbtq_reply is not None:
@@ -1449,7 +1455,8 @@ def create_app(checkpoint: Path, device: str, assistance_enabled: bool = True,
             "identity_grounding": True,
             "fallbacks": False,
             "lgbtq_neural_checkpoint": lgbtq_checkpoint,
-            "grounded_systems": ["exact_math", "project_identity", "canned_greeting", "geography", "lgbtq_identity", "emoji_semantics"],
+            "grounded_systems": ["exact_math", "project_identity", "canned_greeting", "geography", "lgbtq_identity", "emoji_semantics", "recipe_library"],
+            "recipe_library": {"recipes": len(RECIPES), "serving_range": [1, 20]},
             "generation_policy": "neural generation with narrow math, identity, greeting, geography, LGBTQIA+, and emoji systems; supported repeat answers vary wording; games and unknown requests remain neural",
             "emoji_awareness": {
                 "library": "emoji 2.15.0",
@@ -1608,6 +1615,19 @@ def create_app(checkpoint: Path, device: str, assistance_enabled: bool = True,
         music_service.clear(request.session_id)
         return {"cleared": True, "music": True}
 
+    # Serve the bundled chats locally as well as through the hosted frontend.
+    # Explicit assets avoid exposing deployment scripts in web/static/api.
+    def local_page(relative):
+        def endpoint():
+            return FileResponse(ROOT / "web" / "static" / relative)
+        return endpoint
+    for route, relative in {
+        "/": "index.html", "/index.html": "index.html",
+        "/style.css": "style.css", "/app.js": "app.js", "/favicon.svg": "favicon.svg",
+        "/music": "music/index.html", "/music/": "music/index.html",
+        "/music/index.html": "music/index.html", "/music/app.js": "music/app.js",
+    }.items():
+        app.add_api_route(route, local_page(relative), include_in_schema=False)
     return app
 
 
