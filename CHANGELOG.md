@@ -1,5 +1,11 @@
 # ChudGPT-Public changelog
 
+## 2026-09-24 — Public racial-slur input filter
+
+- Base racial slurs are matched case-insensitively as whole words. Slur-only messages receive a short request to rephrase and are not stored in conversation memory.
+- Mixed requests keep their normal handlers and neural generation after the matched words are removed. Saved history and Discord context are cleaned before use too.
+- This is an explicit base-word filter, not a comprehensive hate-speech classifier. Identity terms and innocent substrings remain unchanged; Music and other models are unaffected.
+
 ## 2026-09-23 — Recipe library
 
 - Added explicit local routes for the bundled Public and Music chat pages and their assets. The parent project supplies offline .cmd launchers.

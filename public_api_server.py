@@ -44,6 +44,7 @@ from music_instructions import MUSIC_MODEL_NAME, MUSIC_SYSTEM_PROMPT
 from public_greetings import canned_greeting_response
 from public_geography import geography_response
 from public_identity import project_identity_response
+from public_input_filter import filter_racial_slurs, has_remaining_request, SLUR_ONLY_REPLY
 from public_lgbtq import lgbtq_identity_response
 from public_lgbtq_topic import lgbtq_conversation
 from public_math import exact_math_response
@@ -391,9 +392,20 @@ class PublicModelService:
             raise ValueError("message cannot be blank")
         active_session = session_id or uuid.uuid4().hex
         with self.lock:
-            history = list(self.sessions.get(active_session, []))
+            clean_message, filtered = filter_racial_slurs(clean_message)
             self.last_neural_profile = None
             self.last_generation_step = None
+            if filtered and not has_remaining_request(clean_message):
+                self.last_assistance_reason = "racial_slur_filter"
+                return active_session, SLUR_ONLY_REPLY
+            # Old sessions and Discord context must not reintroduce removed words.
+            history = []
+            for turn in self.sessions.get(active_session, []):
+                content, removed = filter_racial_slurs(turn["content"])
+                if not removed or has_remaining_request(content):
+                    history.append({**turn, "content": content})
+            if discord_context:
+                discord_context, _ = filter_racial_slurs(discord_context)
             normalized_message = normalize_user_text(clean_message, include_emoji_hints=False)
             model_message = add_emoji_context(
                 normalized_message,
