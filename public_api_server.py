@@ -45,6 +45,7 @@ from public_greetings import canned_greeting_response
 from public_geography import geography_response
 from public_identity import project_identity_response
 from public_input_filter import filter_racial_slurs, has_remaining_request, SLUR_ONLY_REPLY
+from sim_actions import SimRequest, select_sim_action
 from public_lgbtq import lgbtq_identity_response
 from public_lgbtq_topic import lgbtq_conversation
 from public_math import exact_math_response
@@ -1572,6 +1573,16 @@ def create_app(checkpoint: Path, device: str, assistance_enabled: bool = True,
     @app.post("/api/models/public/chat")
     def chat(request: ChatRequest) -> dict[str, object]:
         return run_chat(request, True)
+
+    @app.post("/api/models/public/sim-step")
+    def public_sim_step(request: SimRequest) -> dict[str, object]:
+        if not service.lock.acquire(blocking=False):
+            raise HTTPException(status_code=429, detail='Public is busy; pause and try again shortly.')
+        try:
+            observation, _ = filter_racial_slurs(request.observation)
+            return select_sim_action(service.model, service.tokenizer, service.device, observation, 'public')
+        finally:
+            service.lock.release()
 
     @app.post("/api/generate")
     @app.post("/api/models/public/generate")

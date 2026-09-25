@@ -1,5 +1,10 @@
 # ChudGPT-Public changelog
 
+## 2026-09-25 — Hosted simulation actions
+
+- Added `POST /api/models/public/sim-step` for bounded neural selection of registered world functions. Observations are limited to 3,000 characters; action scoring uses at most 600 context tokens. Busy requests return 429.
+- Existing chat routes, checkpoints, fallbacks and racial-slur input filtering are preserved.
+
 ## 2026-09-24 — Public racial-slur input filter
 
 - Base racial slurs are matched case-insensitively as whole words. Slur-only messages receive a short request to rephrase and are not stored in conversation memory.
