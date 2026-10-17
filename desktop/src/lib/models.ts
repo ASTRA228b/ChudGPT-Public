@@ -5,7 +5,7 @@ export const modelProfiles: readonly {
   name: string;
   shortName: string;
   description: string;
-  family: "public" | "main";
+  family: "public" | "main" | "plato";
 }[] = [
   {
     id: "public",
@@ -90,6 +90,22 @@ export const modelProfiles: readonly {
     shortName: "Mega",
     description: "Deliberately strange Mega checkpoint",
     family: "main",
+  },
+  {
+    id: "plato",
+    name: "ChudGPT-Plato",
+    shortName: "Plato",
+    description:
+      "Independent experimental neural network · 49,854,976 parameters",
+    family: "plato",
+  },
+  {
+    id: "plato-mini",
+    name: "ChudGPT-Plato-Mini",
+    shortName: "Plato Mini",
+    description:
+      "Independent experimental neural network · 45,101,568 parameters",
+    family: "plato",
   },
 ] as const;
 

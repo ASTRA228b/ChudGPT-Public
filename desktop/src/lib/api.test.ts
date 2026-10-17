@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { chat, clearSession, status } from "./api";
+import { buildPlatoMessages, chat, clearSession, status } from "./api";
+import type { ChatMessage } from "../types";
 
 const apiRequest = vi.fn();
 
@@ -47,5 +48,58 @@ describe("desktop API routing", () => {
       "main/models/buggy/chat",
       "main/models/buggy/clear",
     ]);
+  });
+
+  it("routes both Plato models through the exact stateless namespace", async () => {
+    const history = [row("user", "hello")];
+    await status("plato", "status-id");
+    await chat("hello", "ignored-session", "chat-id", "plato", history);
+    await chat("hello", "ignored-session", "mini-id", "plato-mini", history);
+    await clearSession("ignored-session", "plato");
+    expect(apiRequest.mock.calls.map(([endpoint]) => endpoint)).toEqual([
+      "main/plato/status",
+      "main/plato/models/plato/chat",
+      "main/plato/models/plato-mini/chat",
+    ]);
+    expect(apiRequest.mock.calls[1][2]).toEqual({
+      messages: [{ role: "user", content: "hello" }],
+      max_new_tokens: 128,
+    });
+  });
+});
+
+function row(role: ChatMessage["role"], content: string): ChatMessage {
+  return {
+    id: crypto.randomUUID(),
+    role,
+    content,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+describe("Plato history bounds", () => {
+  it("omits errors and trims whole oldest turns", () => {
+    const history: ChatMessage[] = [];
+    for (let i = 0; i < 8; i++) {
+      history.push(
+        row("user", `${i}`.repeat(350)),
+        row("assistant", `answer-${i}`),
+      );
+      history.push(row("error", "offline"));
+    }
+    history.push(row("user", "latest"));
+    const messages = buildPlatoMessages(history);
+    expect(messages.at(-1)).toEqual({ role: "user", content: "latest" });
+    expect(messages.length).toBeLessThanOrEqual(12);
+    expect(
+      messages.reduce((n, item) => n + item.content.length, 0),
+    ).toBeLessThanOrEqual(4000);
+    expect(messages[0].role).toBe("user");
+    expect(messages.every((item) => item.content !== "offline")).toBe(true);
+  });
+  it("rejects a history without a final user turn", () => {
+    expect(() =>
+      buildPlatoMessages([row("user", "hi"), row("assistant", "hello")]),
+    ).toThrow();
   });
 });

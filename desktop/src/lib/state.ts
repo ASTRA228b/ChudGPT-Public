@@ -2,6 +2,7 @@ import type {
   AppSettings,
   Conversation,
   PersistedState,
+  ModelProfile,
   ThemeName,
 } from "../types";
 import { modelProfileIds } from "./models";
@@ -71,6 +72,8 @@ export function isConversation(value: unknown): value is Conversation {
   return (
     typeof chat.id === "string" &&
     typeof chat.sessionId === "string" &&
+    (chat.modelProfile === undefined ||
+      modelProfileIds.includes(chat.modelProfile)) &&
     typeof chat.title === "string" &&
     Array.isArray(chat.messages) &&
     chat.messages.every(
@@ -88,14 +91,22 @@ export function normalizeState(value: unknown): PersistedState {
   const fallback = emptyState();
   if (!value || typeof value !== "object") return fallback;
   const candidate = value as Partial<PersistedState>;
-  const conversations = Array.isArray(candidate.conversations)
-    ? candidate.conversations.filter(isConversation).slice(0, 1_000)
-    : [];
   const settings = { ...defaultSettings, ...(candidate.settings ?? {}) };
   if (!themeNames.includes(settings.theme))
     settings.theme = defaultSettings.theme;
   if (!modelProfileIds.includes(settings.modelProfile))
     settings.modelProfile = defaultSettings.modelProfile;
+  // Old exports stored only a global selector. Pin those chats to its last saved
+  // value so a later selector change cannot send their history to another API.
+  const conversations = Array.isArray(candidate.conversations)
+    ? candidate.conversations
+        .filter(isConversation)
+        .slice(0, 1_000)
+        .map((chat) => ({
+          ...chat,
+          modelProfile: chat.modelProfile ?? settings.modelProfile,
+        }))
+    : [];
   if (!["comfortable", "compact"].includes(settings.density))
     settings.density = defaultSettings.density;
   if (![0, 30, 60, 120, 300].includes(settings.statusPollSeconds))
@@ -134,15 +145,28 @@ export function normalizeState(value: unknown): PersistedState {
   };
 }
 
-export function createConversation(): Conversation {
+export function createConversation(
+  modelProfile: ModelProfile = "public",
+): Conversation {
   const now = new Date().toISOString();
   return {
     id: crypto.randomUUID(),
     sessionId: `desktop-${crypto.randomUUID()}`,
+    modelProfile,
     title: "New conversation",
     createdAt: now,
     updatedAt: now,
     messages: [],
+  };
+}
+
+export function rekeyImportedSessions(state: PersistedState): PersistedState {
+  return {
+    ...state,
+    conversations: state.conversations.map((chat) => ({
+      ...chat,
+      sessionId: `desktop-${crypto.randomUUID()}`,
+    })),
   };
 }
 

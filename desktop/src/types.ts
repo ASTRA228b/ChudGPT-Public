@@ -39,7 +39,9 @@ export type ModelProfile =
   | "plus"
   | "pro"
   | "code"
-  | "mega";
+  | "mega"
+  | "plato"
+  | "plato-mini";
 
 export interface ChatMessage {
   id: string;
@@ -51,6 +53,7 @@ export interface ChatMessage {
 export interface Conversation {
   id: string;
   sessionId: string;
+  modelProfile: ModelProfile;
   title: string;
   createdAt: string;
   updatedAt: string;
@@ -101,8 +104,11 @@ export interface ApiStatus {
 
 export interface ChatResponse {
   reply: string;
-  session_id: string;
-  step: number;
+  session_id?: string;
+  step?: number;
+  model?: string;
+  source?: string;
+  checkpoint_step?: number;
 }
 
 export type ConnectionState = "connecting" | "online" | "offline";

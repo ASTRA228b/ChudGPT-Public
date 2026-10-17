@@ -7,9 +7,10 @@ import {
   shell,
 } from "electron";
 import Store from "electron-store";
-import { readFile, writeFile } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { readImportJson } from "./import-file.js";
 
 const API_BASE = "https://chudgpt-public.vercel.app";
 const MAIN_API_BASE = "https://chudgpt-xi.vercel.app";
@@ -71,22 +72,41 @@ async function requestApi(
   body: unknown,
   requestId: string,
 ): Promise<unknown> {
+  if (
+    typeof endpoint !== "string" ||
+    !["GET", "POST"].includes(method) ||
+    typeof requestId !== "string" ||
+    !/^[a-zA-Z0-9-]{1,80}$/.test(requestId)
+  )
+    throw new Error("Invalid API request.");
+  if (requests.has(requestId)) throw new Error("Duplicate API request ID.");
   const mainService = endpoint.startsWith("main/");
   const cleanEndpoint = mainService ? endpoint.slice(5) : endpoint;
   if (
+    !(
+      mainService &&
+      /^(?:plato\/status|plato\/models\/(?:plato|plato-mini)(?:\/chat)?)$/.test(
+        cleanEndpoint,
+      )
+    ) &&
     !/^(?:status|chat|generate|clear|music\/(?:status|chat|clear)|models\/[a-z0-9]+(?:\/(?:chat|generate|clear))?)$/.test(
       cleanEndpoint,
     )
   )
     throw new Error("Invalid ChudGPT API endpoint.");
+  if (
+    cleanEndpoint.startsWith("plato/") &&
+    method !== (cleanEndpoint.endsWith("/chat") ? "POST" : "GET")
+  )
+    throw new Error("Invalid Plato API method.");
   const apiBase = mainService ? MAIN_API_BASE : API_BASE;
+  if (cleanEndpoint.startsWith("plato/") && !mainService)
+    throw new Error("Invalid Plato route.");
   const controller = new AbortController();
   requests.set(requestId, controller);
   const timeout = setTimeout(
     () => controller.abort("timeout"),
-    !cleanEndpoint.endsWith("/chat") && !cleanEndpoint.endsWith("/generate")
-      ? 12_000
-      : 90_000,
+    !/(?:^|\/)(?:chat|generate)$/.test(cleanEndpoint) ? 12_000 : 90_000,
   );
   try {
     const response = await fetch(`${apiBase}/api/${cleanEndpoint}`, {
@@ -163,10 +183,7 @@ function registerIpc(): void {
       filters: [{ name: "JSON", extensions: ["json"] }],
     });
     if (result.canceled || !result.filePaths[0]) return null;
-    const raw = await readFile(result.filePaths[0], "utf8");
-    if (raw.length > 10_000_000)
-      throw new Error("Import is larger than the 10 MB safety limit.");
-    return JSON.parse(raw) as unknown;
+    return readImportJson(result.filePaths[0]);
   });
   ipcMain.handle("app:setLaunchAtLogin", (_event, enabled: boolean) => {
     app.setLoginItemSettings({ openAtLogin: enabled, path: process.execPath });

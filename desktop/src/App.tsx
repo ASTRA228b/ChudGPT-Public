@@ -14,6 +14,7 @@ import {
   defaultSettings,
   emptyState,
   normalizeState,
+  rekeyImportedSessions,
   titleFromMessage,
   visibleMessages,
 } from "./lib/state";
@@ -55,6 +56,7 @@ export default function App(): JSX.Element {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const messagesEnd = useRef<HTMLDivElement>(null);
   const activeRequest = useRef<string | null>(null);
+  const saveQueue = useRef<Promise<unknown>>(Promise.resolve());
   const active = useMemo(
     () =>
       state.conversations.find(
@@ -105,10 +107,12 @@ export default function App(): JSX.Element {
   }, [toast]);
 
   useEffect(() => {
-    if (loaded)
-      void window.chudDesktop.saveData(
-        state as unknown as Record<string, unknown>,
-      );
+    if (loaded) {
+      const snapshot = state as unknown as Record<string, unknown>;
+      saveQueue.current = saveQueue.current
+        .catch(() => undefined)
+        .then(() => window.chudDesktop.saveData(snapshot));
+    }
   }, [state, loaded]);
   const checkConnection = useCallback(async () => {
     setConnection("connecting");
@@ -179,7 +183,7 @@ export default function App(): JSX.Element {
       ),
     }));
   const newChat = () => {
-    const chat = createConversation();
+    const chat = createConversation(state.settings.modelProfile);
     setState((current) => ({
       ...current,
       conversations: [chat, ...current.conversations],
@@ -188,8 +192,8 @@ export default function App(): JSX.Element {
     setDraft("");
   };
   const ensureChat = (): Conversation => {
-    if (active) return active;
-    const created = createConversation();
+    if (active?.modelProfile === state.settings.modelProfile) return active;
+    const created = createConversation(state.settings.modelProfile);
     setState((current) => ({
       ...current,
       conversations: [created, ...current.conversations],
@@ -199,7 +203,7 @@ export default function App(): JSX.Element {
   };
   const send = async () => {
     const clean = draft.trim();
-    if (!clean || busy) return;
+    if (!clean || activeRequest.current) return;
     const target = ensureChat();
     const userMessage = message("user", clean);
     setDraft("");
@@ -222,7 +226,9 @@ export default function App(): JSX.Element {
         target.sessionId,
         id,
         state.settings.modelProfile,
+        [...target.messages, userMessage],
       );
+      if (activeRequest.current !== id) return;
       updateChat(target.id, (item) => ({
         ...item,
         messages: [...item.messages, message("assistant", result.reply)],
@@ -269,9 +275,7 @@ export default function App(): JSX.Element {
       !window.confirm(`Delete “${chat.title}”? This cannot be undone.`)
     )
       return;
-    void clearSession(chat.sessionId, state.settings.modelProfile).catch(
-      () => undefined,
-    );
+    void clearSession(chat.sessionId, chat.modelProfile).catch(() => undefined);
     setState((current) => ({
       ...current,
       conversations: current.conversations.filter(
@@ -295,7 +299,14 @@ export default function App(): JSX.Element {
     toast("Chat renamed");
   };
   const changeSettings = (settings: AppSettings) => {
-    setState((current) => ({ ...current, settings }));
+    setState((current) => ({
+      ...current,
+      settings,
+      activeConversationId:
+        current.settings.modelProfile === settings.modelProfile
+          ? current.activeConversationId
+          : null,
+    }));
     toast("Settings saved");
   };
   const exportData = async () => {
@@ -310,7 +321,7 @@ export default function App(): JSX.Element {
     try {
       const data = await window.chudDesktop.importData();
       if (!data) return;
-      const imported = normalizeState(data);
+      const imported = rekeyImportedSessions(normalizeState(data));
       if (
         !window.confirm(
           `Import ${imported.conversations.length} conversations and replace current local data?`,
@@ -365,7 +376,18 @@ export default function App(): JSX.Element {
           onToggle={() => setSidebarCollapsed((value) => !value)}
           onNew={newChat}
           onSelect={(id) => {
-            setState((current) => ({ ...current, activeConversationId: id }));
+            setState((current) => {
+              const selected = current.conversations.find(
+                (chat) => chat.id === id,
+              );
+              return {
+                ...current,
+                activeConversationId: id,
+                settings: selected
+                  ? { ...current.settings, modelProfile: selected.modelProfile }
+                  : current.settings,
+              };
+            });
           }}
           onRename={renameChat}
           onDelete={removeChat}
@@ -456,6 +478,10 @@ export default function App(): JSX.Element {
               onModelChange={(modelProfile) =>
                 setState((current) => ({
                   ...current,
+                  activeConversationId:
+                    current.settings.modelProfile === modelProfile
+                      ? current.activeConversationId
+                      : null,
                   settings: { ...current.settings, modelProfile },
                 }))
               }

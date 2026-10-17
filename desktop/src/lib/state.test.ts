@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   createConversation,
   normalizeState,
+  rekeyImportedSessions,
   searchConversations,
   titleFromMessage,
   visibleMessages,
@@ -78,5 +79,32 @@ describe("desktop state", () => {
     const messages = Array.from({ length: 600 }, (_, index) => index);
     expect(visibleMessages(messages, 250)).toEqual(messages.slice(-250));
     expect(visibleMessages(messages, 0)).toBe(messages);
+  });
+
+  it("pins legacy chats to the last saved selector and preserves new identities", () => {
+    const legacy = createConversation("public");
+    const { modelProfile: _oldProfile, ...oldShape } = legacy;
+    const normalized = normalizeState({
+      settings: { modelProfile: "music" },
+      conversations: [oldShape, createConversation("plato-mini")],
+      activeConversationId: legacy.id,
+    });
+    expect(normalized.conversations.map((chat) => chat.modelProfile)).toEqual([
+      "music",
+      "plato-mini",
+    ]);
+    expect(normalized.activeConversationId).toBe(legacy.id);
+    expect(_oldProfile).toBe("public");
+  });
+
+  it("rekeys imported server sessions without changing messages or model identity", () => {
+    const state = normalizeState({
+      conversations: [createConversation("plato")],
+    });
+    const imported = rekeyImportedSessions(state);
+    expect(imported.conversations[0].sessionId).not.toBe(
+      state.conversations[0].sessionId,
+    );
+    expect(imported.conversations[0].modelProfile).toBe("plato");
   });
 });
