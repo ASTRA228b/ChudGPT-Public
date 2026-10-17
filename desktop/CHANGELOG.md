@@ -1,5 +1,12 @@
 # ChudGPT Desktop changelog
 
+## v0.5.1 - 2026-10-17
+
+- Replaced the ambiguous native chat-action dialogs with separate Rename and Delete controls.
+- Renamed chats through an inline editor that supports Save, Cancel, and keyboard input.
+- Deleting an active chat now cancels its pending request, clears the draft, and restores the composer.
+- Deleting all chats or importing a replacement also cancels any pending request before changing the chat list.
+
 ## v0.5.0 - 2026-10-17
 
 - Added Plato and Plato Mini to the model selector, for 14 published profiles across Public, Music, main, and Plato.

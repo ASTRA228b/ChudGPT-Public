@@ -467,8 +467,61 @@ button {
   padding: 8px;
   color: #7890a4;
 }
-.chat-row:hover .chat-menu {
+.chat-row:hover .chat-menu,
+.chat-menu:focus-visible,
+.chat-menu[aria-expanded="true"] {
   opacity: 1;
+}
+.chat-actions {
+  display: flex;
+  gap: 4px;
+  padding: 2px 4px 6px;
+}
+.chat-actions button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex: 1;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 7px 4px;
+  background: rgba(12, 25, 39, 0.8);
+  color: #c8e2f0;
+}
+.chat-actions button:hover,
+.chat-actions button:focus-visible {
+  border-color: #68ddff;
+  color: #fff;
+}
+.chat-rename {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  width: 100%;
+  padding: 4px;
+}
+.chat-rename input {
+  min-width: 0;
+  flex: 1;
+  border: 1px solid #68ddff;
+  border-radius: 6px;
+  padding: 7px;
+  background: #08131f;
+  color: #effaff;
+}
+.chat-rename button {
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  padding: 7px;
+  background: transparent;
+  color: #c8e2f0;
+}
+.chat-rename button:hover,
+.chat-rename button:focus-visible {
+  background: rgba(77, 187, 255, 0.1);
 }
 .collapsed .chat-row {
   justify-content: center;

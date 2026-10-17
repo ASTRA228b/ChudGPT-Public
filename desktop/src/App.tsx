@@ -50,12 +50,12 @@ export default function App(): JSX.Element {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
-  const [requestId, setRequestId] = useState<string | null>(null);
   const [connection, setConnection] = useState<ConnectionState>("connecting");
   const [version, setVersion] = useState("0.1.0");
   const [toasts, setToasts] = useState<Toast[]>([]);
   const messagesEnd = useRef<HTMLDivElement>(null);
   const activeRequest = useRef<string | null>(null);
+  const requestChatId = useRef<string | null>(null);
   const saveQueue = useRef<Promise<unknown>>(Promise.resolve());
   const connectionCheck = useRef(0);
   const selectedProfile = useRef(state.settings.modelProfile);
@@ -242,7 +242,7 @@ export default function App(): JSX.Element {
     }));
     const id = makeRequestId();
     activeRequest.current = id;
-    setRequestId(id);
+    requestChatId.current = target.id;
     try {
       const result = await chat(
         clean,
@@ -282,16 +282,19 @@ export default function App(): JSX.Element {
     } finally {
       if (activeRequest.current === id) {
         activeRequest.current = null;
+        requestChatId.current = null;
         setBusy(false);
-        setRequestId(null);
       }
     }
   };
-  const stop = () => {
-    if (requestId) void cancel(requestId);
+  const cancelActiveRequest = () => {
+    if (activeRequest.current) void cancel(activeRequest.current);
     activeRequest.current = null;
+    requestChatId.current = null;
     setBusy(false);
-    setRequestId(null);
+  };
+  const stop = () => {
+    cancelActiveRequest();
     toast("Generation stopped");
   };
   const removeChat = (chat: Conversation) => {
@@ -300,6 +303,8 @@ export default function App(): JSX.Element {
       !window.confirm(`Delete “${chat.title}”? This cannot be undone.`)
     )
       return;
+    if (requestChatId.current === chat.id) cancelActiveRequest();
+    if (state.activeConversationId === chat.id) setDraft("");
     void clearSession(chat.sessionId, chat.modelProfile).catch(() => undefined);
     setState((current) => ({
       ...current,
@@ -311,10 +316,11 @@ export default function App(): JSX.Element {
           ? null
           : current.activeConversationId,
     }));
+    window.dispatchEvent(new Event("chud:focus-composer"));
     toast("Chat deleted");
   };
-  const renameChat = (chat: Conversation) => {
-    const title = window.prompt("Rename conversation", chat.title)?.trim();
+  const renameChat = (chat: Conversation, proposedTitle: string) => {
+    const title = proposedTitle.trim();
     if (!title) return;
     updateChat(chat.id, (item) => ({
       ...item,
@@ -353,6 +359,8 @@ export default function App(): JSX.Element {
         )
       )
         return;
+      cancelActiveRequest();
+      setDraft("");
       setState(imported);
       toast("Chats imported");
     } catch {
@@ -531,11 +539,14 @@ export default function App(): JSX.Element {
                 "Delete every locally saved conversation? This cannot be undone.",
               )
             ) {
+              cancelActiveRequest();
+              setDraft("");
               setState((current) => ({
                 ...current,
                 conversations: [],
                 activeConversationId: null,
               }));
+              setSettingsOpen(false);
               toast("All chats deleted");
             }
           }}

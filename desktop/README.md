@@ -75,7 +75,7 @@ Tagged releases use `.github/workflows/desktop-release.yml` to build independent
 
 macOS artifacts are unsigned unless Apple signing/notarization credentials are configured. Windows packages are unsigned unless a code-signing certificate is configured. Linux packages do not require signing for local installation.
 
-Release tags use the form `desktop-v0.5.0`.
+Release tags use the form `desktop-v<version>`.
 
 ## Availability and privacy
 

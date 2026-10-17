@@ -94,6 +94,8 @@ jobs:
             - Persistent multi-chat system with isolated legacy sessions and bounded Plato turns
             - Futuristic neon desktop interface and native window controls
             - Local chat search, rename, delete, export, and import
+            - Explicit chat actions and reliable inline renaming
+            - Deleting a chat cancels its pending request and restores the composer
             - Markdown and polished code rendering
             - Adjustable chat, sidebar, composer, theme, glow, density, startup, and privacy settings
             - Performance mode, status-poll controls, and long-chat render limits

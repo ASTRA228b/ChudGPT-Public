@@ -6,6 +6,7 @@ import { createConversation, emptyState } from "./lib/state";
 
 vi.mock("./components/Composer", () => ({
   Composer: (props: {
+    value: string;
     onChange: (value: string) => void;
     onSend: () => void;
     onStop: () => void;
@@ -21,6 +22,7 @@ vi.mock("./components/Composer", () => ({
         Choose Plato Mini
       </button>
       <span data-testid="selected-model">{props.modelProfile}</span>
+      <span data-testid="draft">{props.value}</span>
       <span>{props.busy ? "busy" : "idle"}</span>
     </div>
   ),
@@ -29,12 +31,16 @@ vi.mock("./components/Sidebar", () => ({
   Sidebar: (props: {
     conversations: { id: string; title: string }[];
     onSelect: (id: string) => void;
+    onDelete: (chat: { id: string; title: string }) => void;
   }) => (
     <nav>
       {props.conversations.map((chat) => (
-        <button key={chat.id} onClick={() => props.onSelect(chat.id)}>
-          {chat.title}
-        </button>
+        <div key={chat.id}>
+          <button onClick={() => props.onSelect(chat.id)}>{chat.title}</button>
+          <button onClick={() => props.onDelete(chat)}>
+            Delete {chat.title}
+          </button>
+        </div>
       ))}
     </nav>
   ),
@@ -206,4 +212,56 @@ it("ignores a stale status result after the selected model changes", async () =>
   expect(container.textContent).toContain("Plato Mini · Gateway online");
   await act(async () => finishOld({ ready: false }));
   expect(container.textContent).toContain("Plato Mini · Gateway online");
+});
+
+it("deleting an active busy chat clears the composer and ignores its late reply", async () => {
+  let finishOld!: (value: { reply: string }) => void;
+  const oldReply = new Promise<{ reply: string }>((resolve) => {
+    finishOld = resolve;
+  });
+  const saved = emptyState();
+  const oldChat = createConversation("public");
+  oldChat.title = "Active chat";
+  saved.conversations = [oldChat];
+  saved.activeConversationId = oldChat.id;
+  saved.onboardingComplete = true;
+  saved.settings.confirmDeletes = false;
+  saved.settings.autoTitles = false;
+  let sends = 0;
+  const apiRequest = vi.fn((endpoint: string) => {
+    if (endpoint === "chat")
+      return ++sends === 1 ? oldReply : Promise.resolve({ reply: "new reply" });
+    return Promise.resolve({ ready: true });
+  });
+  const cancelRequest = vi.fn().mockResolvedValue(true);
+  Object.defineProperty(window, "chudDesktop", {
+    configurable: true,
+    value: {
+      loadData: vi.fn().mockResolvedValue(saved),
+      getAppInfo: vi.fn().mockResolvedValue({ version: "test" }),
+      saveData: vi.fn().mockResolvedValue(true),
+      apiRequest,
+      cancelRequest,
+    },
+  });
+  await act(async () => root.render(<App />));
+  const button = (name: string) =>
+    [...container.querySelectorAll("button")].find(
+      (item) => item.textContent?.trim() === name,
+    )!;
+  act(() => button("Draft").click());
+  act(() => button("Send").click());
+  expect(container.textContent).toContain("busy");
+  act(() => button("Delete Active chat").click());
+  expect(cancelRequest).toHaveBeenCalledTimes(1);
+  expect(container.textContent).toContain("idle");
+  expect(container.querySelector('[data-testid="draft"]')?.textContent).toBe(
+    "",
+  );
+  act(() => button("Draft").click());
+  await act(async () => button("Send").click());
+  await act(async () => finishOld({ reply: "deleted chat's late reply" }));
+  expect(container.textContent).toContain("new reply");
+  expect(container.textContent).not.toContain("deleted chat's late reply");
+  expect(sends).toBe(2);
 });
