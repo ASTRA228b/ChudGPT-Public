@@ -1,5 +1,13 @@
 # ChudGPT Desktop changelog
 
+## v0.5.0 - 2026-10-17
+
+- Added Plato and Plato Mini to the model selector, for 14 published profiles across Public, Music, main, and Plato.
+- Kept each conversation pinned to its chosen model, including migrated local chats; switching models opens a fresh chat.
+- Routed Plato requests through its stateless API with bounded turns and validated neural responses.
+- Fixed stale status checks after model switches, duplicate sends, late cancelled replies, import size checks, and ordered local saves.
+- Updated the interface and release notes to describe all model families accurately.
+
 ## v0.2.1 - 2026-08-14
 
 ### Fixed

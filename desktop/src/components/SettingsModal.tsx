@@ -324,7 +324,7 @@ export function SettingsModal(props: Props): JSX.Element {
             </div>
             <p className="privacy-note">
               Chats are stored locally. Only prompts required for generation are
-              sent to ChudGPT-Public.
+              sent to the selected model's API.
             </p>
           </SettingsSection>
           <SettingsSection title="About">
@@ -333,8 +333,8 @@ export function SettingsModal(props: Props): JSX.Element {
                 ChudGPT Desktop <span>v{props.version}</span>
               </h3>
               <p>
-                Powered by ChudGPT-Public, an independently trained experimental
-                small language model.
+                Choose among Public, Music, main-family, and experimental Plato
+                models. Each conversation keeps its own model identity.
               </p>
               <p className="warning-text">
                 Responses may be inaccurate, inconsistent, or incorrect. Do not

@@ -6,7 +6,16 @@ const apiRequest = vi.fn();
 
 beforeEach(() => {
   apiRequest.mockReset();
-  apiRequest.mockResolvedValue({});
+  apiRequest.mockImplementation(async (endpoint: string) =>
+    endpoint.startsWith("main/plato/models/")
+      ? {
+          reply: "ok",
+          model: endpoint.includes("plato-mini") ? "plato-mini" : "plato",
+          source: "neural",
+          checkpoint_step: 1200,
+        }
+      : { reply: "ok", ready: true },
+  );
   Object.defineProperty(window, "chudDesktop", {
     configurable: true,
     value: { apiRequest, cancelRequest: vi.fn() },
@@ -65,6 +74,17 @@ describe("desktop API routing", () => {
       messages: [{ role: "user", content: "hello" }],
       max_new_tokens: 128,
     });
+  });
+
+  it("rejects malformed or mismatched model replies", async () => {
+    apiRequest.mockResolvedValueOnce({ reply: "wrong model", model: "plato" });
+    await expect(
+      chat("hi", "unused", "bad-id", "plato-mini", [row("user", "hi")]),
+    ).rejects.toThrow("invalid response");
+    apiRequest.mockResolvedValueOnce({ error: "oops" });
+    await expect(chat("hi", "session", "bad-public", "public")).rejects.toThrow(
+      "invalid response",
+    );
   });
 });
 

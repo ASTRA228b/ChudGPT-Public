@@ -57,6 +57,9 @@ export default function App(): JSX.Element {
   const messagesEnd = useRef<HTMLDivElement>(null);
   const activeRequest = useRef<string | null>(null);
   const saveQueue = useRef<Promise<unknown>>(Promise.resolve());
+  const connectionCheck = useRef(0);
+  const selectedProfile = useRef(state.settings.modelProfile);
+  selectedProfile.current = state.settings.modelProfile;
   const active = useMemo(
     () =>
       state.conversations.find(
@@ -115,23 +118,43 @@ export default function App(): JSX.Element {
     }
   }, [state, loaded]);
   const checkConnection = useCallback(async () => {
+    const profile = state.settings.modelProfile;
+    const check = ++connectionCheck.current;
     setConnection("connecting");
     try {
-      await status(state.settings.modelProfile);
-      setConnection("online");
+      const result = await status(profile);
+      if (
+        check !== connectionCheck.current ||
+        selectedProfile.current !== profile
+      )
+        return;
+      setConnection(
+        result.ready === false || result.status === "offline"
+          ? "offline"
+          : "online",
+      );
     } catch {
-      setConnection("offline");
+      if (
+        check === connectionCheck.current &&
+        selectedProfile.current === profile
+      )
+        setConnection("offline");
     }
   }, [state.settings.modelProfile]);
   useEffect(() => {
     if (!loaded) return;
+    const checkCounter = connectionCheck;
     void checkConnection();
-    if (!state.settings.statusPollSeconds) return;
-    const id = window.setInterval(
-      () => void checkConnection(),
-      state.settings.statusPollSeconds * 1_000,
-    );
-    return () => window.clearInterval(id);
+    const id = state.settings.statusPollSeconds
+      ? window.setInterval(
+          () => void checkConnection(),
+          state.settings.statusPollSeconds * 1_000,
+        )
+      : null;
+    return () => {
+      ++checkCounter.current;
+      if (id !== null) window.clearInterval(id);
+    };
   }, [checkConnection, loaded, state.settings.statusPollSeconds]);
   useEffect(() => {
     if (state.settings.autoScroll)
@@ -225,7 +248,7 @@ export default function App(): JSX.Element {
         clean,
         target.sessionId,
         id,
-        state.settings.modelProfile,
+        target.modelProfile,
         [...target.messages, userMessage],
       );
       if (activeRequest.current !== id) return;
@@ -234,7 +257,8 @@ export default function App(): JSX.Element {
         messages: [...item.messages, message("assistant", result.reply)],
         updatedAt: now(),
       }));
-      setConnection("online");
+      if (selectedProfile.current === target.modelProfile)
+        setConnection("online");
     } catch (error) {
       if (activeRequest.current !== id) return;
       const text =
@@ -252,8 +276,9 @@ export default function App(): JSX.Element {
         ],
         updatedAt: now(),
       }));
-      setConnection("offline");
-      toast("Could not connect to ChudGPT-Public");
+      if (selectedProfile.current === target.modelProfile)
+        setConnection("offline");
+      toast("Could not connect to the selected model");
     } finally {
       if (activeRequest.current === id) {
         activeRequest.current = null;
@@ -420,7 +445,9 @@ export default function App(): JSX.Element {
               )}
               <span>
                 {selectedModel.shortName} ·{" "}
-                {connection[0].toUpperCase() + connection.slice(1)}
+                {selectedModel.family === "plato" && connection === "online"
+                  ? "Gateway online"
+                  : connection[0].toUpperCase() + connection.slice(1)}
               </span>
             </button>
           </header>
@@ -428,7 +455,7 @@ export default function App(): JSX.Element {
             <div className="message-scroll">
               {!active || !active.messages.length ? (
                 <Welcome
-                  music={state.settings.modelProfile === "music"}
+                  modelProfile={state.settings.modelProfile}
                   onStarter={(text) => {
                     setDraft(text);
                     window.dispatchEvent(new Event("chud:focus-composer"));

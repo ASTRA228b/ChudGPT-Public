@@ -14,7 +14,7 @@ export function TitleBar(): JSX.Element {
           <Bot size={16} />
         </span>
         <span>ChudGPT Desktop</span>
-        <span className="version-chip">PUBLIC</span>
+        <span className="version-chip">ALL MODELS</span>
       </div>
       <div className="window-controls">
         <button

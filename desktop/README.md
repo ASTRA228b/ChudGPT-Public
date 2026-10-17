@@ -1,12 +1,13 @@
 # ChudGPT Desktop
 
-ChudGPT Desktop is the official native client for the independently trained ChudGPT-Public model. It is an Electron, React, and TypeScript application—not a wrapper around the website. The native main process owns API networking, file dialogs, local storage, window controls, safe external links, and startup integration; the isolated renderer implements the desktop interface.
+ChudGPT Desktop is a native client for the ChudGPT model families. It is an Electron, React, and TypeScript application—not a wrapper around the website. The native main process owns API networking, file dialogs, local storage, window controls, safe external links, and startup integration; the isolated renderer implements the desktop interface.
 
 ## Features
 
 - Frameless, resizable, high-DPI desktop window with native minimize, maximize, and close controls
 - Persistent multi-chat library with one API `session_id` per conversation
-- An in-composer selector for all 12 published ChudGPT models
+- An in-composer selector for all 14 published ChudGPT profiles: Public, Music, ten main-family models, and Plato/Plato Mini
+- Each conversation retains its selected model; switching models starts a separate chat
 - Instant local search across titles and messages
 - New, switch, rename, delete, and clear-all chat workflows
 - Markdown, multiline answers, selectable text, fenced code blocks, and copy actions
@@ -19,7 +20,7 @@ ChudGPT Desktop is the official native client for the independently trained Chud
 - First-launch explanation and experimental-model warning
 - No analytics, tracking, accounts, API keys, or code execution
 
-Chats remain in Electron's local application-data store. Only messages sent for generation leave the computer and go to the selected model's API at `https://chudgpt-public.vercel.app` or `https://chudgpt-xi.vercel.app`.
+Chats remain in Electron's local application-data store. Only messages sent for generation leave the computer and go to the selected model's API at `https://chudgpt-public.vercel.app` or `https://chudgpt-xi.vercel.app`. Plato sends a bounded selection of the current conversation's turns and does not use server sessions.
 
 ## Architecture
 
@@ -74,7 +75,7 @@ Tagged releases use `.github/workflows/desktop-release.yml` to build independent
 
 macOS artifacts are unsigned unless Apple signing/notarization credentials are configured. Windows packages are unsigned unless a code-signing certificate is configured. Linux packages do not require signing for local installation.
 
-Release tags use the form `desktop-v0.2.1`.
+Release tags use the form `desktop-v0.5.0`.
 
 ## Availability and privacy
 

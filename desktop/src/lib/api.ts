@@ -72,7 +72,7 @@ export function status(
   );
 }
 
-export function chat(
+export async function chat(
   message: string,
   sessionId: string,
   requestId: string,
@@ -81,19 +81,30 @@ export function chat(
 ): Promise<ChatResponse> {
   if (modelProfileInfo(profile).family === "plato") {
     if (!history) throw new Error("Plato requires local conversation history.");
-    return window.chudDesktop.apiRequest<ChatResponse>(
+    const response = await window.chudDesktop.apiRequest<ChatResponse>(
       endpointFor(profile, "chat"),
       "POST",
       { messages: buildPlatoMessages(history), max_new_tokens: 128 },
       requestId,
     );
+    if (
+      typeof response?.reply !== "string" ||
+      response.model !== profile ||
+      response.source !== "neural" ||
+      typeof response.checkpoint_step !== "number"
+    )
+      throw new Error("Plato returned an invalid response.");
+    return response;
   }
-  return window.chudDesktop.apiRequest<ChatResponse>(
+  const response = await window.chudDesktop.apiRequest<ChatResponse>(
     endpointFor(profile, "chat"),
     "POST",
     { message, session_id: sessionId },
     requestId,
   );
+  if (typeof response?.reply !== "string")
+    throw new Error("The selected model returned an invalid response.");
+  return response;
 }
 
 export function clearSession(

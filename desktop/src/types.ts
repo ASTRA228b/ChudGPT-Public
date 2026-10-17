@@ -94,12 +94,14 @@ export interface PersistedState {
 }
 
 export interface ApiStatus {
-  ready: boolean;
-  model: string;
-  device: string;
-  parameters: number;
-  context_length: number;
-  step: number;
+  ready?: boolean;
+  status?: string;
+  busy?: boolean;
+  model?: string;
+  device?: string;
+  parameters?: number;
+  context_length?: number;
+  step?: number;
 }
 
 export interface ChatResponse {
