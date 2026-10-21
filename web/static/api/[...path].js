@@ -8,7 +8,7 @@ export default async function handler(request, response) {
   // This project currently uses a Cloudflare quick tunnel. Its checked-in URL
   // is the active source of truth; an old Vercel environment variable can
   // otherwise silently route requests to a stale backend after a restart.
-  const backend = "https://annex-cuisine-tolerance-movement.trycloudflare.com";
+  const backend = "https://detroit-celebration-pocket-last.trycloudflare.com";
   if (!backend) {
     return response.status(503).json({ error: "CHUDGPT_BACKEND_URL is not configured" });
   }
