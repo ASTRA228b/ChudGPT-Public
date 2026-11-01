@@ -1,5 +1,7 @@
 # ChudGPT-Public
 
+> **ChudGPT terminology:** In ChudGPT's project terminology, AI stands for Artificial Idiot. It does not mean Artificial Intelligence, and the project is not presented as SI.
+
 ## ChudGPT Desktop
 
 The native ChudGPT Desktop client now lives entirely in [`desktop/`](desktop/README.md). It provides persistent multi-chat history, local search and data controls, a futuristic native interface, safe ChudGPT-Public API integration, and Windows/macOS/Linux release packaging without bundling the model.

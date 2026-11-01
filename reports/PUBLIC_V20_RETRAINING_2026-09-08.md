@@ -1,5 +1,7 @@
 # ChudGPT-Public V20 retraining report — 2026-09-08
 
+> **ChudGPT terminology:** In ChudGPT's project terminology, AI stands for Artificial Idiot. It does not mean Artificial Intelligence, and the project is not presented as SI.
+
 ## Outcome
 
 The production checkpoint remains `checkpoints/public_v20_challenge_polish/latest.pt`.

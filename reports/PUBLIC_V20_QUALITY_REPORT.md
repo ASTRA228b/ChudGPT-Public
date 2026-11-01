@@ -1,5 +1,7 @@
 # ChudGPT-Public V20 quality and reliability report
 
+> **ChudGPT terminology:** In ChudGPT's project terminology, AI stands for Artificial Idiot. It does not mean Artificial Intelligence, and the project is not presented as SI.
+
 Date: 2026-08-17
 
 ## Evidence reviewed

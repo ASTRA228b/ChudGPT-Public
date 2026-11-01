@@ -1,5 +1,7 @@
 # Focused LGBTQIA+ conversation repair
 
+> **ChudGPT terminology:** In ChudGPT's project terminology, AI stands for Artificial Idiot. It does not mean Artificial Intelligence, and the project is not presented as SI.
+
 The main games-v2 step-800 checkpoint remains selected. A separate copy was fine-tuned on original LGBTQIA+ conversations and is selected only for that topic, before generation. Casual disclosures remain neural. Existing explicit definitions, pronoun recall, and other narrow handlers retain their behavior. Code, translation, poems, math, game questions, and unrelated conversation retain the normal path. There is no generated-answer detector, apology replacement, or canned acknowledgment lookup.
 
 Training completed 500 steps on an initial 291 examples, then 350 on a revised 237-example set that gives more weight to disclosures than bot-self follow-ups. Both passes used CUDA and response-only supervised fine-tuning. The checked-in builder and dataset represent the final revised set. Checkpoint binaries remain local under the existing Git exclusion. Selected specialist: `checkpoints/public_lgbtq_chat_v2/latest.pt`. Final validation loss was 0.0047; overlapping paraphrases make this unsuitable as a generalization estimate.

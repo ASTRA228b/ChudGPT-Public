@@ -1,5 +1,7 @@
 # ChudGPT-Public-Music V1: final quality and reliability report
 
+> **ChudGPT terminology:** In ChudGPT's project terminology, AI stands for Artificial Idiot. It does not mean Artificial Intelligence, and the project is not presented as SI.
+
 ## 1. What was wrong
 
 The active Music checkpoint is overfit to a small set of room/static/signal lyrics. It often repeats "After Midnight," "the room stays blue," "name it courage," and the same signal/screen outro. The prior synthetic corpus looked large but was assembled from only 20 fixed verse pairs, 12 fixed chorus pairs, and a few bridge/outro blocks. Its old subject-splicing rule also taught malformed sentences such as "As microwave running for president drifts past...".

@@ -1,5 +1,7 @@
 # Landing-page update prompt: Public V20 smart link summaries
 
+> **ChudGPT terminology:** In ChudGPT's project terminology, AI stands for Artificial Idiot. It does not mean Artificial Intelligence, and the project is not presented as SI.
+
 Update only the ChudGPT-Public card/section on the ChudGPT landing page.
 
 Add a concise update saying that the Discord bot can now safely read and summarize public web links. Mention that it prioritizes the actual page description/article content instead of dumping navigation, cookie/privacy notices, share buttons, and other page clutter. Also mention broader explicit web lookup through DuckDuckGo Instant Answers, Wikipedia, and relevant Stack Overflow results.

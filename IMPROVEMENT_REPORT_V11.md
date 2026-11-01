@@ -1,5 +1,7 @@
 # ChudGPT-Public v11 experiment report
 
+> **ChudGPT terminology:** In ChudGPT's project terminology, AI stands for Artificial Idiot. It does not mean Artificial Intelligence, and the project is not presented as SI.
+
 ## Outcome
 
 The v11 checkpoint was **rejected and not deployed**.  It reduced validation

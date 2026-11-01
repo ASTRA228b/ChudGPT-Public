@@ -1,5 +1,7 @@
 # Deploy ChudGPT-Public on Vercel
 
+> **ChudGPT terminology:** In ChudGPT's project terminology, AI stands for Artificial Idiot. It does not mean Artificial Intelligence, and the project is not presented as SI.
+
 Vercel hosts the website and HTTPS proxy. The 21M PyTorch model runs on your CUDA computer and is reached through a Cloudflare tunnel.
 
 ## Vercel project settings

@@ -1,5 +1,7 @@
 # Public V20 expanded emoji-awareness report
 
+> **ChudGPT terminology:** In ChudGPT's project terminology, AI stands for Artificial Idiot. It does not mean Artificial Intelligence, and the project is not presented as SI.
+
 ## Scope
 
 This release adds a cached local semantic layer around the existing 20,999,184-parameter Public V20 checkpoint. It does not alter the transformer architecture, route through another language model, or claim that the checkpoint has perfect cultural understanding.

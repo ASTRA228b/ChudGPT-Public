@@ -1,5 +1,7 @@
 # ChudGPT-Public V20 final report
 
+> **ChudGPT terminology:** In ChudGPT's project terminology, AI stands for Artificial Idiot. It does not mean Artificial Intelligence, and the project is not presented as SI.
+
 ## Discord conversational-recovery update (144-record audit)
 
 The current private monthly Discord JSONL was reread completely before this update and then checked repeatedly by timestamp: **147/147 records parsed successfully**, with no malformed rows. The latest timestamp reviewed was `2026-08-16T04:17:59.657664+00:00`. Repeated failures included casual remarks and insults turning into unsolicited numbered tutorials, vague reactions switching to unrelated topics, `what` failing to repair a confusing prior answer, overly formal monologues for ordinary chat, repeated/broken model-identity prose, ignored phrase-repetition constraints, and failure to evaluate those constraints in a follow-up.

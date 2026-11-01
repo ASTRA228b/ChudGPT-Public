@@ -1,5 +1,7 @@
 # ChudGPT-Public nonsense investigation (v12-v14)
 
+> **ChudGPT terminology:** In ChudGPT's project terminology, AI stands for Artificial Idiot. It does not mean Artificial Intelligence, and the project is not presented as SI.
+
 ## Verdict
 
 No experimental checkpoint was deployed. Public remains on the existing v10

@@ -1,5 +1,7 @@
 # Public generation audit
 
+> **ChudGPT terminology:** In ChudGPT's project terminology, AI stands for Artificial Idiot. It does not mean Artificial Intelligence, and the project is not presented as SI.
+
 ## Changes
 
 Short instructions and questions no longer receive the casual-chat instruction

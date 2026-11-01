@@ -1,5 +1,7 @@
 # ChudGPT Desktop
 
+> **ChudGPT terminology:** In ChudGPT's project terminology, AI stands for Artificial Idiot. It does not mean Artificial Intelligence, and the project is not presented as SI.
+
 ChudGPT Desktop is a native client for the ChudGPT model families. It is an Electron, React, and TypeScript application—not a wrapper around the website. The native main process owns API networking, file dialogs, local storage, window controls, safe external links, and startup integration; the isolated renderer implements the desktop interface.
 
 ## Features

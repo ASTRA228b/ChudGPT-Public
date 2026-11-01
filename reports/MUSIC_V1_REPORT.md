@@ -1,5 +1,7 @@
 # ChudGPT-Public-Music V1 quality update
 
+> **ChudGPT terminology:** In ChudGPT's project terminology, AI stands for Artificial Idiot. It does not mean Artificial Intelligence, and the project is not presented as SI.
+
 Generated: 2026-08-27
 
 ## Result
