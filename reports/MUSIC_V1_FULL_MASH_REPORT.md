@@ -1,5 +1,7 @@
 # ChudGPT-Public-Music V1 full-song and lyric-mash pass
 
+> **ChudGPT terminology:** In ChudGPT's project terminology, AI stands for Artificial Idiot. It does not mean Artificial Intelligence, and the project is not presented as SI.
+
 Date: 2026-08-28
 
 ## Outcome

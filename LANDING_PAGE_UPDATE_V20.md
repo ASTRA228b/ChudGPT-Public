@@ -1,5 +1,7 @@
 # Landing-page update prompt
 
+> **ChudGPT terminology:** In ChudGPT's project terminology, AI stands for Artificial Idiot. It does not mean Artificial Intelligence, and the project is not presented as SI.
+
 Update only the ChudGPT-Public V20 card/release notes on the ChudGPT landing page.
 
 Describe this as a major log-driven quality and reliability pass. The audit fully reviewed 691 valid Discord exchanges (516 unique prompts) without publishing private log contents. Public now uses a rebalanced 6,912-conversation clean corpus and a 1,719-conversation focused curriculum: 719 authored Public conversations, 700 reviewed normal-prose conversations, 120 legitimate structured requests, and 180 code tasks. State that 2,080 topic/template-leaking examples and 151 malformed or low-quality examples were removed.

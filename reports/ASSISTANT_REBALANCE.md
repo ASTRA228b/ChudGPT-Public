@@ -1,5 +1,7 @@
 # Assistant rebalance — September 23, 2026
 
+> **ChudGPT terminology:** In ChudGPT's project terminology, AI stands for Artificial Idiot. It does not mean Artificial Intelligence, and the project is not presented as SI.
+
 ## Selected change
 
 The main model now selects `checkpoints/public_assistant_rebalance/latest.pt`, step 1,400. Its base is the previous games-v2 step-800 checkpoint. All serving code, fallbacks, grounded handlers, casual sampling, and the separate LGBTQIA+ checkpoint remain unchanged. This changes learned weights rather than intercepting bad game answers with canned text. The previous main checkpoint remains archived for rollback.

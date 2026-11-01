@@ -1,5 +1,7 @@
 # Public V20 balanced fine-tuning
 
+> **ChudGPT terminology:** In ChudGPT's project terminology, AI stands for Artificial Idiot. It does not mean Artificial Intelligence, and the project is not presented as SI.
+
 ## Scope
 
 Model training and evaluation only. No fallback, inference router, Music model,

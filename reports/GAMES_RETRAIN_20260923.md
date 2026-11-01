@@ -1,5 +1,7 @@
 # Public games retrain — September 2026
 
+> **ChudGPT terminology:** In ChudGPT's project terminology, AI stands for Artificial Idiot. It does not mean Artificial Intelligence, and the project is not presented as SI.
+
 ## Follow-up selection: rougher V20 conversation
 
 After the user reported the canned disclosure and repeated neural introduction, the selected checkpoint changed to `public_games_v2/step_800.pt` (1,400 cumulative steps). Games-v3 remains archived. Casual identity requests bypass the acknowledgment handler, and short casual chat takes the first usable neural draw with broader sampling rather than the most polished of five. Recovery-v5 lost Gorilla Tag knowledge; games-v2 step 800 retained it and produced awkward/off-topic identity replies in the comparison. This deliberately accepts lower reliability, without inserting errors or catching invented models. The repeated introduction in v3 was genuinely neural and persisted across three screenshot-sequence tests. Logs: `casual_neural_smoke.json` and `casual_checkpoint_comparison.json`. Full suite after casual routing changes: 642 passing tests.

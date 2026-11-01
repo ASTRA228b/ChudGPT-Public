@@ -1,5 +1,7 @@
 # Game and modding curriculum sources
 
+> **ChudGPT terminology:** In ChudGPT's project terminology, AI stands for Artificial Idiot. It does not mean Artificial Intelligence, and the project is not presented as SI.
+
 Reviewed September 23, 2026. Training answers are original concise explanations, not copied pages or Discord conversations.
 
 - [Gorilla Tag's developer-published Steam page](https://store.steampowered.com/app/1533390/Gorilla_Tag/): VR, arm-based locomotion, tag/infection, social play, environments, Another Axiom.

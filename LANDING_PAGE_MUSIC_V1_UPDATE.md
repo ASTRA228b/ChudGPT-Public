@@ -1,5 +1,7 @@
 # Landing-page update prompt
 
+> **ChudGPT terminology:** In ChudGPT's project terminology, AI stands for Artificial Idiot. It does not mean Artificial Intelligence, and the project is not presented as SI.
+
 Update the ChudGPT landing site with the latest ChudGPT-Public-Music V1 information. Preserve the existing visual design and unrelated model cards.
 
 On the Music V1 card and model guide, explain that:

@@ -1,5 +1,7 @@
 # ChudGPT-Public changelog
 
+> **ChudGPT terminology:** In ChudGPT's project terminology, AI stands for Artificial Idiot. It does not mean Artificial Intelligence, and the project is not presented as SI.
+
 ## 2026-09-25 — Hosted simulation actions
 
 - Added `POST /api/models/public/sim-step` for bounded neural selection of registered world functions. Observations are limited to 3,000 characters; action scoring uses at most 600 context tokens. Busy requests return 429.

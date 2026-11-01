@@ -1,5 +1,7 @@
 # ChudGPT Desktop changelog
 
+> **ChudGPT terminology:** In ChudGPT's project terminology, AI stands for Artificial Idiot. It does not mean Artificial Intelligence, and the project is not presented as SI.
+
 ## v0.5.1 - 2026-10-17
 
 - Replaced the ambiguous native chat-action dialogs with separate Rename and Delete controls.

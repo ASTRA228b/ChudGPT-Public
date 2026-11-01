@@ -1,5 +1,7 @@
 # Geography serving update — September 22, 2026
 
+> **ChudGPT terminology:** In ChudGPT's project terminology, AI stands for Artificial Idiot. It does not mean Artificial Intelligence, and the project is not presented as SI.
+
 Public now answers explicit questions about all 50 U.S. state capitals and 123 country capitals from a local fact table. The country table also supports continent/location questions. Basic world questions cover continents, oceans, the equator, the prime meridian, mountains, deserts, country area, and U.S. state area.
 
 The exact requested example, `What is the capital of Australia`, returns `The capital of Australia is Canberra.` Follow-ups such as `What about Canada?` work immediately after a capital question. State abbreviations, possessive wording, reverse lookups, multiple named capitals, and a full state-capitals list are supported.

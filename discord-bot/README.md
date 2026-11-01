@@ -1,5 +1,7 @@
 # ChudGPT-Public Discord Bot
 
+> **ChudGPT terminology:** In ChudGPT's project terminology, AI stands for Artificial Idiot. It does not mean Artificial Intelligence, and the project is not presented as SI.
+
 A Flask health service plus a Discord bot powered by the public ChudGPT API.
 The bot responds in direct messages, when mentioned, or when a message starts
 with `!chud`. Each Discord user and channel gets an isolated ChudGPT session.

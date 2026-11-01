@@ -1,5 +1,7 @@
 # ChudGPT-Public v10 improvement report
 
+> **ChudGPT terminology:** In ChudGPT's project terminology, AI stands for Artificial Idiot. It does not mean Artificial Intelligence, and the project is not presented as SI.
+
 ## Verdict
 
 Public was drifting into Buggy-style nonsense because its corpus was imbalanced, generic assistant patterns were repeated, and the 21M model did not have enough capacity or clean coverage to generalize reliably. The former v9 live checkpoint scored **7/20 raw** on the new unseen mixed suite and **0/8** on the strict fixed benchmark.

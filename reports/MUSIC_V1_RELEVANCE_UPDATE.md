@@ -1,5 +1,7 @@
 # ChudGPT-Public-Music V1 relevance update
 
+> **ChudGPT terminology:** In ChudGPT's project terminology, AI stands for Artificial Idiot. It does not mean Artificial Intelligence, and the project is not presented as SI.
+
 ## Outcome
 
 Music V1 now cleans malformed title/style metadata, rejects weak topic matches more aggressively, validates lyric sections, and suppresses lyric lines proven by historical Music logs to be overrepresented. The active model remains the existing Music V1 checkpoint because the newly trained correction candidate produced worse English during generation tests.

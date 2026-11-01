@@ -1,5 +1,7 @@
 # ChudGPT-Public v8 improvement report — 2026-08-14
 
+> **ChudGPT terminology:** In ChudGPT's project terminology, AI stands for Artificial Idiot. It does not mean Artificial Intelligence, and the project is not presented as SI.
+
 ## Public v9 short-context training and fallback removal
 
 Public now serves the actual 20,999,184-parameter checkpoint output. Arithmetic, greeting, identity, joke, code, retrieval, comparison, correction, fact-memory, response-quality, and keyword-answer substitution were removed from the API. Empty decoding is retried technically; three empty attempts produce HTTP 503 instead of invented conversational content.
